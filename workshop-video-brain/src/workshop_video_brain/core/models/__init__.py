@@ -39,6 +39,7 @@ from .transitions import TransitionInstruction, TransitionPreset, TransitionType
 from .transcript import Transcript, TranscriptSegment, WordTiming
 from .validation import ValidationItem, ValidationReport
 from .workspace import Workspace
+from .clips import ClipLabel
 
 __all__ = [
     # enums
@@ -94,6 +95,8 @@ __all__ = [
     "ValidationReport",
     # workspace
     "Workspace",
+    # clips
+    "ClipLabel",
     # transitions
     "TransitionType",
     "TransitionPreset",

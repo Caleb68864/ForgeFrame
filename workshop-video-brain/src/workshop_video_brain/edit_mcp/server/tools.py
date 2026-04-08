@@ -905,6 +905,74 @@ def snapshot_list(workspace_path: str) -> dict:
         return _err(str(exc))
 
 
+# ---------------------------------------------------------------------------
+# Clip tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def clips_label(workspace_path: str) -> dict:
+    """Auto-label all clips in workspace from transcript and marker data.
+
+    Args:
+        workspace_path: Path to the workspace root directory.
+
+    Returns:
+        Count of labels generated and a summary of content types found.
+    """
+    try:
+        from workshop_video_brain.edit_mcp.pipelines.clip_labeler import generate_labels
+
+        labels = generate_labels(Path(workspace_path))
+        content_type_counts: dict[str, int] = {}
+        for label in labels:
+            content_type_counts[label.content_type] = (
+                content_type_counts.get(label.content_type, 0) + 1
+            )
+        return _ok({
+            "label_count": len(labels),
+            "content_types": content_type_counts,
+            "clips": [
+                {
+                    "clip_ref": l.clip_ref,
+                    "content_type": l.content_type,
+                    "shot_type": l.shot_type,
+                    "has_speech": l.has_speech,
+                    "speech_density": l.speech_density,
+                    "topic_count": len(l.topics),
+                    "duration": l.duration,
+                }
+                for l in labels
+            ],
+        })
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def clips_search(workspace_path: str, query: str) -> dict:
+    """Search clips by content. Returns ranked matches.
+
+    Args:
+        workspace_path: Path to the workspace root directory.
+        query: Search query string (case-insensitive).
+
+    Returns:
+        Ranked list of matching clips with scores.
+    """
+    try:
+        from workshop_video_brain.edit_mcp.pipelines.clip_search import search_clips
+
+        results = search_clips(Path(workspace_path), query)
+        return _ok({
+            "results": results,
+            "count": len(results),
+            "query": query,
+        })
+    except Exception as exc:
+        return _err(str(exc))
+
+
 @mcp.tool()
 def snapshot_restore(workspace_path: str, snapshot_id: str) -> dict:
     """Restore a snapshot by its directory name (timestamp-slug).

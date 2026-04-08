@@ -710,5 +710,62 @@ def prepare_tutorial_project(media_folder: str, title: str, vault_path: str) -> 
         click.echo(f"  Open in Kdenlive: {kdenlive_path}")
 
 
+# ---------------------------------------------------------------------------
+# clips group
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def clips() -> None:
+    """Clip organization and search."""
+
+
+@clips.command("label")
+@click.argument("workspace_path")
+def clips_label(workspace_path: str) -> None:
+    """Auto-label clips from transcript data in WORKSPACE_PATH."""
+    from pathlib import Path
+    from workshop_video_brain.edit_mcp.pipelines.clip_labeler import generate_labels
+
+    try:
+        labels = generate_labels(Path(workspace_path))
+        if not labels:
+            click.echo("No clips labeled. Run media ingest and markers auto first.")
+            return
+        click.echo(f"Labeled {len(labels)} clip(s):")
+        for label in labels:
+            click.echo(
+                f"  {label.clip_ref}: {label.content_type}"
+                f" [shot={label.shot_type}, speech={label.speech_density:.2f}]"
+            )
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@clips.command("search")
+@click.argument("workspace_path")
+@click.argument("query")
+def clips_search(workspace_path: str, query: str) -> None:
+    """Search clips by content in WORKSPACE_PATH."""
+    from pathlib import Path
+    from workshop_video_brain.edit_mcp.pipelines.clip_search import search_clips
+
+    try:
+        results = search_clips(Path(workspace_path), query)
+        if not results:
+            click.echo(f"No clips found matching '{query}'.")
+            return
+        click.echo(f"Found {len(results)} result(s) for '{query}':")
+        for r in results:
+            click.echo(
+                f"  [{r['score']:.2f}] {r['clip_ref']}"
+                f" ({r['content_type']}) -- {r['summary'][:60]}"
+            )
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     main()

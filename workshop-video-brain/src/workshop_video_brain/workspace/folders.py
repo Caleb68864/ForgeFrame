@@ -16,6 +16,7 @@ WORKSPACE_FOLDERS: list[str] = [
     "renders/final",
     "reports",
     "logs",
+    "clips",
 ]
 
 
