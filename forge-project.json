@@ -1,0 +1,26 @@
+{
+  "project_name": "ForgeFrame",
+  "project_vault": null,
+  "build_command": "uv sync",
+  "test_command": "uv run pytest tests/ -v",
+  "verification_strategy": "build+test",
+  "claude_md_path": "CLAUDE.md",
+  "review_enabled": true,
+  "review_max_compliance_loops": 3,
+  "review_max_quality_loops": 2,
+  "tech_stack": ["python", "fastmcp", "pydantic", "click", "jinja2", "pytest"],
+  "reference_sources": {
+    "claude-code-docs": {
+      "path": "docs/reference/claude-code",
+      "label": "Claude Code Documentation"
+    },
+    "kdenlive-docs": {
+      "path": "docs/reference/kdenlive",
+      "label": "Kdenlive Documentation"
+    },
+    "original-specs": {
+      "path": "docs/reference/original",
+      "label": "Original PRD/Spec/Tasks"
+    }
+  }
+}

@@ -501,6 +501,27 @@ def plan_script(idea: str) -> None:
         sys.exit(1)
 
 
+@plan.command("voiceover")
+@click.argument("workspace_path")
+def plan_voiceover(workspace_path: str) -> None:
+    """Extract segments needing voiceover fixes from WORKSPACE_PATH."""
+    from workshop_video_brain.production_brain.skills.voiceover import (
+        extract_fixable_segments,
+        format_for_review,
+    )
+    from pathlib import Path
+
+    try:
+        segments = extract_fixable_segments(Path(workspace_path))
+        if not segments:
+            click.echo("No fixable voiceover segments found.")
+            return
+        click.echo(format_for_review(segments))
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
 @plan.command("shots")
 @click.option("--idea", default="", help="Idea text to base shots on.")
 def plan_shots(idea: str) -> None:

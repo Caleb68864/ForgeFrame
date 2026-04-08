@@ -832,6 +832,40 @@ def render_status(workspace_path: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Voiceover tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def voiceover_extract_segments(workspace_path: str) -> dict:
+    """Extract transcript segments flagged for voiceover fixes.
+
+    Reads transcript and marker files from the workspace, filters to
+    mistake_problem, repetition, and dead_air markers with confidence > 0.5,
+    and returns the matching transcript text with surrounding context.
+
+    Args:
+        workspace_path: Path to the workspace root directory.
+
+    Returns:
+        List of fixable segments with timestamps, original text, context,
+        reason, category, and confidence score.
+    """
+    try:
+        from workshop_video_brain.production_brain.skills.voiceover import (
+            extract_fixable_segments,
+        )
+
+        segments = extract_fixable_segments(Path(workspace_path))
+        return _ok({
+            "segments": segments,
+            "count": len(segments),
+        })
+    except Exception as exc:
+        return _err(str(exc))
+
+
+# ---------------------------------------------------------------------------
 # Snapshot tools
 # ---------------------------------------------------------------------------
 
