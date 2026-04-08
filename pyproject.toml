@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "workshop-video-brain"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastmcp>=2.0",
+    "pydantic>=2.0,<3",
+    "pyyaml>=6.0",
+    "jinja2>=3.1",
+    "click>=8.1",
+]
+
+[project.scripts]
+workshop-video-brain-server = "workshop_video_brain.server:main"
+wvb = "workshop_video_brain.app.cli:main"
+
+[dependency-groups]
+dev = ["ruff", "mypy"]
+test = ["pytest", "pytest-cov"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["workshop-video-brain/src/workshop_video_brain"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["workshop-video-brain/src"]

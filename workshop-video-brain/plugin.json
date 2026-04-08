@@ -1,0 +1,29 @@
+{
+  "name": "workshop-video-brain",
+  "version": "0.1.0",
+  "description": "Local-first video production assistant: Obsidian planning + Kdenlive edit automation for tutorial makers",
+  "author": "Caleb Bennett",
+  "license": "MIT",
+  "skills": [
+    {
+      "name": "video-idea-to-outline",
+      "path": "skills/video-idea-to-outline"
+    },
+    {
+      "name": "tutorial-script",
+      "path": "skills/tutorial-script"
+    },
+    {
+      "name": "shot-plan",
+      "path": "skills/shot-plan"
+    },
+    {
+      "name": "obsidian-video-note",
+      "path": "skills/obsidian-video-note"
+    },
+    {
+      "name": "rough-cut-review",
+      "path": "skills/rough-cut-review"
+    }
+  ]
+}

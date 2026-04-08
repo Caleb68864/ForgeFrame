@@ -1,0 +1,20 @@
+{
+  "name": "forgeframe",
+  "owner": {"name": "Caleb Bennett"},
+  "metadata": {
+    "description": "Kdenlive MCP and Video Production Skills for tutorial creators",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "workshop-video-brain",
+      "source": "./workshop-video-brain",
+      "description": "Local-first video production assistant: Obsidian planning + Kdenlive edit automation for tutorial makers",
+      "version": "0.1.0",
+      "author": "Caleb Bennett",
+      "license": "MIT",
+      "keywords": ["kdenlive", "video", "mcp", "obsidian", "tutorial", "production"],
+      "category": "media"
+    }
+  ]
+}

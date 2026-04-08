@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "workshop-video-brain": {
+      "command": "uv",
+      "args": ["run", "--directory", "${CLAUDE_PLUGIN_ROOT}/..", "workshop-video-brain-server"],
+      "env": {
+        "WVB_VAULT_PATH": "${WVB_VAULT_PATH:-}",
+        "WVB_WORKSPACE_ROOT": "${WVB_WORKSPACE_ROOT:-}"
+      }
+    }
+  }
+}
