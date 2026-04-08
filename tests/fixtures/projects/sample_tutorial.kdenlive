@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mlt title="Sample Tutorial" version="7" producer="main_bin">
+  <profile width="1920" height="1080" frame_rate_num="25" frame_rate_den="1" colorspace="709"/>
+  <producer id="producer0" in="0" out="149">
+    <property name="resource">/media/clip1.mp4</property>
+    <property name="length">150</property>
+  </producer>
+  <producer id="producer1" in="0" out="249">
+    <property name="resource">/media/clip2.mp4</property>
+    <property name="length">250</property>
+  </producer>
+  <playlist id="playlist0">
+    <entry producer="producer0" in="0" out="149"/>
+  </playlist>
+  <playlist id="playlist1">
+    <entry producer="producer1" in="0" out="249"/>
+  </playlist>
+  <tractor id="tractor0" in="0" out="249">
+    <track producer="playlist0"/>
+    <track producer="playlist1"/>
+  </tractor>
+  <kdenlive_custom_element>this should be preserved as opaque</kdenlive_custom_element>
+</mlt>

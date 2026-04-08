@@ -26,12 +26,19 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload)
 
 
-def setup_logging(workspace_path: Path | None = None) -> None:
+def setup_logging(
+    workspace_path: Path | None = None,
+    job_id: str | None = None,
+) -> None:
     """Configure root logger with console and optional file handlers.
 
     Args:
         workspace_path: If provided, a JSON log file is written under
-                        <workspace_path>/logs/wvb.log.
+                        <workspace_path>/logs/wvb.log (and per-job file when
+                        job_id is also supplied).
+        job_id: When provided together with workspace_path, an additional
+                per-job JSONL log is written to
+                <workspace_path>/logs/<job_id>.jsonl.
     """
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
@@ -48,7 +55,15 @@ def setup_logging(workspace_path: Path | None = None) -> None:
     if workspace_path is not None:
         log_dir = Path(workspace_path) / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(log_dir / "wvb.log")
-        file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(JsonFormatter())
-        root.addHandler(file_handler)
+
+        main_handler = logging.FileHandler(log_dir / "wvb.log")
+        main_handler.setLevel(logging.DEBUG)
+        main_handler.setFormatter(JsonFormatter())
+        root.addHandler(main_handler)
+
+        # Per-job JSONL log file
+        if job_id is not None:
+            job_handler = logging.FileHandler(log_dir / f"{job_id}.jsonl")
+            job_handler.setLevel(logging.DEBUG)
+            job_handler.setFormatter(JsonFormatter())
+            root.addHandler(job_handler)

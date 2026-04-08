@@ -1,0 +1,186 @@
+{
+  "id": "11111111-1111-1111-1111-111111111111",
+  "asset_id": "22222222-2222-2222-2222-222222222222",
+  "engine": "whisper",
+  "model": "medium",
+  "language": "en",
+  "raw_text": "Hey everyone, today in this video we're going to make a simple MYOG stuff sack. I'll show you everything you need. First, let's talk about materials. You'll need some ripstop nylon, a zipper, and some webbing. Grab your scissors and a rotary cutter too. Next up is cutting. We need to measure twelve inches by eight inches. Cut to size carefully, and mark your seam allowance. Make sure you don't cut into the seam allowance. Now we move to sewing the body. Go ahead and sew along the edge with a half inch seam. Step one is to fold the fabric in half. Then pin the sides together before sewing. Watch out for the zipper teeth when you press the seam. Be careful not to melt the nylon with the iron on high heat. Moving to attaching the zipper. Next, place the zipper face down on the fabric. You can see the detail here on how to align it. Oops, I sewed that wrong, let me redo that seam. There we go, that's better now. Now for the finishing touches. Here's what it looks like so far, pretty good. Let's move on to the final steps. The finished piece is looking great. Final result turned out exactly as planned.",
+  "created_at": "2026-04-08T10:00:00",
+  "segments": [
+    {
+      "start_seconds": 0.5,
+      "end_seconds": 5.2,
+      "text": "Hey everyone, today in this video we're going to make a simple MYOG stuff sack.",
+      "confidence": 0.97,
+      "words": []
+    },
+    {
+      "start_seconds": 5.5,
+      "end_seconds": 9.0,
+      "text": "I'll show you everything you need.",
+      "confidence": 0.95,
+      "words": []
+    },
+    {
+      "start_seconds": 9.5,
+      "end_seconds": 13.8,
+      "text": "First, let's talk about materials.",
+      "confidence": 0.96,
+      "words": []
+    },
+    {
+      "start_seconds": 14.0,
+      "end_seconds": 20.5,
+      "text": "You'll need some ripstop nylon, a zipper, and some webbing.",
+      "confidence": 0.98,
+      "words": []
+    },
+    {
+      "start_seconds": 21.0,
+      "end_seconds": 26.3,
+      "text": "Grab your scissors and a rotary cutter too.",
+      "confidence": 0.97,
+      "words": []
+    },
+    {
+      "start_seconds": 30.0,
+      "end_seconds": 35.5,
+      "text": "Next up is cutting.",
+      "confidence": 0.99,
+      "words": []
+    },
+    {
+      "start_seconds": 36.0,
+      "end_seconds": 43.2,
+      "text": "We need to measure twelve inches by eight inches.",
+      "confidence": 0.97,
+      "words": []
+    },
+    {
+      "start_seconds": 44.0,
+      "end_seconds": 50.8,
+      "text": "Cut to size carefully, and mark your seam allowance.",
+      "confidence": 0.96,
+      "words": []
+    },
+    {
+      "start_seconds": 51.5,
+      "end_seconds": 57.0,
+      "text": "Make sure you don't cut into the seam allowance.",
+      "confidence": 0.95,
+      "words": []
+    },
+    {
+      "start_seconds": 60.0,
+      "end_seconds": 66.5,
+      "text": "Now we move to sewing the body.",
+      "confidence": 0.97,
+      "words": []
+    },
+    {
+      "start_seconds": 67.0,
+      "end_seconds": 74.2,
+      "text": "Go ahead and sew along the edge with a half inch seam.",
+      "confidence": 0.96,
+      "words": []
+    },
+    {
+      "start_seconds": 75.0,
+      "end_seconds": 81.0,
+      "text": "Step one is to fold the fabric in half.",
+      "confidence": 0.98,
+      "words": []
+    },
+    {
+      "start_seconds": 81.5,
+      "end_seconds": 87.3,
+      "text": "Then pin the sides together before sewing.",
+      "confidence": 0.97,
+      "words": []
+    },
+    {
+      "start_seconds": 90.0,
+      "end_seconds": 96.5,
+      "text": "Watch out for the zipper teeth when you press the seam.",
+      "confidence": 0.96,
+      "words": []
+    },
+    {
+      "start_seconds": 97.0,
+      "end_seconds": 104.0,
+      "text": "Be careful not to melt the nylon with the iron on high heat.",
+      "confidence": 0.95,
+      "words": []
+    },
+    {
+      "start_seconds": 108.0,
+      "end_seconds": 113.5,
+      "text": "Moving to attaching the zipper.",
+      "confidence": 0.97,
+      "words": []
+    },
+    {
+      "start_seconds": 114.0,
+      "end_seconds": 120.2,
+      "text": "Next, place the zipper face down on the fabric.",
+      "confidence": 0.96,
+      "words": []
+    },
+    {
+      "start_seconds": 121.0,
+      "end_seconds": 128.5,
+      "text": "You can see the detail here on how to align it.",
+      "confidence": 0.95,
+      "words": []
+    },
+    {
+      "start_seconds": 132.0,
+      "end_seconds": 138.0,
+      "text": "Oops, I sewed that wrong, let me redo that seam.",
+      "confidence": 0.94,
+      "words": []
+    },
+    {
+      "start_seconds": 138.5,
+      "end_seconds": 143.2,
+      "text": "There we go, that's better now.",
+      "confidence": 0.97,
+      "words": []
+    },
+    {
+      "start_seconds": 148.0,
+      "end_seconds": 153.5,
+      "text": "Now for the finishing touches.",
+      "confidence": 0.98,
+      "words": []
+    },
+    {
+      "start_seconds": 154.0,
+      "end_seconds": 160.0,
+      "text": "Here's what it looks like so far, pretty good.",
+      "confidence": 0.97,
+      "words": []
+    },
+    {
+      "start_seconds": 161.0,
+      "end_seconds": 166.5,
+      "text": "Let's move on to the final steps.",
+      "confidence": 0.96,
+      "words": []
+    },
+    {
+      "start_seconds": 167.0,
+      "end_seconds": 173.5,
+      "text": "The finished piece is looking great.",
+      "confidence": 0.95,
+      "words": []
+    },
+    {
+      "start_seconds": 174.0,
+      "end_seconds": 180.0,
+      "text": "Final result turned out exactly as planned.",
+      "confidence": 0.97,
+      "words": []
+    }
+  ]
+}

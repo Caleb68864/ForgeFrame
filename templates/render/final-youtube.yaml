@@ -1,0 +1,24 @@
+# Render profile: final-youtube
+# High quality 1080p60 render optimized for YouTube upload.
+# Uses CBR targeting YouTube recommended bitrates.
+name: final-youtube
+width: 1920
+height: 1080
+fps: 60
+video_codec: libx264
+video_bitrate: "16M"
+audio_codec: aac
+audio_bitrate: "320k"
+extra_args:
+  - "-preset"
+  - "slow"
+  - "-crf"
+  - "17"
+  - "-pix_fmt"
+  - "yuv420p"
+  - "-profile:v"
+  - "high"
+  - "-level"
+  - "4.2"
+  - "-movflags"
+  - "+faststart"

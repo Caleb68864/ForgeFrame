@@ -1,0 +1,19 @@
+# Render profile: draft-youtube
+# 1080p draft for internal review and client approval. Not final quality.
+name: draft-youtube
+width: 1920
+height: 1080
+fps: 30
+video_codec: libx264
+video_bitrate: "8M"
+audio_codec: aac
+audio_bitrate: "192k"
+extra_args:
+  - "-preset"
+  - "fast"
+  - "-crf"
+  - "20"
+  - "-pix_fmt"
+  - "yuv420p"
+  - "-movflags"
+  - "+faststart"

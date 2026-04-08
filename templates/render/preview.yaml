@@ -1,0 +1,17 @@
+# Render profile: preview
+# Fast low-resolution render for quick review and timeline checking.
+name: preview
+width: 1280
+height: 720
+fps: 25
+video_codec: libx264
+video_bitrate: "2M"
+audio_codec: aac
+audio_bitrate: "128k"
+extra_args:
+  - "-preset"
+  - "ultrafast"
+  - "-crf"
+  - "28"
+  - "-movflags"
+  - "+faststart"

@@ -10,6 +10,12 @@ def ping() -> str:
     return "pong: workshop-video-brain is running"
 
 
+# Import tool and resource modules so their @mcp.tool() / @mcp.resource()
+# decorators execute and register with the FastMCP instance above.
+import workshop_video_brain.edit_mcp.server.tools  # noqa: E402, F401
+import workshop_video_brain.edit_mcp.server.resources  # noqa: E402, F401
+
+
 def main() -> None:
     mcp.run(transport="stdio")
 
