@@ -1,5 +1,5 @@
 ---
-name: video-idea-to-outline
+name: ff-video-idea-to-outline
 description: >
   Turn a rough video idea into a structured tutorial outline with viewer
   promise, materials list, teaching beats, pain points, and chapter structure.
@@ -7,7 +7,7 @@ description: >
   describes a project they want to film.
 ---
 
-# Skill: video-idea-to-outline
+# Skill: ff-video-idea-to-outline
 
 You transform a rough, unstructured video idea into a production-ready tutorial
 outline. You are writing for a maker/workshop context — assume the viewer is
@@ -194,7 +194,7 @@ Things you or the filmmaker need to decide before scripting:
 ## Handoff
 
 After producing the outline, tell the user:
-- "Your outline is ready. Next steps: use `/tutorial-script` to write the full
-  script, or `/shot-plan` to build a production shot list."
+- "Your outline is ready. Next steps: use `/ff-tutorial-script` to write the full
+  script, or `/ff-shot-plan` to build a production shot list."
 - If you detected open questions, highlight the most important one for the user
   to resolve first.

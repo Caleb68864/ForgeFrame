@@ -49,9 +49,9 @@ Before filming, use the planning skills to structure your content.
 
 Use the slash skills available in the Claude Code plugin:
 
-- `/video-idea-to-outline` — turn a rough idea into a structured outline
-- `/tutorial-script` — expand the outline into a full tutorial script
-- `/shot-plan` — convert the script into a production shot list
+- `/ff-video-idea-to-outline` — turn a rough idea into a structured outline
+- `/ff-tutorial-script` — expand the outline into a full tutorial script
+- `/ff-shot-plan` — convert the script into a production shot list
 
 ### Via CLI
 
@@ -167,7 +167,7 @@ Review the timeline, make cuts, add b-roll, apply effects manually.
 
 ### Create / Update an Obsidian Note
 
-Use the `/obsidian-video-note` skill in Claude, or the MCP tool:
+Use the `/ff-obsidian-video-note` skill in Claude, or the MCP tool:
 
 The `workspace_create` tool accepts a `vault_path` parameter that links the workspace to a note.
 

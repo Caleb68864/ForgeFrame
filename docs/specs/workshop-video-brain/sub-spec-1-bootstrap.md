@@ -144,20 +144,20 @@ WVB_WHISPER_MODEL=small  # Whisper model size: tiny, base, small, medium, large
   "author": "Caleb Bennett",
   "license": "MIT",
   "skills": {
-    "video-idea-to-outline": {
-      "path": "skills/video-idea-to-outline"
+    "ff-video-idea-to-outline": {
+      "path": "skills/ff-video-idea-to-outline"
     },
-    "tutorial-script": {
-      "path": "skills/tutorial-script"
+    "ff-tutorial-script": {
+      "path": "skills/ff-tutorial-script"
     },
-    "shot-plan": {
-      "path": "skills/shot-plan"
+    "ff-shot-plan": {
+      "path": "skills/ff-shot-plan"
     },
-    "obsidian-video-note": {
-      "path": "skills/obsidian-video-note"
+    "ff-obsidian-video-note": {
+      "path": "skills/ff-obsidian-video-note"
     },
-    "rough-cut-review": {
-      "path": "skills/rough-cut-review"
+    "ff-rough-cut-review": {
+      "path": "skills/ff-rough-cut-review"
     }
   }
 }
@@ -270,11 +270,11 @@ if __name__ == "__main__":
 
 **Create** each skill stub with valid frontmatter:
 
-- `workshop-video-brain/skills/video-idea-to-outline/SKILL.md`
-- `workshop-video-brain/skills/tutorial-script/SKILL.md`
-- `workshop-video-brain/skills/shot-plan/SKILL.md`
-- `workshop-video-brain/skills/obsidian-video-note/SKILL.md`
-- `workshop-video-brain/skills/rough-cut-review/SKILL.md`
+- `workshop-video-brain/skills/ff-video-idea-to-outline/SKILL.md`
+- `workshop-video-brain/skills/ff-tutorial-script/SKILL.md`
+- `workshop-video-brain/skills/ff-shot-plan/SKILL.md`
+- `workshop-video-brain/skills/ff-obsidian-video-note/SKILL.md`
+- `workshop-video-brain/skills/ff-rough-cut-review/SKILL.md`
 
 Each has `name` and `description` in frontmatter. Body says: "Full implementation pending. This skill will be completed in Sub-Spec 5."
 

@@ -1,5 +1,5 @@
 ---
-name: rough-cut-review
+name: ff-rough-cut-review
 description: >
   Review a rough cut using transcript and edit notes. Identifies pacing issues,
   repetition, missing inserts, overlay opportunities, and chapter break
@@ -7,7 +7,7 @@ description: >
   'pacing review', or 'analyze the edit'.
 ---
 
-# Skill: rough-cut-review
+# Skill: ff-rough-cut-review
 
 You analyze a workshop tutorial rough cut using the transcript and any
 available edit markers. Your job is to give the editor actionable, specific
@@ -292,7 +292,7 @@ done, let's move on to Y" or "the next step is." Look for these patterns.
 
 After producing the review:
 - Tell the user the top 2-3 things to fix.
-- Offer to update the Obsidian note: "Use `/obsidian-video-note` to save this
+- Offer to update the Obsidian note: "Use `/ff-obsidian-video-note` to save this
   review to your vault."
 - If the cut has major structural problems, suggest going back to
-  `/video-idea-to-outline` to re-examine the chapter structure.
+  `/ff-video-idea-to-outline` to re-examine the chapter structure.

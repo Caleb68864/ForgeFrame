@@ -10,11 +10,11 @@ your edit.
 ## What You Get
 
 - **5 Claude Code Skills** -- from rough idea to rough cut:
-  - `video-idea-to-outline` -- structured tutorial outline from a brain dump
-  - `tutorial-script` -- full script with hook, steps, and mistakes section
-  - `shot-plan` -- production shot list covering A-roll, B-roll, and pickups
-  - `obsidian-video-note` -- creates/updates a living Obsidian project note
-  - `rough-cut-review` -- pacing and structure feedback from transcript + edit notes
+  - `ff-video-idea-to-outline` -- structured tutorial outline from a brain dump
+  - `ff-tutorial-script` -- full script with hook, steps, and mistakes section
+  - `ff-shot-plan` -- production shot list covering A-roll, B-roll, and pickups
+  - `ff-obsidian-video-note` -- creates/updates a living Obsidian project note
+  - `ff-rough-cut-review` -- pacing and structure feedback from transcript + edit notes
 
 - **Kdenlive MCP Server** -- XML-level project automation:
   - Insert clips, set cut points, add title cards

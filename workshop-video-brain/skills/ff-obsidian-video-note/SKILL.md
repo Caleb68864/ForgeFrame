@@ -1,5 +1,5 @@
 ---
-name: obsidian-video-note
+name: ff-obsidian-video-note
 description: >
   Create or update an Obsidian video project note with frontmatter, outline,
   script, shot plan, transcript, edit notes, and publish checklist.
@@ -7,7 +7,7 @@ description: >
   'create video note', 'update the note', 'project note', or 'sync the vault'.
 ---
 
-# Skill: obsidian-video-note
+# Skill: ff-obsidian-video-note
 
 You create and maintain Obsidian project notes for workshop video productions.
 Your primary responsibilities:
@@ -57,9 +57,9 @@ is relevant):
 
 | Section name | Contents | Auto-updated? |
 |---|---|---|
-| `outline` | Output from `/video-idea-to-outline` | Yes |
-| `script` | Output from `/tutorial-script` | Yes |
-| `shot-plan` | Output from `/shot-plan` | Yes |
+| `outline` | Output from `/ff-video-idea-to-outline` | Yes |
+| `script` | Output from `/ff-tutorial-script` | Yes |
+| `shot-plan` | Output from `/ff-shot-plan` | Yes |
 | `transcript` | STT transcript output | Yes |
 | `edit-notes` | Rough cut review output | Yes |
 | `publish-checklist` | Pre-publish checklist | Yes |

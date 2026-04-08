@@ -183,11 +183,11 @@ Steps: create workspace → run ingest → generate markers → build selects �
 
 **Create** `docs/user-workflow.md`:
 - Installation: `/plugin marketplace add Caleb68864/ForgeFrame`, `/plugin install workshop-video-brain@forgeframe`
-- Planning a video: `/video-idea-to-outline "your idea"` → `/tutorial-script` → `/shot-plan`
+- Planning a video: `/ff-video-idea-to-outline "your idea"` → `/ff-tutorial-script` → `/ff-shot-plan`
 - Preparing footage: `wvb workspace create --title "My Video" --media-root /path/to/footage`
 - Processing: `wvb media ingest` → `wvb transcript generate` → `wvb markers auto`
 - Review: `wvb timeline review` → open .kdenlive in Kdenlive
-- Editing notes: `/obsidian-video-note` to sync workspace data to vault
+- Editing notes: `/ff-obsidian-video-note` to sync workspace data to vault
 - Rendering: `wvb render preview`
 - What's automated vs what's manual
 

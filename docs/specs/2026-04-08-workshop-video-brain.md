@@ -54,7 +54,7 @@ The unified design document with all resolved decisions: [Design Plan](../plans/
 
 1. The ForgeFrame repo MUST be a valid Claude Code plugin marketplace (`.claude-plugin/marketplace.json`)
 2. The `workshop-video-brain` plugin MUST install via `/plugin install workshop-video-brain@forgeframe`
-3. Installation MUST provide 5 Claude Code skills: `/video-idea-to-outline`, `/tutorial-script`, `/shot-plan`, `/obsidian-video-note`, `/rough-cut-review`
+3. Installation MUST provide 5 Claude Code skills: `/ff-video-idea-to-outline`, `/ff-tutorial-script`, `/ff-shot-plan`, `/ff-obsidian-video-note`, `/ff-rough-cut-review`
 4. Installation MUST start a Kdenlive Edit MCP server via `.mcp.json`
 5. The MCP server MUST expose workspace, media, transcript, markers, timeline, project, transitions, subtitles, and render tool namespaces
 6. The MCP server MUST expose read-only resources for workspace state, media catalog, transcripts, markers, timelines, validation, and render logs
@@ -87,7 +87,7 @@ The unified design document with all resolved decisions: [Design Plan](../plans/
 - `workshop-video-brain/src/workshop_video_brain/app/config.py`
 - `workshop-video-brain/src/workshop_video_brain/app/logging.py`
 - `workshop-video-brain/src/workshop_video_brain/app/paths.py`
-- `workshop-video-brain/skills/*/SKILL.md` (5 stub skills)
+- `workshop-video-brain/skills/ff-*/SKILL.md` (5 stub skills)
 - `pyproject.toml`
 - `.env.example`
 - `README.md`
@@ -257,11 +257,11 @@ The unified design document with all resolved decisions: [Design Plan](../plans/
 **Scope:** Complete SKILL.md files for all 5 skills, Python skill engine implementations, rough-cut review generator, transition abstraction and helpers, render profiles and job launcher.
 
 **Files:**
-- `workshop-video-brain/skills/video-idea-to-outline/SKILL.md` (complete)
-- `workshop-video-brain/skills/tutorial-script/SKILL.md` (complete)
-- `workshop-video-brain/skills/shot-plan/SKILL.md` (complete)
-- `workshop-video-brain/skills/obsidian-video-note/SKILL.md` (complete)
-- `workshop-video-brain/skills/rough-cut-review/SKILL.md` (complete)
+- `workshop-video-brain/skills/ff-video-idea-to-outline/SKILL.md` (complete)
+- `workshop-video-brain/skills/ff-tutorial-script/SKILL.md` (complete)
+- `workshop-video-brain/skills/ff-shot-plan/SKILL.md` (complete)
+- `workshop-video-brain/skills/ff-obsidian-video-note/SKILL.md` (complete)
+- `workshop-video-brain/skills/ff-rough-cut-review/SKILL.md` (complete)
 - `workshop-video-brain/src/workshop_video_brain/production_brain/skills/outline.py`
 - `workshop-video-brain/src/workshop_video_brain/production_brain/skills/script.py`
 - `workshop-video-brain/src/workshop_video_brain/production_brain/skills/shot_plan.py`
@@ -281,11 +281,11 @@ The unified design document with all resolved decisions: [Design Plan](../plans/
 **Acceptance criteria:**
 - [ ] Each SKILL.md has valid frontmatter with name (kebab-case) and description (includes trigger phrases)
 - [ ] SKILL.md descriptions under 250 chars, include WHAT and WHEN, no XML tags
-- [ ] `/video-idea-to-outline` produces: viewer promise, materials list, teaching beats, pain points, chapter structure, open questions
-- [ ] `/tutorial-script` produces: intro hook, project overview, materials section, ordered steps, common mistakes, conclusion
-- [ ] `/shot-plan` produces: A-roll, overhead bench, detail closeups, measurement shots, inserts, glamour B-roll, pickup list
-- [ ] `/obsidian-video-note` creates new note from template OR updates existing note preserving manual edits
-- [ ] `/rough-cut-review` identifies: pacing drags, repetition, missing inserts, overlay opportunities, chapter breaks
+- [ ] `/ff-video-idea-to-outline` produces: viewer promise, materials list, teaching beats, pain points, chapter structure, open questions
+- [ ] `/ff-tutorial-script` produces: intro hook, project overview, materials section, ordered steps, common mistakes, conclusion
+- [ ] `/ff-shot-plan` produces: A-roll, overhead bench, detail closeups, measurement shots, inserts, glamour B-roll, pickup list
+- [ ] `/ff-obsidian-video-note` creates new note from template OR updates existing note preserving manual edits
+- [ ] `/ff-rough-cut-review` identifies: pacing drags, repetition, missing inserts, overlay opportunities, chapter breaks
 - [ ] All skill Python implementations emit dual output: markdown string + structured dict/JSON
 - [ ] Transition model supports: crossfade, dissolve, fade_in, fade_out, audio_crossfade
 - [ ] Each transition instruction includes: type, track_ref, left_clip_ref, right_clip_ref, duration_frames, reason
@@ -359,13 +359,13 @@ End-to-end verification that the whole system works:
 1. Clone ForgeFrame repo
 2. Run `/plugin marketplace add ./` -- marketplace loads without errors
 3. Run `/plugin install workshop-video-brain@forgeframe` -- skills appear in `/` menu, MCP server starts
-4. Run `/video-idea-to-outline "I want to make a tutorial about sewing a zippered pouch for bikepacking"` -- produces structured outline
+4. Run `/ff-video-idea-to-outline "I want to make a tutorial about sewing a zippered pouch for bikepacking"` -- produces structured outline
 5. Run `wvb workspace create --title "Zippered Pouch" --media-root ./sample-footage/` -- workspace created with all folders
 6. Run `wvb media ingest` -- media scanned, proxies generated for large files
 7. Run `wvb transcript generate` -- transcripts produced with timestamps
 8. Run `wvb markers auto` -- markers generated with confidence scores and rationale
 9. Run `wvb timeline review` -- Kdenlive project created in working_copies/
 10. Open the generated .kdenlive in Kdenlive -- project loads, guide markers visible, media plays
-11. Run `/obsidian-video-note` -- note created/updated in vault with outline, shot plan, transcript summary
+11. Run `/ff-obsidian-video-note` -- note created/updated in vault with outline, shot plan, transcript summary
 12. Run `wvb project validate` -- validation report shows no blocking errors
 13. Run `wvb render preview` -- preview video rendered to renders/preview/

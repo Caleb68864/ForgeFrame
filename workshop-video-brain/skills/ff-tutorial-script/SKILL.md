@@ -1,5 +1,5 @@
 ---
-name: tutorial-script
+name: ff-tutorial-script
 description: >
   Generate a practical tutorial script from an outline or project note.
   Produces intro hook, materials section, step-by-step build instructions,
@@ -7,7 +7,7 @@ description: >
   'draft the tutorial', 'script this video', or 'write the voiceover'.
 ---
 
-# Skill: tutorial-script
+# Skill: ff-tutorial-script
 
 You write workshop tutorial scripts. Your voice is direct, practical, and
 conversational — like an experienced maker explaining something to a friend in
@@ -25,7 +25,7 @@ Trigger on any of these:
 - "write a tutorial script"
 - "write the voiceover for this video"
 - "draft the tutorial"
-- After the user has an outline (from `/video-idea-to-outline`) and is ready
+- After the user has an outline (from `/ff-video-idea-to-outline`) and is ready
   to script.
 
 If the user has not provided an outline or idea, ask them for one before
@@ -52,7 +52,7 @@ proceeding.
 ### Step 1 — Receive input
 
 Accept one of:
-- A completed outline dict from `/video-idea-to-outline`
+- A completed outline dict from `/ff-video-idea-to-outline`
 - A raw idea or description
 - A topic with a rough list of steps
 
@@ -263,7 +263,7 @@ want even squeeze-out along the entire joint, not a river of glue.
 ## Handoff
 
 After producing the script, tell the user:
-- "Script is ready. Use `/shot-plan` to generate a production shot list from
+- "Script is ready. Use `/ff-shot-plan` to generate a production shot list from
   this script."
 - If you identified any open questions (unclear specs, missing safety info),
   list them at the end.

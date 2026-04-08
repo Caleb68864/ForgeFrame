@@ -6,24 +6,24 @@
   "license": "MIT",
   "skills": [
     {
-      "name": "video-idea-to-outline",
-      "path": "skills/video-idea-to-outline"
+      "name": "ff-video-idea-to-outline",
+      "path": "skills/ff-video-idea-to-outline"
     },
     {
-      "name": "tutorial-script",
-      "path": "skills/tutorial-script"
+      "name": "ff-tutorial-script",
+      "path": "skills/ff-tutorial-script"
     },
     {
-      "name": "shot-plan",
-      "path": "skills/shot-plan"
+      "name": "ff-shot-plan",
+      "path": "skills/ff-shot-plan"
     },
     {
-      "name": "obsidian-video-note",
-      "path": "skills/obsidian-video-note"
+      "name": "ff-obsidian-video-note",
+      "path": "skills/ff-obsidian-video-note"
     },
     {
-      "name": "rough-cut-review",
-      "path": "skills/rough-cut-review"
+      "name": "ff-rough-cut-review",
+      "path": "skills/ff-rough-cut-review"
     }
   ]
 }

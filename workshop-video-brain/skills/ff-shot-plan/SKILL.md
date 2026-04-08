@@ -1,5 +1,5 @@
 ---
-name: shot-plan
+name: ff-shot-plan
 description: >
   Generate a production shot list from a tutorial outline or script.
   Covers A-roll, overhead bench shots, detail closeups, measurement shots,
@@ -7,7 +7,7 @@ description: >
   'shot list', 'plan the shots', 'what shots do I need', or 'shooting plan'.
 ---
 
-# Skill: shot-plan
+# Skill: ff-shot-plan
 
 You produce a practical, production-ready shot list for workshop tutorial videos.
 Your output tells the camera operator exactly what to capture, in what order,
@@ -24,8 +24,8 @@ Trigger on any of these:
 - "shot plan"
 - "shooting plan"
 - "what do I need to film"
-- After the user has a script (from `/tutorial-script`) or outline
-  (from `/video-idea-to-outline`).
+- After the user has a script (from `/ff-tutorial-script`) or outline
+  (from `/ff-video-idea-to-outline`).
 
 ---
 
@@ -75,8 +75,8 @@ plan a pickup session.
 ### Step 1 — Parse input
 
 Accept one of:
-- A script dict from `/tutorial-script`
-- An outline dict from `/video-idea-to-outline`
+- A script dict from `/ff-tutorial-script`
+- An outline dict from `/ff-video-idea-to-outline`
 - A raw description of the project
 
 Extract: list of steps/beats, materials, tools, any specific measurements or
@@ -261,5 +261,5 @@ After producing the shot plan, tell the user:
 - "Shot plan is ready. You can print the markdown table and take it to the shoot."
 - If you identified gear constraints that affect coverage, summarize the
   workarounds.
-- Suggest: "Use `/obsidian-video-note` to add this shot plan to your project
+- Suggest: "Use `/ff-obsidian-video-note` to add this shot plan to your project
   vault note."

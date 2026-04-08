@@ -68,15 +68,15 @@ ForgeFrame/  (GitHub: Caleb68864/ForgeFrame)
 ├── workshop-video-brain/             ← The plugin directory
 │   ├── plugin.json                   ← Plugin manifest (skills + MCP)
 │   ├── skills/
-│   │   ├── video-idea-to-outline/
+│   │   ├── ff-video-idea-to-outline/
 │   │   │   └── SKILL.md
-│   │   ├── tutorial-script/
+│   │   ├── ff-tutorial-script/
 │   │   │   └── SKILL.md
-│   │   ├── shot-plan/
+│   │   ├── ff-shot-plan/
 │   │   │   └── SKILL.md
-│   │   ├── obsidian-video-note/
+│   │   ├── ff-obsidian-video-note/
 │   │   │   └── SKILL.md
-│   │   └── rough-cut-review/
+│   │   └── ff-rough-cut-review/
 │   │       └── SKILL.md
 │   ├── .mcp.json                     ← MCP server definition
 │   └── src/
@@ -172,7 +172,7 @@ ForgeFrame/  (GitHub: Caleb68864/ForgeFrame)
 /plugin install workshop-video-brain@forgeframe
 
 # This gives them:
-#   5 Production Brain skills (/video-idea-to-outline, etc.)
+#   5 Production Brain skills (/ff-video-idea-to-outline, etc.)
 #   Kdenlive Edit MCP server (auto-starts via .mcp.json)
 #   Obsidian note templates
 #   Render profile presets
@@ -201,10 +201,10 @@ ForgeFrame/  (GitHub: Caleb68864/ForgeFrame)
 
 **Flow A: Idea → Obsidian Note (Production Brain)**
 ```
-User idea → skill: /video-idea-to-outline → structured outline (JSON + markdown)
+User idea → skill: /ff-video-idea-to-outline → structured outline (JSON + markdown)
   → production_brain/notes/writer → Obsidian vault note (frontmatter + sections)
-  → /tutorial-script → appended
-  → /shot-plan → appended
+  → /ff-tutorial-script → appended
+  → /ff-shot-plan → appended
 ```
 
 **Flow B: Footage → Marked Review Timeline (Edit MCP)**
@@ -338,11 +338,11 @@ Edit MCP artifacts (transcript, markers, chapter candidates)
 **Tasks:** 4.5, 5.1, 5.2, 5.3, 5.4, 5.5, 8.1, 8.2, 8.3, 9.1, 9.2, 9.3
 
 **Deliverables:**
-- `/video-idea-to-outline` skill: viewer promise, materials, teaching beats, pain points, chapters
-- `/tutorial-script` skill: hook, overview, materials, steps, mistakes, final thoughts
-- `/shot-plan` skill: A-roll, overhead, closeups, inserts, glamour, pickups
-- `/obsidian-video-note` skill: create/update with frontmatter sync and section merge
-- `/rough-cut-review` skill: pacing, repetition, insert suggestions, chapter breaks
+- `/ff-video-idea-to-outline` skill: viewer promise, materials, teaching beats, pain points, chapters
+- `/ff-tutorial-script` skill: hook, overview, materials, steps, mistakes, final thoughts
+- `/ff-shot-plan` skill: A-roll, overhead, closeups, inserts, glamour, pickups
+- `/ff-obsidian-video-note` skill: create/update with frontmatter sync and section merge
+- `/ff-rough-cut-review` skill: pacing, repetition, insert suggestions, chapter breaks
 - Rough-cut review generator (markdown output, appendable to Obsidian note)
 - Transition abstraction (crossfade, dissolve, fade in/out, audio crossfade)
 - Crossfade helper with overlap calculation and duration presets
@@ -354,7 +354,7 @@ Edit MCP artifacts (transcript, markers, chapter candidates)
 **Acceptance criteria:**
 - Each skill produces dual output: human-readable markdown + machine-readable JSON
 - Skills insert correctly into Obsidian notes
-- Re-running /obsidian-video-note doesn't duplicate content
+- Re-running /ff-obsidian-video-note doesn't duplicate content
 - Basic transitions appear and behave correctly in Kdenlive
 - Preview render works end-to-end from working copy
 - Render metadata stored with source project version
@@ -426,20 +426,20 @@ Edit MCP artifacts (transcript, markers, chapter candidates)
   "author": "Caleb Bennett",
   "license": "MIT",
   "skills": {
-    "video-idea-to-outline": {
-      "path": "skills/video-idea-to-outline"
+    "ff-video-idea-to-outline": {
+      "path": "skills/ff-video-idea-to-outline"
     },
-    "tutorial-script": {
-      "path": "skills/tutorial-script"
+    "ff-tutorial-script": {
+      "path": "skills/ff-tutorial-script"
     },
-    "shot-plan": {
-      "path": "skills/shot-plan"
+    "ff-shot-plan": {
+      "path": "skills/ff-shot-plan"
     },
-    "obsidian-video-note": {
-      "path": "skills/obsidian-video-note"
+    "ff-obsidian-video-note": {
+      "path": "skills/ff-obsidian-video-note"
     },
-    "rough-cut-review": {
-      "path": "skills/rough-cut-review"
+    "ff-rough-cut-review": {
+      "path": "skills/ff-rough-cut-review"
     }
   }
 }
@@ -466,47 +466,47 @@ Edit MCP artifacts (transcript, markers, chapter candidates)
 
 ## Skill Specifications
 
-### `/video-idea-to-outline`
+### `/ff-video-idea-to-outline`
 
 ```yaml
 ---
-name: video-idea-to-outline
+name: ff-video-idea-to-outline
 description: Turn a rough video idea into a structured tutorial outline with viewer promise, materials list, teaching beats, pain points, and chapter structure. Use when user says "plan a video", "outline a tutorial", "video idea", or describes a project they want to film.
 ---
 ```
 
-### `/tutorial-script`
+### `/ff-tutorial-script`
 
 ```yaml
 ---
-name: tutorial-script
+name: ff-tutorial-script
 description: Generate a practical tutorial script from an outline or project note. Produces intro hook, materials section, step-by-step build instructions, common mistakes, and conclusion. Use when user says "write a script", "draft the tutorial", or "script this video".
 ---
 ```
 
-### `/shot-plan`
+### `/ff-shot-plan`
 
 ```yaml
 ---
-name: shot-plan
+name: ff-shot-plan
 description: Generate a production shot list from a tutorial outline or script. Covers A-roll, overhead bench shots, detail closeups, measurement shots, inserts, glamour B-roll, and likely pickup shots. Use when user says "shot list", "plan the shots", "what do I need to film", or "shooting plan".
 ---
 ```
 
-### `/obsidian-video-note`
+### `/ff-obsidian-video-note`
 
 ```yaml
 ---
-name: obsidian-video-note
+name: ff-obsidian-video-note
 description: Create or update an Obsidian video project note with frontmatter, outline, script, shot plan, transcript, edit notes, and publish checklist. Preserves manual edits. Use when user says "create video note", "update the note", "obsidian note", or "project note".
 ---
 ```
 
-### `/rough-cut-review`
+### `/ff-rough-cut-review`
 
 ```yaml
 ---
-name: rough-cut-review
+name: ff-rough-cut-review
 description: Review a rough cut using transcript and edit notes. Identifies pacing issues, repetition, missing inserts, overlay opportunities, and chapter break candidates. Use when user says "review the cut", "rough cut feedback", "pacing review", or "what should I fix".
 ---
 ```

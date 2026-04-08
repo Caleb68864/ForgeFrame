@@ -164,7 +164,7 @@ uv run pytest tests/unit/test_skills.py tests/unit/test_transitions.py tests/uni
 # Verify skill files have valid frontmatter
 python -c "
 import yaml
-for skill in ['video-idea-to-outline', 'tutorial-script', 'shot-plan', 'obsidian-video-note', 'rough-cut-review']:
+for skill in ['ff-video-idea-to-outline', 'ff-tutorial-script', 'ff-shot-plan', 'ff-obsidian-video-note', 'ff-rough-cut-review']:
     with open(f'workshop-video-brain/skills/{skill}/SKILL.md') as f:
         content = f.read()
         assert content.startswith('---')
@@ -182,7 +182,7 @@ for skill in ['video-idea-to-outline', 'tutorial-script', 'shot-plan', 'obsidian
 - [ ] Each SKILL.md has valid frontmatter with name (kebab-case) and description (includes trigger phrases, under 250 chars)
 - [ ] All 5 skills produce expected output sections
 - [ ] All skill engines emit dual output: markdown string + structured dict/JSON
-- [ ] `/obsidian-video-note` creates new or updates existing, preserving manual edits
+- [ ] `/ff-obsidian-video-note` creates new or updates existing, preserving manual edits
 - [ ] Transition model supports: crossfade, dissolve, fade_in, fade_out, audio_crossfade
 - [ ] Crossfade helper calculates overlap and falls back safely
 - [ ] Duration presets: short (12), medium (24), long (48 frames)
