@@ -57,10 +57,24 @@ def _project_uuid(title: str) -> str:
 
 
 def _clip_type(properties: dict[str, str]) -> str:
-    """Return Kdenlive clip_type: 2 for kdenlivetitle, 0 for everything else."""
-    if properties.get("mlt_service") == "kdenlivetitle":
-        return "2"
-    return "0"
+    """Return Kdenlive clip_type from ClipType::ProducerType enum.
+
+    Values from kdenlive/src/definitions.h:
+      0=Unknown, 1=Audio, 2=Video, 3=AV, 4=Color, 5=Image,
+      6=Text, 7=SlideShow, 9=Playlist, 15=QML, 17=Timeline
+    """
+    service = properties.get("mlt_service", "")
+    if service == "kdenlivetitle":
+        return "6"  # Text
+    if service == "color":
+        return "4"  # Color
+    if service in ("qimage", "pixbuf"):
+        return "5"  # Image
+    if service.startswith("avformat"):
+        return "3"  # AV (audio+video)
+    if service in ("xml", "consumer"):
+        return "9"  # Playlist
+    return "0"  # Unknown
 
 
 def _fps_to_rational(fps: float) -> tuple[int, int]:
@@ -296,7 +310,7 @@ def serialize_project(
             if track.track_type == "audio":
                 t_pair.set("hide", "video")
 
-            # Internal transition for this track pair
+            # Internal transition for this track pair (Kdenlive-managed)
             trans_elem = ET.SubElement(tractor_elem, "transition")
             if track.track_type == "audio":
                 _set_prop(trans_elem, "mlt_service", "mix")
@@ -304,11 +318,13 @@ def serialize_project(
                 _set_prop(trans_elem, "b_track", str(track_index))
                 _set_prop(trans_elem, "always_active", "1")
                 _set_prop(trans_elem, "sum", "1")
+                _set_prop(trans_elem, "internal_added", "237")
             else:
                 _set_prop(trans_elem, "mlt_service", "frei0r.cairoblend")
                 _set_prop(trans_elem, "a_track", "0")
                 _set_prop(trans_elem, "b_track", str(track_index))
                 _set_prop(trans_elem, "always_active", "1")
+                _set_prop(trans_elem, "internal_added", "237")
 
             track_index += 2  # content + pair occupy two slots each
 

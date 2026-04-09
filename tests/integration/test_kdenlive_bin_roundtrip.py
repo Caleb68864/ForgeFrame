@@ -185,16 +185,16 @@ class TestProducerKdenliveMetadata:
         root = ET.parse(out).getroot()
         for pid in ("vid0", "vid1", "vid2"):
             prod = root.find(f"./producer[@id='{pid}']")
-            assert _props(prod).get("kdenlive:clip_type") == "0", f"Expected 0 for {pid}"
+            assert _props(prod).get("kdenlive:clip_type") == "3", f"Expected 3 (AV) for {pid}"
 
-    def test_title_producers_clip_type_2(self, tmp_path):
+    def test_title_producers_clip_type_6(self, tmp_path):
         project = _make_mixed_project()
         out = tmp_path / "mixed.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
         for pid in ("title0", "title1"):
             prod = root.find(f"./producer[@id='{pid}']")
-            assert _props(prod).get("kdenlive:clip_type") == "2", f"Expected 2 for {pid}"
+            assert _props(prod).get("kdenlive:clip_type") == "6", f"Expected 6 (Text) for {pid}"
 
 
 class TestInfrastructureElements:

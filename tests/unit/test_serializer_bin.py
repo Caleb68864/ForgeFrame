@@ -167,7 +167,7 @@ class TestProducerMetadata:
         serialize_project(project, out)
         root = ET.parse(out).getroot()
         prod = next(p for p in root.findall("producer") if p.get("id") == "vid0")
-        assert _get_props(prod)["kdenlive:clip_type"] == "0"
+        assert _get_props(prod)["kdenlive:clip_type"] == "3"  # AV (avformat)
 
     def test_clip_type_kdenlivetitle(self, tmp_path):
         project = _make_project(
@@ -183,7 +183,7 @@ class TestProducerMetadata:
         serialize_project(project, out)
         root = ET.parse(out).getroot()
         prod = next(p for p in root.findall("producer") if p.get("id") == "title0")
-        assert _get_props(prod)["kdenlive:clip_type"] == "2"
+        assert _get_props(prod)["kdenlive:clip_type"] == "6"  # Text
 
     def test_clip_type_generic_defaults_to_0(self, tmp_path):
         project = _make_project(
