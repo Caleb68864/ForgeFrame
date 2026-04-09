@@ -1311,5 +1311,87 @@ def track_visibility_cmd(workspace_path: str, track_index: int, hide: bool) -> N
     click.echo(f"  Output: {d['kdenlive_path']}")
 
 
+# ---------------------------------------------------------------------------
+# assembly group
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def assembly() -> None:
+    """Auto-assemble timeline from script and clips."""
+
+
+@assembly.command("plan")
+@click.argument("workspace_path")
+def assembly_plan_cmd(workspace_path: str) -> None:
+    """Generate assembly plan (clip-to-step matching) for WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import assembly_plan
+
+    result = assembly_plan(workspace_path)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Assembly Plan: {d.get('project_title') or '(untitled)'}")
+    click.echo(f"  Steps: {len(d['steps'])}")
+    click.echo(f"  Unmatched clips: {len(d['unmatched_clips'])}")
+    click.echo(f"  Estimated duration: {d['total_estimated_duration']:.1f}s")
+    click.echo("")
+    for step in d["steps"]:
+        primaries = [c for c in step["clips"] if c["role"] == "primary"]
+        inserts = [c for c in step["clips"] if c["role"] == "insert"]
+        primary_str = (
+            f"{primaries[0]['clip_ref']} (score: {primaries[0]['score']:.2f})"
+            if primaries
+            else "(no primary)"
+        )
+        insert_str = ""
+        if inserts:
+            insert_str = " + " + ", ".join(
+                f"{c['clip_ref']} (insert)" for c in inserts
+            )
+        click.echo(
+            f"  Step {step['step_number']}: '{step['step_description']}'"
+            f" → {primary_str}{insert_str}"
+        )
+    if d["unmatched_clips"]:
+        click.echo("")
+        click.echo("  Unmatched clips:")
+        for clip in d["unmatched_clips"]:
+            click.echo(f"    - {clip}")
+
+
+@assembly.command("build")
+@click.argument("workspace_path")
+@click.option("--no-transitions", is_flag=True, default=False,
+              help="Disable transitions between steps.")
+@click.option("--no-chapters", is_flag=True, default=False,
+              help="Disable chapter markers.")
+def assembly_build_cmd(
+    workspace_path: str,
+    no_transitions: bool,
+    no_chapters: bool,
+) -> None:
+    """Build first-cut Kdenlive project from assembly plan for WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import assembly_build
+
+    result = assembly_build(
+        workspace_path,
+        add_transitions=not no_transitions,
+        add_chapters=not no_chapters,
+    )
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Assembly complete.")
+    click.echo(f"  Project: {d['kdenlive_path']}")
+    click.echo(f"  Steps:   {d['steps_count']}")
+    click.echo(f"  Duration: {d['total_estimated_duration']:.1f}s estimated")
+    if d["unmatched_clips"]:
+        click.echo(f"  Unmatched clips ({len(d['unmatched_clips'])}): {', '.join(d['unmatched_clips'])}")
+    click.echo(f"  Report:  {d['assembly_report_path']}")
+
+
 if __name__ == "__main__":
     main()

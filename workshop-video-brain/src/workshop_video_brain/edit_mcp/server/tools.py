@@ -2367,3 +2367,113 @@ def gap_insert(
         return _err(str(exc))
     except Exception as exc:
         return _err(str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Assembly tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def assembly_plan(workspace_path: str) -> dict:
+    """Generate an assembly plan matching clips to script steps.
+
+    Reads script data, clip labels, and transcripts from the workspace.
+    Returns a plan showing which clips match which script steps.
+
+    Args:
+        workspace_path: Path to the workspace root directory.
+
+    Returns:
+        Assembly plan with step-to-clip assignments and unmatched clips.
+    """
+    try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
+
+        from workshop_video_brain.edit_mcp.pipelines.assembly import build_assembly_plan
+
+        plan = build_assembly_plan(ws_path)
+        steps_data = []
+        for step in plan.steps:
+            steps_data.append({
+                "step_number": step.step_number,
+                "step_description": step.step_description,
+                "chapter_title": step.chapter_title,
+                "clips": [
+                    {
+                        "clip_ref": c.clip_ref,
+                        "role": c.role,
+                        "score": c.score,
+                        "reason": c.reason,
+                    }
+                    for c in step.clips
+                ],
+            })
+        return _ok({
+            "project_title": plan.project_title,
+            "steps": steps_data,
+            "unmatched_clips": plan.unmatched_clips,
+            "total_estimated_duration": plan.total_estimated_duration,
+            "assembly_report": plan.assembly_report,
+        })
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def assembly_build(
+    workspace_path: str,
+    add_transitions: bool = True,
+    add_chapters: bool = True,
+) -> dict:
+    """Build a first-cut Kdenlive project from the assembly plan.
+
+    Generates a timeline with clips ordered to match script structure.
+    Primary clips on V2, inserts on V1, chapter markers at step boundaries.
+
+    Args:
+        workspace_path: Path to the workspace root directory.
+        add_transitions: Whether to add crossfade transitions between steps.
+        add_chapters: Whether to add chapter marker guides at step starts.
+
+    Returns:
+        Path to the generated .kdenlive file and assembly summary.
+    """
+    try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
+
+        from workshop_video_brain.edit_mcp.pipelines.assembly import (
+            assemble_timeline,
+            build_assembly_plan,
+        )
+
+        plan = build_assembly_plan(ws_path)
+        kdenlive_path = assemble_timeline(
+            workspace_root=ws_path,
+            plan=plan,
+            add_transitions=add_transitions,
+            add_chapter_markers=add_chapters,
+        )
+        return _ok({
+            "kdenlive_path": str(kdenlive_path),
+            "project_title": plan.project_title,
+            "steps_count": len(plan.steps),
+            "unmatched_clips": plan.unmatched_clips,
+            "total_estimated_duration": plan.total_estimated_duration,
+            "assembly_report_path": str(ws_path / "reports" / "assembly_report.md"),
+            "assembly_plan_path": str(ws_path / "reports" / "assembly_plan.json"),
+        })
+    except Exception as exc:
+        return _err(str(exc))

@@ -57,6 +57,7 @@ from .patterns import (
     MaterialItem,
     Measurement,
 )
+from .assembly import AssemblyPlan, ClipAssignment, StepAssembly
 
 __all__ = [
     # enums
@@ -137,4 +138,8 @@ __all__ = [
     "BuildStep",
     "BuildTip",
     "BuildData",
+    # assembly
+    "ClipAssignment",
+    "StepAssembly",
+    "AssemblyPlan",
 ]
