@@ -1,0 +1,18 @@
+{
+  "name": "workshop-video-brain",
+  "version": "0.1.0",
+  "description": "Local-first video production assistant: Obsidian planning + Kdenlive edit automation for tutorial makers",
+  "author": {
+    "name": "Caleb Bennett"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/Caleb68864/ForgeFrame",
+  "skills": "../skills/",
+  "mcpServers": {
+    "workshop-video-brain": {
+      "command": "uv",
+      "args": ["run", "--directory", "../..", "workshop-video-brain-server"],
+      "env": {}
+    }
+  }
+}
