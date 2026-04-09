@@ -1073,5 +1073,243 @@ def wvb_pattern_extract(workspace_path: str) -> None:
         sys.exit(1)
 
 
+# ---------------------------------------------------------------------------
+# NLE clip operations (extend existing `clip` group)
+# ---------------------------------------------------------------------------
+
+
+@clip.command("remove")
+@click.argument("workspace_path")
+@click.argument("clip_index", type=int)
+@click.option("--track", default=0, type=int, help="Video track index (default: 0).")
+def clip_remove_cmd(workspace_path: str, clip_index: int, track: int) -> None:
+    """Remove clip at CLIP_INDEX from WORKSPACE_PATH timeline."""
+    from workshop_video_brain.edit_mcp.server.tools import clip_remove
+
+    result = clip_remove(workspace_path, clip_index, track)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Removed clip {d['removed_clip_index']} from {d['playlist_id']}")
+    click.echo(f"  Output: {d['kdenlive_path']}")
+
+
+@clip.command("move")
+@click.argument("workspace_path")
+@click.argument("from_index", type=int)
+@click.argument("to_index", type=int)
+@click.option("--track", default=0, type=int, help="Video track index (default: 0).")
+def clip_move_cmd(workspace_path: str, from_index: int, to_index: int, track: int) -> None:
+    """Move clip FROM_INDEX to TO_INDEX in WORKSPACE_PATH timeline."""
+    from workshop_video_brain.edit_mcp.server.tools import clip_move
+
+    result = clip_move(workspace_path, from_index, to_index, track)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Moved clip {d['from_index']} -> {d['to_index']} in {d['playlist_id']}")
+    click.echo(f"  Output: {d['kdenlive_path']}")
+
+
+@clip.command("split")
+@click.argument("workspace_path")
+@click.argument("clip_index", type=int)
+@click.argument("timestamp", type=float)
+@click.option("--track", default=0, type=int, help="Video track index (default: 0).")
+def clip_split_cmd(workspace_path: str, clip_index: int, timestamp: float, track: int) -> None:
+    """Split clip CLIP_INDEX at TIMESTAMP (seconds) in WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import clip_split
+
+    result = clip_split(workspace_path, clip_index, timestamp)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Split clip {d['clip_index']} at {d['split_at_seconds']}s ({d['split_at_frame']}f)")
+    click.echo(f"  Output: {d['kdenlive_path']}")
+
+
+@clip.command("trim")
+@click.argument("workspace_path")
+@click.argument("clip_index", type=int)
+@click.option("--in", "in_seconds", default=-1.0, type=float,
+              help="New in-point in seconds (-1 = unchanged).")
+@click.option("--out", "out_seconds", default=-1.0, type=float,
+              help="New out-point in seconds (-1 = unchanged).")
+def clip_trim_cmd(
+    workspace_path: str,
+    clip_index: int,
+    in_seconds: float,
+    out_seconds: float,
+) -> None:
+    """Trim clip CLIP_INDEX in/out points in WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import clip_trim
+
+    result = clip_trim(workspace_path, clip_index, in_seconds, out_seconds)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Trimmed clip {d['clip_index']}: in={d['new_in_frame']} out={d['new_out_frame']}")
+    click.echo(f"  Output: {d['kdenlive_path']}")
+
+
+@clip.command("ripple-delete")
+@click.argument("workspace_path")
+@click.argument("clip_index", type=int)
+@click.option("--track", default=0, type=int, help="Video track index (default: 0).")
+def clip_ripple_delete_cmd(workspace_path: str, clip_index: int, track: int) -> None:
+    """Ripple-delete clip CLIP_INDEX in WORKSPACE_PATH (close gap)."""
+    from workshop_video_brain.edit_mcp.server.tools import clip_ripple_delete
+
+    result = clip_ripple_delete(workspace_path, clip_index, track)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Ripple-deleted clip {d['deleted_clip_index']} from {d['playlist_id']}")
+    click.echo(f"  Output: {d['kdenlive_path']}")
+
+
+@clip.command("speed")
+@click.argument("workspace_path")
+@click.argument("clip_index", type=int)
+@click.argument("speed_value", type=float)
+@click.option("--track", default=0, type=int, help="Video track index (default: 0).")
+def clip_speed_cmd(workspace_path: str, clip_index: int, speed_value: float, track: int) -> None:
+    """Set playback speed for clip CLIP_INDEX in WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import clip_speed
+
+    result = clip_speed(workspace_path, clip_index, speed_value, track)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Set speed={d['speed']}x for clip {d['clip_index']} in {d['playlist_id']}")
+    click.echo(f"  Output: {d['kdenlive_path']}")
+
+
+@clip.command("gap")
+@click.argument("workspace_path")
+@click.argument("position", type=int)
+@click.argument("duration", type=float)
+@click.option("--track", default=0, type=int, help="Video track index (default: 0).")
+def clip_gap_cmd(workspace_path: str, position: int, duration: float, track: int) -> None:
+    """Insert a gap of DURATION seconds at POSITION in WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import gap_insert
+
+    result = gap_insert(workspace_path, position, duration, track)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Inserted {d['duration_seconds']}s gap at position {d['position']} in {d['playlist_id']}")
+    click.echo(f"  Output: {d['kdenlive_path']}")
+
+
+# ---------------------------------------------------------------------------
+# audio group
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def audio() -> None:
+    """Audio editing commands."""
+
+
+@audio.command("fade")
+@click.argument("workspace_path")
+@click.argument("clip_index", type=int)
+@click.option("--type", "fade_type", default="in",
+              type=click.Choice(["in", "out"]), help="Fade direction (default: in).")
+@click.option("--duration", default=1.0, type=float, help="Fade duration in seconds (default: 1.0).")
+@click.option("--track", default=0, type=int, help="Video track index (default: 0).")
+def audio_fade_cmd(
+    workspace_path: str,
+    clip_index: int,
+    fade_type: str,
+    duration: float,
+    track: int,
+) -> None:
+    """Apply an audio fade to clip CLIP_INDEX in WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import audio_fade
+
+    result = audio_fade(workspace_path, clip_index, fade_type, duration, track)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Applied audio fade-{d['fade_type']} ({d['duration_seconds']}s) to clip {d['clip_index']}")
+    click.echo(f"  Output: {d['kdenlive_path']}")
+
+
+# ---------------------------------------------------------------------------
+# track group
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def track() -> None:
+    """Track management commands."""
+
+
+@track.command("add")
+@click.argument("workspace_path")
+@click.option("--type", "track_type", default="video",
+              type=click.Choice(["video", "audio"]), help="Track type (default: video).")
+@click.option("--name", default="", help="Track name.")
+def track_add_cmd(workspace_path: str, track_type: str, name: str) -> None:
+    """Add a new track to the project in WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import track_add
+
+    result = track_add(workspace_path, track_type, name)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Added {d['track_type']} track: {d['new_playlist_id']}")
+    click.echo(f"  Output: {d['kdenlive_path']}")
+
+
+@track.command("mute")
+@click.argument("workspace_path")
+@click.argument("track_index", type=int)
+@click.option("--unmute", is_flag=True, default=False, help="Unmute instead of muting.")
+def track_mute_cmd(workspace_path: str, track_index: int, unmute: bool) -> None:
+    """Mute (or unmute) track TRACK_INDEX in WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import track_mute
+
+    muted = not unmute
+    result = track_mute(workspace_path, track_index, muted)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    action = "Muted" if d["muted"] else "Unmuted"
+    click.echo(f"{action} track {d['track_index']} ({d['track_id']})")
+    click.echo(f"  Output: {d['kdenlive_path']}")
+
+
+@track.command("visibility")
+@click.argument("workspace_path")
+@click.argument("track_index", type=int)
+@click.option("--hide", is_flag=True, default=False, help="Hide instead of showing.")
+def track_visibility_cmd(workspace_path: str, track_index: int, hide: bool) -> None:
+    """Show (or hide) track TRACK_INDEX in WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import track_visibility
+
+    visible = not hide
+    result = track_visibility(workspace_path, track_index, visible)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    action = "Shown" if d["visible"] else "Hidden"
+    click.echo(f"{action} track {d['track_index']} ({d['track_id']})")
+    click.echo(f"  Output: {d['kdenlive_path']}")
+
+
 if __name__ == "__main__":
     main()

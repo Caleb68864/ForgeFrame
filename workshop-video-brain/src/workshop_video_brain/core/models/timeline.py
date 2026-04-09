@@ -76,3 +76,56 @@ class AddTransition(TimelineIntent):
 class CreateTrack(TimelineIntent):
     track_type: str = "video"  # "video" | "audio"
     name: str = ""
+
+
+class RemoveClip(TimelineIntent):
+    """Remove a clip from a playlist by index."""
+    track_ref: str = ""
+    clip_index: int = 0
+
+
+class MoveClip(TimelineIntent):
+    """Move a clip from one position to another within the same track."""
+    track_ref: str = ""
+    from_index: int = 0
+    to_index: int = 0
+
+
+class SplitClip(TimelineIntent):
+    """Split a clip at a timestamp, creating two entries."""
+    track_ref: str = ""
+    clip_index: int = 0
+    split_at_frame: int = 0  # frame within the clip to split at
+
+
+class RippleDelete(TimelineIntent):
+    """Remove a clip and close the gap (shift subsequent clips left)."""
+    track_ref: str = ""
+    clip_index: int = 0
+
+
+class SetClipSpeed(TimelineIntent):
+    """Change playback speed of a clip."""
+    track_ref: str = ""
+    clip_index: int = 0
+    speed: float = 1.0  # 0.5 = half speed, 2.0 = double speed
+
+
+class AudioFade(TimelineIntent):
+    """Apply audio fade in or fade out to a clip."""
+    track_ref: str = ""
+    clip_index: int = 0
+    fade_type: str = "in"  # "in" or "out"
+    duration_frames: int = 24
+
+
+class SetTrackMute(TimelineIntent):
+    """Mute or unmute a track."""
+    track_ref: str = ""
+    muted: bool = True
+
+
+class SetTrackVisibility(TimelineIntent):
+    """Show or hide a video track."""
+    track_ref: str = ""
+    visible: bool = True

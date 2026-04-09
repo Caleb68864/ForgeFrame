@@ -1850,3 +1850,520 @@ def pattern_extract(workspace_path: str) -> dict:
         return _err(str(exc))
     except Exception as exc:
         return _err(str(exc))
+
+
+# ---------------------------------------------------------------------------
+# NLE operation helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_video_playlists(project):
+    """Return list of video playlist objects (non-audio tracks)."""
+    audio_ids = {t.id for t in project.tracks if t.track_type == "audio"}
+    return [p for p in project.playlists if p.id not in audio_ids]
+
+
+def _load_latest_project(workspace_path: str):
+    """Load the latest .kdenlive file from working_copies.  Returns (ws_path, project, latest_path)."""
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
+    ws_path = _validate_workspace_path(workspace_path)
+    working_copies = ws_path / "projects" / "working_copies"
+    kdenlive_files = sorted(working_copies.glob("*.kdenlive")) if working_copies.exists() else []
+    if not kdenlive_files:
+        raise FileNotFoundError("No .kdenlive files found in projects/working_copies/")
+    latest = kdenlive_files[-1]
+    project = parse_project(latest)
+    return ws_path, project, latest
+
+
+def _save_patched(ws_path, project, workspace_path: str) -> Path:
+    """Serialize patched project and return output path."""
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_versioned
+    from workshop_video_brain.workspace.manifest import read_manifest
+    manifest = read_manifest(workspace_path)
+    slug = manifest.slug or "project"
+    return serialize_versioned(project, ws_path, slug)
+
+
+def _resolve_playlist(project, track: int):
+    """Resolve track index to a video playlist.  Returns playlist or raises ValueError."""
+    video_playlists = _get_video_playlists(project)
+    if not video_playlists:
+        raise ValueError("No video playlists found in project")
+    if track < 0 or track >= len(video_playlists):
+        raise ValueError(
+            f"track index {track} out of range (project has {len(video_playlists)} video track(s))"
+        )
+    return video_playlists[track]
+
+
+def _validate_clip_index(playlist, clip_index: int) -> list:
+    """Return list of real entries, raising ValueError if clip_index out of range."""
+    real = [e for e in playlist.entries if e.producer_id]
+    if not real:
+        raise ValueError(f"Playlist '{playlist.id}' has no clips")
+    if clip_index < 0 or clip_index >= len(real):
+        raise ValueError(
+            f"clip_index {clip_index} out of range (playlist has {len(real)} clip(s))"
+        )
+    return real
+
+
+# ---------------------------------------------------------------------------
+# NLE clip operations
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def clip_remove(workspace_path: str, clip_index: int, track: int = 0) -> dict:
+    """Remove a clip from the timeline by index.
+
+    Args:
+        workspace_path: Path to workspace root.
+        clip_index: Zero-based index of the clip to remove.
+        track: Video track index (0 = first video track).
+    """
+    try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path, project, latest = _load_latest_project(workspace_path)
+        playlist = _resolve_playlist(project, track)
+        _validate_clip_index(playlist, clip_index)
+
+        from workshop_video_brain.core.models.timeline import RemoveClip
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
+
+        intent = RemoveClip(track_ref=playlist.id, clip_index=clip_index)
+        patched = patch_project(project, [intent])
+        out_path = _save_patched(ws_path, patched, workspace_path)
+        return _ok({
+            "kdenlive_path": str(out_path),
+            "removed_clip_index": clip_index,
+            "playlist_id": playlist.id,
+        })
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def clip_move(workspace_path: str, from_index: int, to_index: int, track: int = 0) -> dict:
+    """Move a clip from one position to another on the timeline.
+
+    Args:
+        workspace_path: Path to workspace root.
+        from_index: Source clip index.
+        to_index: Destination clip index.
+        track: Video track index (0 = first video track).
+    """
+    try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path, project, latest = _load_latest_project(workspace_path)
+        playlist = _resolve_playlist(project, track)
+        real = _validate_clip_index(playlist, from_index)
+        if to_index < 0 or to_index >= len(real):
+            return _err(
+                f"to_index {to_index} out of range (playlist has {len(real)} clip(s))"
+            )
+
+        from workshop_video_brain.core.models.timeline import MoveClip
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
+
+        intent = MoveClip(track_ref=playlist.id, from_index=from_index, to_index=to_index)
+        patched = patch_project(project, [intent])
+        out_path = _save_patched(ws_path, patched, workspace_path)
+        return _ok({
+            "kdenlive_path": str(out_path),
+            "from_index": from_index,
+            "to_index": to_index,
+            "playlist_id": playlist.id,
+        })
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def clip_split(workspace_path: str, clip_index: int, split_at_seconds: float = 0.0) -> dict:
+    """Split a clip at a timestamp (razor tool).
+
+    Args:
+        workspace_path: Path to workspace root.
+        clip_index: Zero-based index of the clip to split.
+        split_at_seconds: Time offset within the clip (in seconds) to split at.
+    """
+    try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path, project, latest = _load_latest_project(workspace_path)
+        # clip_split operates on the first video playlist
+        playlist = _resolve_playlist(project, 0)
+        real = _validate_clip_index(playlist, clip_index)
+
+        fps = project.profile.fps or 25.0
+        split_at_frame = int(split_at_seconds * fps)
+
+        from workshop_video_brain.core.models.timeline import SplitClip
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
+
+        intent = SplitClip(
+            track_ref=playlist.id,
+            clip_index=clip_index,
+            split_at_frame=split_at_frame,
+        )
+        patched = patch_project(project, [intent])
+        out_path = _save_patched(ws_path, patched, workspace_path)
+        return _ok({
+            "kdenlive_path": str(out_path),
+            "clip_index": clip_index,
+            "split_at_seconds": split_at_seconds,
+            "split_at_frame": split_at_frame,
+            "playlist_id": playlist.id,
+        })
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def clip_trim(
+    workspace_path: str,
+    clip_index: int,
+    in_seconds: float = -1,
+    out_seconds: float = -1,
+) -> dict:
+    """Trim a clip's in and/or out points.
+
+    Args:
+        workspace_path: Path to workspace root.
+        clip_index: Zero-based index of the clip to trim.
+        in_seconds: New in-point in seconds (-1 = leave unchanged).
+        out_seconds: New out-point in seconds (-1 = leave unchanged).
+    """
+    try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path, project, latest = _load_latest_project(workspace_path)
+        playlist = _resolve_playlist(project, 0)
+        _validate_clip_index(playlist, clip_index)
+
+        fps = project.profile.fps or 25.0
+        new_in = int(in_seconds * fps) if in_seconds >= 0 else -1
+        new_out = int(out_seconds * fps) if out_seconds >= 0 else -1
+
+        from workshop_video_brain.core.models.timeline import TrimClip
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
+
+        clip_ref = f"{playlist.id}:{clip_index}"
+        intent = TrimClip(clip_ref=clip_ref, new_in=new_in, new_out=new_out)
+        patched = patch_project(project, [intent])
+        out_path = _save_patched(ws_path, patched, workspace_path)
+        return _ok({
+            "kdenlive_path": str(out_path),
+            "clip_index": clip_index,
+            "new_in_frame": new_in,
+            "new_out_frame": new_out,
+            "playlist_id": playlist.id,
+        })
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def clip_ripple_delete(workspace_path: str, clip_index: int, track: int = 0) -> dict:
+    """Remove a clip and close the gap.
+
+    Args:
+        workspace_path: Path to workspace root.
+        clip_index: Zero-based index of the clip to delete.
+        track: Video track index (0 = first video track).
+    """
+    try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path, project, latest = _load_latest_project(workspace_path)
+        playlist = _resolve_playlist(project, track)
+        _validate_clip_index(playlist, clip_index)
+
+        from workshop_video_brain.core.models.timeline import RippleDelete
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
+
+        intent = RippleDelete(track_ref=playlist.id, clip_index=clip_index)
+        patched = patch_project(project, [intent])
+        out_path = _save_patched(ws_path, patched, workspace_path)
+        return _ok({
+            "kdenlive_path": str(out_path),
+            "deleted_clip_index": clip_index,
+            "playlist_id": playlist.id,
+        })
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def clip_speed(
+    workspace_path: str,
+    clip_index: int,
+    speed: float = 1.0,
+    track: int = 0,
+) -> dict:
+    """Change clip playback speed (0.5=slow, 2.0=fast).
+
+    Args:
+        workspace_path: Path to workspace root.
+        clip_index: Zero-based index of the clip.
+        speed: Playback speed multiplier (must be > 0).
+        track: Video track index (0 = first video track).
+    """
+    try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        if speed <= 0:
+            return _err(f"speed must be greater than 0, got: {speed}")
+        ws_path, project, latest = _load_latest_project(workspace_path)
+        playlist = _resolve_playlist(project, track)
+        _validate_clip_index(playlist, clip_index)
+
+        from workshop_video_brain.core.models.timeline import SetClipSpeed
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
+
+        intent = SetClipSpeed(track_ref=playlist.id, clip_index=clip_index, speed=speed)
+        patched = patch_project(project, [intent])
+        out_path = _save_patched(ws_path, patched, workspace_path)
+        return _ok({
+            "kdenlive_path": str(out_path),
+            "clip_index": clip_index,
+            "speed": speed,
+            "playlist_id": playlist.id,
+        })
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def audio_fade(
+    workspace_path: str,
+    clip_index: int,
+    fade_type: str = "in",
+    duration_seconds: float = 1.0,
+    track: int = 0,
+) -> dict:
+    """Apply audio fade in or out to a clip.
+
+    Args:
+        workspace_path: Path to workspace root.
+        clip_index: Zero-based index of the clip.
+        fade_type: "in" or "out".
+        duration_seconds: Duration of the fade in seconds.
+        track: Video track index (0 = first video track).
+    """
+    try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        if fade_type not in ("in", "out"):
+            return _err(f"fade_type must be 'in' or 'out', got: {fade_type!r}")
+        ws_path, project, latest = _load_latest_project(workspace_path)
+        playlist = _resolve_playlist(project, track)
+        _validate_clip_index(playlist, clip_index)
+
+        fps = project.profile.fps or 25.0
+        duration_frames = max(1, int(duration_seconds * fps))
+
+        from workshop_video_brain.core.models.timeline import AudioFade as AudioFadeIntent
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
+
+        intent = AudioFadeIntent(
+            track_ref=playlist.id,
+            clip_index=clip_index,
+            fade_type=fade_type,
+            duration_frames=duration_frames,
+        )
+        patched = patch_project(project, [intent])
+        out_path = _save_patched(ws_path, patched, workspace_path)
+        return _ok({
+            "kdenlive_path": str(out_path),
+            "clip_index": clip_index,
+            "fade_type": fade_type,
+            "duration_seconds": duration_seconds,
+            "duration_frames": duration_frames,
+            "playlist_id": playlist.id,
+        })
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def track_add(workspace_path: str, track_type: str = "video", name: str = "") -> dict:
+    """Add a new video or audio track to the project.
+
+    Args:
+        workspace_path: Path to workspace root.
+        track_type: "video" or "audio".
+        name: Optional name for the new track.
+    """
+    try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        if track_type not in ("video", "audio"):
+            return _err(f"track_type must be 'video' or 'audio', got: {track_type!r}")
+        ws_path, project, latest = _load_latest_project(workspace_path)
+
+        from workshop_video_brain.core.models.timeline import CreateTrack
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
+
+        intent = CreateTrack(track_type=track_type, name=name)
+        patched = patch_project(project, [intent])
+        # Find the newly added playlist (last one)
+        new_playlist_id = patched.playlists[-1].id if patched.playlists else ""
+        out_path = _save_patched(ws_path, patched, workspace_path)
+        return _ok({
+            "kdenlive_path": str(out_path),
+            "track_type": track_type,
+            "name": name,
+            "new_playlist_id": new_playlist_id,
+        })
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def track_mute(workspace_path: str, track_index: int, muted: bool = True) -> dict:
+    """Mute or unmute a track.
+
+    Args:
+        workspace_path: Path to workspace root.
+        track_index: Zero-based index into all project tracks.
+        muted: True to mute, False to unmute.
+    """
+    try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path, project, latest = _load_latest_project(workspace_path)
+
+        if track_index < 0 or track_index >= len(project.tracks):
+            return _err(
+                f"track_index {track_index} out of range "
+                f"(project has {len(project.tracks)} track(s))"
+            )
+
+        track = project.tracks[track_index]
+
+        from workshop_video_brain.core.models.timeline import SetTrackMute
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
+
+        intent = SetTrackMute(track_ref=track.id, muted=muted)
+        patched = patch_project(project, [intent])
+        out_path = _save_patched(ws_path, patched, workspace_path)
+        return _ok({
+            "kdenlive_path": str(out_path),
+            "track_index": track_index,
+            "track_id": track.id,
+            "muted": muted,
+        })
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def track_visibility(workspace_path: str, track_index: int, visible: bool = True) -> dict:
+    """Show or hide a video track.
+
+    Args:
+        workspace_path: Path to workspace root.
+        track_index: Zero-based index into all project tracks.
+        visible: True to show, False to hide.
+    """
+    try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path, project, latest = _load_latest_project(workspace_path)
+
+        if track_index < 0 or track_index >= len(project.tracks):
+            return _err(
+                f"track_index {track_index} out of range "
+                f"(project has {len(project.tracks)} track(s))"
+            )
+
+        track = project.tracks[track_index]
+
+        from workshop_video_brain.core.models.timeline import SetTrackVisibility
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
+
+        intent = SetTrackVisibility(track_ref=track.id, visible=visible)
+        patched = patch_project(project, [intent])
+        out_path = _save_patched(ws_path, patched, workspace_path)
+        return _ok({
+            "kdenlive_path": str(out_path),
+            "track_index": track_index,
+            "track_id": track.id,
+            "visible": visible,
+        })
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def gap_insert(
+    workspace_path: str,
+    position: int,
+    duration_seconds: float,
+    track: int = 0,
+) -> dict:
+    """Insert a gap/blank at a position on the timeline.
+
+    Args:
+        workspace_path: Path to workspace root.
+        position: Playlist entry index at which to insert the gap.
+        duration_seconds: Duration of the gap in seconds.
+        track: Video track index (0 = first video track).
+    """
+    try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        if duration_seconds <= 0:
+            return _err(f"duration_seconds must be positive, got: {duration_seconds}")
+        ws_path, project, latest = _load_latest_project(workspace_path)
+        playlist = _resolve_playlist(project, track)
+
+        fps = project.profile.fps or 25.0
+        duration_frames = max(1, int(duration_seconds * fps))
+
+        from workshop_video_brain.core.models.timeline import InsertGap
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
+
+        intent = InsertGap(
+            track_id=playlist.id,
+            position=position,
+            duration_frames=duration_frames,
+        )
+        patched = patch_project(project, [intent])
+        out_path = _save_patched(ws_path, patched, workspace_path)
+        return _ok({
+            "kdenlive_path": str(out_path),
+            "position": position,
+            "duration_seconds": duration_seconds,
+            "duration_frames": duration_frames,
+            "playlist_id": playlist.id,
+        })
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(str(exc))
