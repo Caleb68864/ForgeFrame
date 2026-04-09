@@ -223,6 +223,7 @@ def initialize_forgeframe(
     whisper_model: str = "small",
     *,
     repo_root: Path | str | None = None,
+    config_dir: Path | str | None = None,
 ) -> InitResult:
     """Initialize ForgeFrame environment.
 
@@ -324,8 +325,11 @@ def initialize_forgeframe(
     if env_existed:
         notes.append(f"Updated existing .env at {env_path}")
 
-    # ~/.forgeframe/config.json
-    config_dir = Path.home() / ".forgeframe"
+    # ~/.forgeframe/config.json (or custom config_dir for testing)
+    if config_dir is None:
+        config_dir = Path.home() / ".forgeframe"
+    else:
+        config_dir = Path(config_dir)
     config_dir.mkdir(parents=True, exist_ok=True)
     config_path = config_dir / "config.json"
     config_data = {
@@ -356,13 +360,16 @@ def initialize_forgeframe(
     )
 
 
-def check_status() -> dict:
+def check_status(config_dir: Path | str | None = None) -> dict:
     """Check ForgeFrame initialization status.
 
     Returns a structured status report covering config presence, path
     existence, and tool availability.
     """
-    config_path = Path.home() / ".forgeframe" / "config.json"
+    if config_dir is None:
+        config_path = Path.home() / ".forgeframe" / "config.json"
+    else:
+        config_path = Path(config_dir) / "config.json"
 
     if not config_path.exists():
         return {

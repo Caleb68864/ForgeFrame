@@ -2140,5 +2140,100 @@ def package(workspace_path: str, max_clips: int, aspect: str) -> None:
         sys.exit(1)
 
 
+# ---------------------------------------------------------------------------
+# youtube group
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def youtube() -> None:
+    """YouTube analytics tools."""
+
+
+@youtube.command("fetch")
+@click.argument("channel_url")
+@click.option("--max-videos", default=50, type=int, help="Maximum videos to fetch.")
+def youtube_fetch(channel_url: str, max_videos: int) -> None:
+    """Fetch video data from CHANNEL_URL."""
+    from workshop_video_brain.edit_mcp.adapters.youtube.fetcher import (
+        fetch_channel_videos,
+        build_channel_stats,
+    )
+
+    try:
+        click.echo(f"Fetching up to {max_videos} videos from {channel_url}...")
+        videos = fetch_channel_videos(channel_url, max_videos=max_videos)
+        stats = build_channel_stats(videos, channel_url=channel_url)
+        click.echo(f"Channel: {stats.channel_name or channel_url}")
+        click.echo(f"  Videos fetched:  {stats.total_videos}")
+        click.echo(f"  Total views:     {stats.total_views:,}")
+        click.echo(f"  Total likes:     {stats.total_likes:,}")
+        click.echo(f"  Avg views:       {stats.avg_views:,.0f}")
+        if stats.most_viewed:
+            click.echo(f"  Most viewed:     {stats.most_viewed}")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@youtube.command("analyze")
+@click.argument("channel_url")
+@click.option("--max-videos", default=50, type=int, help="Maximum videos to fetch.")
+def youtube_analyze(channel_url: str, max_videos: int) -> None:
+    """Analyze channel performance and show insights for CHANNEL_URL."""
+    from workshop_video_brain.edit_mcp.pipelines.youtube_analytics import (
+        analyze_channel,
+        generate_analytics_report,
+    )
+
+    try:
+        click.echo(f"Analysing {channel_url}...")
+        stats = analyze_channel(channel_url, max_videos=max_videos)
+        report = generate_analytics_report(stats)
+        click.echo(report)
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@youtube.command("save")
+@click.argument("channel_url")
+@click.option("--max-videos", default=50, type=int, help="Maximum videos to fetch.")
+@click.option("--vault-path", default="", help="Obsidian vault path (overrides config).")
+def youtube_save(channel_url: str, max_videos: int, vault_path: str) -> None:
+    """Fetch channel data and save to Obsidian vault from CHANNEL_URL."""
+    from pathlib import Path
+    from workshop_video_brain.edit_mcp.pipelines.youtube_analytics import (
+        analyze_channel,
+        save_channel_to_vault,
+    )
+
+    try:
+        if not vault_path:
+            from workshop_video_brain.app.config import load_config
+            config = load_config()
+            vault_path = getattr(config, "vault_path", None) or ""
+        if not vault_path:
+            click.echo(
+                "Error: no vault path provided. Use --vault-path or set WVB_VAULT_PATH.",
+                err=True,
+            )
+            sys.exit(1)
+
+        click.echo(f"Fetching up to {max_videos} videos from {channel_url}...")
+        stats = analyze_channel(channel_url, max_videos=max_videos)
+        created = save_channel_to_vault(Path(vault_path), stats)
+        click.echo(f"Saved {len(created)} note(s) to {vault_path}")
+        click.echo(f"  Channel: {stats.channel_name or channel_url}")
+        click.echo(f"  Videos:  {stats.total_videos}")
+        for p in created[:5]:
+            click.echo(f"  {p}")
+        if len(created) > 5:
+            click.echo(f"  ... and {len(created) - 5} more")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     main()

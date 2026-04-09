@@ -26,10 +26,12 @@ def _run_init(tmp_path: Path, **kwargs):
     """Run initialize_forgeframe with tmp_path-based defaults."""
     vault = tmp_path / "vault"
     projects = tmp_path / "projects"
+    config_dir = tmp_path / "forgeframe_config"
     return initialize_forgeframe(
         vault_path=vault,
         projects_root=projects,
         repo_root=tmp_path,
+        config_dir=config_dir,
         **kwargs,
     )
 
@@ -78,6 +80,7 @@ class TestVaultFolderCreation:
             vault_path=vault,
             projects_root=tmp_path / "projects",
             repo_root=tmp_path,
+            config_dir=tmp_path / "forgeframe_config",
         )
         assert vault.is_dir()
 
@@ -112,6 +115,7 @@ class TestVaultFolderCreation:
             vault_path=vault,
             projects_root=tmp_path / "projects",
             repo_root=tmp_path,
+            config_dir=tmp_path / "forgeframe_config",
         )
         # Should not be overwritten
         assert app_json.read_text() == original
@@ -162,6 +166,7 @@ class TestTemplateNotes:
             vault_path=vault,
             projects_root=tmp_path / "projects",
             repo_root=tmp_path,
+            config_dir=tmp_path / "forgeframe_config",
         )
         assert existing.read_text() == "# My custom template"
 
@@ -190,6 +195,7 @@ class TestMediaFolderCreation:
             projects_root=tmp_path / "projects",
             media_library_root=media_lib,
             repo_root=tmp_path,
+            config_dir=tmp_path / "forgeframe_config",
         )
         for folder in MEDIA_FOLDERS:
             assert (media_lib / folder).is_dir()
@@ -229,6 +235,7 @@ class TestConfigFiles:
             vault_path=vault,
             projects_root=projects,
             repo_root=tmp_path,
+            config_dir=tmp_path / "forgeframe_config",
         )
         content = (tmp_path / ".env").read_text()
         assert str(vault.resolve()) in content
@@ -245,6 +252,7 @@ class TestConfigFiles:
                 vault_path=tmp_path / "vault",
                 projects_root=tmp_path / "projects",
                 repo_root=tmp_path,
+            config_dir=tmp_path / "forgeframe_config",
             )
 
         # Verify via result path
@@ -271,6 +279,7 @@ class TestPathExpansion:
         vault = tmp_path / "vault"
         result = initialize_forgeframe(
             vault_path=str(vault),
+            config_dir=tmp_path / "forgeframe_config",
             projects_root=str(tmp_path / "projects"),
             repo_root=tmp_path,
         )
@@ -284,6 +293,7 @@ class TestPathExpansion:
             vault_path=tmp_path / "vault",
             projects_root=tmp_path / "projects",
             repo_root=tmp_path,
+            config_dir=tmp_path / "forgeframe_config",
         )
         assert Path(result.vault_path).is_dir()
 
@@ -331,6 +341,7 @@ class TestIdempotency:
             vault_path=vault,
             projects_root=tmp_path / "projects",
             repo_root=tmp_path,
+            config_dir=tmp_path / "forgeframe_config",
         )
         assert "Ideas" not in result.vault_folders_created
         assert "Published" not in result.vault_folders_created

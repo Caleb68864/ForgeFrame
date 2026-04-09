@@ -61,6 +61,7 @@ from .assembly import AssemblyPlan, ClipAssignment, StepAssembly
 from .broll_library import BRollEntry, BRollLibrary
 from .publishing import PublishBundle, TitleVariants, VideoSummary
 from .social import ClipCandidate, ClipExport, SocialPost
+from .youtube import YouTubeVideo, ChannelStats, VideoAnalytics
 
 __all__ = [
     # enums
@@ -156,4 +157,8 @@ __all__ = [
     "ClipCandidate",
     "ClipExport",
     "SocialPost",
+    # youtube analytics
+    "YouTubeVideo",
+    "ChannelStats",
+    "VideoAnalytics",
 ]

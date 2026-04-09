@@ -3388,3 +3388,116 @@ def publish_note(workspace_path: str, video_url: str = "") -> dict:
         return _ok({"note_path": str(note_path), "video_url": video_url})
     except Exception as exc:
         return _err(str(exc))
+
+
+# ---------------------------------------------------------------------------
+# YouTube analytics tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def youtube_fetch_channel(channel_url: str, max_videos: int = 50) -> dict:
+    """Fetch video data from a YouTube channel. Requires yt-dlp.
+
+    Args:
+        channel_url: YouTube channel URL (e.g., https://youtube.com/@username).
+        max_videos: Maximum number of videos to fetch (default 50).
+
+    Returns:
+        Channel stats and list of video metadata.
+    """
+    try:
+        from workshop_video_brain.edit_mcp.adapters.youtube.fetcher import (
+            fetch_channel_videos,
+            build_channel_stats,
+        )
+
+        videos = fetch_channel_videos(channel_url, max_videos=max_videos)
+        stats = build_channel_stats(videos, channel_url=channel_url)
+        return _ok({
+            "channel_name": stats.channel_name,
+            "channel_id": stats.channel_id,
+            "total_videos": stats.total_videos,
+            "total_views": stats.total_views,
+            "fetched_at": stats.fetched_at,
+            "videos": [v.model_dump(mode="json") for v in videos],
+        })
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def youtube_fetch_video(video_url: str) -> dict:
+    """Fetch data for a single YouTube video.
+
+    Args:
+        video_url: Full YouTube video URL or short ID.
+
+    Returns:
+        Video metadata as a dict.
+    """
+    try:
+        from workshop_video_brain.edit_mcp.adapters.youtube.fetcher import fetch_single_video
+
+        video = fetch_single_video(video_url)
+        return _ok(video.model_dump(mode="json"))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def youtube_analyze(channel_url: str, max_videos: int = 50) -> dict:
+    """Fetch and analyze a YouTube channel with stats and insights.
+
+    Args:
+        channel_url: YouTube channel URL.
+        max_videos: Maximum number of videos to fetch (default 50).
+
+    Returns:
+        Channel stats with averages, top videos, and engagement metrics.
+    """
+    try:
+        from workshop_video_brain.edit_mcp.pipelines.youtube_analytics import analyze_channel
+
+        stats = analyze_channel(channel_url, max_videos=max_videos)
+        return _ok(stats.model_dump(mode="json"))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def youtube_save_to_vault(channel_url: str, max_videos: int = 50) -> dict:
+    """Fetch channel data and save analytics to Obsidian vault.
+
+    Args:
+        channel_url: YouTube channel URL.
+        max_videos: Maximum number of videos to fetch (default 50).
+
+    Returns:
+        List of created note paths and summary stats.
+    """
+    try:
+        from workshop_video_brain.app.config import load_config
+        from workshop_video_brain.edit_mcp.pipelines.youtube_analytics import (
+            analyze_channel,
+            save_channel_to_vault,
+        )
+
+        config = load_config()
+        vault_path = getattr(config, "vault_path", None) or ""
+        if not vault_path:
+            return _err(
+                "Vault path not configured. Set WVB_VAULT_PATH env var or run 'wvb init'."
+            )
+
+        stats = analyze_channel(channel_url, max_videos=max_videos)
+        created = save_channel_to_vault(Path(vault_path), stats)
+
+        return _ok({
+            "channel_name": stats.channel_name,
+            "total_videos": stats.total_videos,
+            "notes_created": len(created),
+            "paths": [str(p) for p in created],
+        })
+    except Exception as exc:
+        return _err(str(exc))
