@@ -9,13 +9,8 @@ build/
 # Environment
 .env
 
-# Smoke test media (large files)
-smoke-test/footage/
-smoke-test/workspace/
-smoke-test/vault/
-smoke-test/*.mp4
-smoke-test/*.wav
-smoke-test/*.mp3
+# Smoke test (all generated/downloaded content)
+smoke-test/
 
 # IDE
 .idea/
