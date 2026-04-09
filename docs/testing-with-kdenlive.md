@@ -169,6 +169,64 @@ Expected: Review notes identifying pacing issues, repetition, missing inserts
 ```
 Expected: Flagged transcript segments with suggested rewrites for cleaner narration
 
+## Testing New Phase 2 Features
+
+### B-Roll Whisperer
+```
+Ask Claude: "Suggest B-roll shots for my workspace"
+# or
+wvb broll suggest /path/to/workspace/
+```
+Expected: Categorized B-roll suggestions (process_shot, material_closeup, tool_in_use, result_reveal, measurement_shot) with timestamps and descriptions of what to film.
+
+### Pacing Meter
+```
+Ask Claude: "Analyze the pacing of my video"
+# or
+wvb pacing analyze /path/to/workspace/
+```
+Expected: Per-segment pacing report with WPM, speech density, pace classification (fast/medium/slow). Flags weak intros and energy drops.
+
+### Replay Generator
+```
+Ask Claude: "Create a 1-minute highlight reel"
+# or
+wvb replay generate /path/to/workspace/ --duration 60
+```
+Expected: Condensed Kdenlive project in `projects/working_copies/*_replay_*.kdenlive`. Open in Kdenlive -- should show highlight segments with crossfades and guide markers explaining each selection.
+
+### Pattern Brain
+```
+Ask Claude: "Extract the build data and materials list"
+# or
+wvb pattern extract /path/to/workspace/
+```
+Expected: Structured extraction of materials (with quantities), measurements (with units), numbered build steps, tips, and warnings. Printable build notes saved to `reports/build_notes.md`.
+
+### Title Card Generator
+```
+Ask Claude: "Generate title cards for my chapters"
+# or
+wvb title-cards generate /path/to/workspace/
+```
+Expected: Title card data in `reports/title_cards.json`. Each chapter gets a title card with cleaned text and timestamp. If applied to a Kdenlive project, guide markers appear with "TITLE: {text}" labels.
+
+### Clip Organizer
+```
+Ask Claude: "Label all my clips"
+# or
+wvb clips label /path/to/workspace/
+wvb clips search /path/to/workspace/ "zipper"
+```
+Expected: Each clip labeled with content_type, topics, shot_type, tags in `clips/` folder. Search returns ranked matches by relevance.
+
+### New Skills
+```
+/ff-broll-whisperer       # Review and refine B-roll suggestions
+/ff-pacing-meter          # Interpret pacing data and suggest fixes
+/ff-pattern-brain         # Refine extracted build data into polished notes
+```
+
 ## Common Issues
 
 ### "ffmpeg not found"
