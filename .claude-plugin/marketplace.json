@@ -11,7 +11,7 @@
       "source": "./workshop-video-brain",
       "description": "Local-first video production assistant: Obsidian planning + Kdenlive edit automation for tutorial makers",
       "version": "0.1.0",
-      "author": "Caleb Bennett",
+      "author": {"name": "Caleb Bennett"},
       "license": "MIT",
       "keywords": ["kdenlive", "video", "mcp", "obsidian", "tutorial", "production"],
       "category": "media"
