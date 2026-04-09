@@ -9,8 +9,8 @@ build/
 # Environment
 .env
 
-# Smoke test (all generated/downloaded content)
-smoke-test/
+# Smoke test output (generated/downloaded content)
+tests/smoke-test/output/
 
 # IDE
 .idea/
