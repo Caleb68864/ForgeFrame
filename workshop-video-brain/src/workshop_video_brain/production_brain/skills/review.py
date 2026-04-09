@@ -372,10 +372,10 @@ def _render_review_markdown(
     edit_notes: str | None,
 ) -> str:
     """Render the review dict as a markdown string."""
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     lines: list[str] = []
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
     word_count = len(transcript_text.split())
 
     lines.append("# Rough Cut Review")

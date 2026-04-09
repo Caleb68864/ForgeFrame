@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -70,7 +70,7 @@ def create(
 
     record = SnapshotRecord(
         workspace_id=uuid4(),  # placeholder; manager can fill workspace id
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(tz=timezone.utc),
         project_file_path=str(file_to_snapshot),
         manifest_snapshot=manifest_snapshot,
         description=description,

@@ -1,7 +1,7 @@
 """Workspace manifest model and read/write helpers."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -19,8 +19,8 @@ class WorkspaceManifest(SerializableMixin):
     project_title: str
     slug: str = ""
     status: ProjectStatus = ProjectStatus.idea
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
     content_type: str = ""
     vault_note_path: str = ""
     media_root: str = ""

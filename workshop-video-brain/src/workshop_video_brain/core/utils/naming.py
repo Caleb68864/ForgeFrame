@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def slugify(text: str) -> str:
@@ -16,4 +16,4 @@ def slugify(text: str) -> str:
 
 def timestamp_prefix() -> str:
     """Return a timestamp string in YYYY-MM-DD-HHMMSS format."""
-    return datetime.utcnow().strftime("%Y-%m-%d-%H%M%S")
+    return datetime.now(tz=timezone.utc).strftime("%Y-%m-%d-%H%M%S")

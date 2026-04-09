@@ -3,7 +3,7 @@ and chapter marker generation."""
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from workshop_video_brain.core.models.markers import Marker, MarkerConfig
@@ -214,13 +214,13 @@ def _write_review_report(markers: list[Marker], workspace_root: Path) -> None:
     """Write a markdown review report alongside the timeline."""
     reports_dir = workspace_root / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
     report_path = reports_dir / f"review_report_{timestamp}.md"
 
     lines = [
         "# Review Report",
         "",
-        f"Generated: {datetime.utcnow().isoformat()}",
+        f"Generated: {datetime.now(tz=timezone.utc).isoformat()}",
         "",
         "## Markers",
         "",

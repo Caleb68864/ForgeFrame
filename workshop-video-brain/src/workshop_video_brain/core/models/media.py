@@ -1,7 +1,7 @@
 """MediaAsset model."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -29,7 +29,7 @@ class MediaAsset(SerializableMixin):
     channels: int = 0
     sample_rate: int = 0
     bitrate: int = 0
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
     file_size: int = 0
     hash: str = ""
     proxy_path: str = ""

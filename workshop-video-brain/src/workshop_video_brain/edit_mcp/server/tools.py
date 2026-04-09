@@ -27,12 +27,25 @@ def _err(message: str) -> dict:
     return {"status": "error", "message": message}
 
 
-def _require_workspace(workspace_path: str):
-    """Return (Path, Workspace) or raise ValueError."""
-    from workshop_video_brain.workspace.manager import WorkspaceManager
+def _validate_workspace_path(workspace_path: str) -> Path:
+    """Validate workspace_path: must be non-empty, exist, and be a directory.
+
+    Raises ValueError with a clear message if any check fails.
+    """
+    if not workspace_path or not workspace_path.strip():
+        raise ValueError("workspace_path must be a non-empty string")
     p = Path(workspace_path)
     if not p.exists():
         raise FileNotFoundError(f"Workspace path does not exist: {workspace_path}")
+    if not p.is_dir():
+        raise ValueError(f"Workspace path is not a directory: {workspace_path}")
+    return p
+
+
+def _require_workspace(workspace_path: str):
+    """Return (Path, Workspace) or raise ValueError."""
+    from workshop_video_brain.workspace.manager import WorkspaceManager
+    p = _validate_workspace_path(workspace_path)
     return p, WorkspaceManager.open(p)
 
 
@@ -54,6 +67,15 @@ def workspace_create(title: str, media_root: str, vault_path: str = "") -> dict:
         Workspace metadata including workspace_root and workspace_id.
     """
     try:
+        if not title or not title.strip():
+            return _err("title must be a non-empty string")
+        if not media_root or not media_root.strip():
+            return _err("media_root must be a non-empty string")
+        media_root_path = Path(media_root)
+        if not media_root_path.exists():
+            return _err(f"media_root does not exist: {media_root}")
+        if not media_root_path.is_dir():
+            return _err(f"media_root is not a directory: {media_root}")
         from workshop_video_brain.workspace.manager import WorkspaceManager
         config = {"vault_path": vault_path} if vault_path else {}
         workspace = WorkspaceManager.create(
@@ -84,6 +106,8 @@ def workspace_status(workspace_path: str) -> dict:
         Manifest fields: workspace_id, title, slug, status, media_root, etc.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
         from workshop_video_brain.workspace.manifest import read_manifest
         manifest = read_manifest(workspace_path)
         return _ok({
@@ -118,6 +142,18 @@ def media_ingest(workspace_path: str) -> dict:
     """
     try:
         p, workspace = _require_workspace(workspace_path)
+        raw_dir = p / "media" / "raw"
+        if not raw_dir.exists():
+            return _err(
+                f"media/raw directory not found at {workspace_path}. "
+                "Create and populate media/raw/ before running ingest."
+            )
+        import shutil as _shutil
+        if not _shutil.which("ffmpeg"):
+            return _err(
+                "ffmpeg is not available on PATH. "
+                "Install FFmpeg before running media_ingest."
+            )
         from workshop_video_brain.app.config import load_config
         from workshop_video_brain.edit_mcp.pipelines.ingest import run_ingest
         config = load_config()
@@ -144,9 +180,16 @@ def media_list_assets(workspace_path: str) -> dict:
         List of asset file paths found under media/raw/.
     """
     try:
-        raw_dir = Path(workspace_path) / "media" / "raw"
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
+        raw_dir = ws_path / "media" / "raw"
         if not raw_dir.exists():
-            return _ok({"assets": [], "count": 0})
+            return _ok({"assets": [], "count": 0, "message": "media/raw directory not found"})
         from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import scan_directory
         assets = scan_directory(raw_dir)
         return _ok({
@@ -182,6 +225,13 @@ def proxy_generate(workspace_path: str) -> dict:
         Count of proxies generated and any errors encountered.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import scan_directory
         from workshop_video_brain.edit_mcp.adapters.ffmpeg.proxy import (
             ProxyPolicy,
@@ -189,8 +239,8 @@ def proxy_generate(workspace_path: str) -> dict:
             needs_proxy,
             proxy_path_for,
         )
-        raw_dir = Path(workspace_path) / "media" / "raw"
-        proxy_dir = Path(workspace_path) / "media" / "proxies"
+        raw_dir = ws_path / "media" / "raw"
+        proxy_dir = ws_path / "media" / "proxies"
         proxy_dir.mkdir(parents=True, exist_ok=True)
         if not raw_dir.exists():
             return _ok({"proxied": 0, "skipped": 0, "errors": []})
@@ -234,6 +284,19 @@ def transcript_generate(workspace_path: str) -> dict:
     """
     try:
         p, workspace = _require_workspace(workspace_path)
+        import shutil as _shutil
+        if not _shutil.which("ffmpeg"):
+            return _err(
+                "ffmpeg is not available on PATH. "
+                "Install FFmpeg before running transcript_generate."
+            )
+        try:
+            import faster_whisper  # noqa: F401
+        except ImportError:
+            return _err(
+                "faster-whisper is not installed. "
+                "Install with: pip install faster-whisper"
+            )
         from workshop_video_brain.app.config import load_config
         from workshop_video_brain.edit_mcp.pipelines.ingest import run_ingest
         config = load_config()
@@ -259,7 +322,14 @@ def transcript_export(workspace_path: str, format: str = "srt") -> dict:
         List of exported file paths.
     """
     try:
-        transcripts_dir = Path(workspace_path) / "transcripts"
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
+        transcripts_dir = ws_path / "transcripts"
         if not transcripts_dir.exists():
             return _ok({"exported": [], "count": 0})
         exported = []
@@ -298,17 +368,29 @@ def markers_auto_generate(workspace_path: str) -> dict:
         Count of marker files written and total markers generated.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         import json as _json
         from workshop_video_brain.core.models.transcript import Transcript
         from workshop_video_brain.edit_mcp.pipelines.auto_mark import generate_markers
         from workshop_video_brain.core.models.markers import MarkerConfig
 
-        transcripts_dir = Path(workspace_path) / "transcripts"
-        markers_dir = Path(workspace_path) / "markers"
+        transcripts_dir = ws_path / "transcripts"
+        markers_dir = ws_path / "markers"
         markers_dir.mkdir(parents=True, exist_ok=True)
 
         if not transcripts_dir.exists():
-            return _ok({"marker_files": 0, "total_markers": 0, "errors": []})
+            return _ok({
+                "marker_files": 0,
+                "total_markers": 0,
+                "errors": [],
+                "message": "No transcripts/ directory found. Run transcript_generate first.",
+            })
 
         config = MarkerConfig()
         total_markers = 0
@@ -358,8 +440,15 @@ def markers_list(workspace_path: str) -> dict:
         List of marker file info with paths and marker counts.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         import json as _json
-        markers_dir = Path(workspace_path) / "markers"
+        markers_dir = ws_path / "markers"
         if not markers_dir.exists():
             return _ok({"marker_files": [], "total_markers": 0})
         files = []
@@ -394,12 +483,19 @@ def timeline_build_review(workspace_path: str, mode: str = "ranked") -> dict:
         Path to the generated .kdenlive file and marker count.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         import json as _json
         from workshop_video_brain.core.models.markers import Marker, MarkerConfig
         from workshop_video_brain.core.models.media import MediaAsset
         from workshop_video_brain.edit_mcp.pipelines.review_timeline import build_review_timeline
 
-        markers_dir = Path(workspace_path) / "markers"
+        markers_dir = ws_path / "markers"
         if not markers_dir.exists():
             return _err("No markers/ directory found. Run markers_auto_generate first.")
 
@@ -418,7 +514,7 @@ def timeline_build_review(workspace_path: str, mode: str = "ranked") -> dict:
         kdenlive_path = build_review_timeline(
             markers=markers,
             assets=[],
-            workspace_root=Path(workspace_path),
+            workspace_root=ws_path,
             mode=mode,
         )
         return _ok({
@@ -442,6 +538,18 @@ def timeline_build_selects(workspace_path: str, min_confidence: float = 0.5) -> 
         Path to the generated .kdenlive file and selects count.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
+        # Coerce min_confidence from string if needed
+        try:
+            min_confidence = float(min_confidence)
+        except (TypeError, ValueError):
+            return _err(f"min_confidence must be a number, got: {min_confidence!r}")
         import json as _json
         from workshop_video_brain.core.models.markers import Marker, MarkerConfig
         from workshop_video_brain.edit_mcp.pipelines.selects_timeline import (
@@ -449,7 +557,7 @@ def timeline_build_selects(workspace_path: str, min_confidence: float = 0.5) -> 
             build_selects_timeline,
         )
 
-        markers_dir = Path(workspace_path) / "markers"
+        markers_dir = ws_path / "markers"
         if not markers_dir.exists():
             return _err("No markers/ directory found. Run markers_auto_generate first.")
 
@@ -470,7 +578,7 @@ def timeline_build_selects(workspace_path: str, min_confidence: float = 0.5) -> 
         kdenlive_path = build_selects_timeline(
             selects=selects,
             assets=[],
-            workspace_root=Path(workspace_path),
+            workspace_root=ws_path,
         )
         return _ok({
             "kdenlive_path": str(kdenlive_path),
@@ -497,6 +605,13 @@ def project_create_working_copy(workspace_path: str) -> dict:
         Path to the created .kdenlive file.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         from workshop_video_brain.workspace.manifest import read_manifest
         from workshop_video_brain.core.models.kdenlive import (
             KdenliveProject,
@@ -524,7 +639,7 @@ def project_create_working_copy(workspace_path: str) -> dict:
         project.tractor = {"id": "tractor0", "in": "0", "out": "99999"}
 
         slug = manifest.slug or slugify(manifest.project_title) or "project"
-        out_path = serialize_versioned(project, Path(workspace_path), slug)
+        out_path = serialize_versioned(project, ws_path, slug)
         return _ok({"kdenlive_path": str(out_path), "title": manifest.project_title})
     except Exception as exc:
         return _err(str(exc))
@@ -541,17 +656,29 @@ def project_validate(workspace_path: str) -> dict:
         Validation report with summary and list of issues.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
         from workshop_video_brain.edit_mcp.adapters.kdenlive.validator import validate_project
 
-        working_copies = Path(workspace_path) / "projects" / "working_copies"
+        working_copies = ws_path / "projects" / "working_copies"
+        if not working_copies.exists():
+            return _err(
+                "No projects/working_copies/ directory found. "
+                "Run project_create_working_copy first."
+            )
         kdenlive_files = sorted(working_copies.glob("*.kdenlive"))
         if not kdenlive_files:
             return _err("No .kdenlive files found in projects/working_copies/")
 
         latest = kdenlive_files[-1]
         project = parse_project(latest)
-        report = validate_project(project, workspace_root=Path(workspace_path))
+        report = validate_project(project, workspace_root=ws_path)
         return _ok({
             "project_file": str(latest),
             "summary": report.summary,
@@ -581,9 +708,15 @@ def project_summary(workspace_path: str) -> dict:
         Project metadata with counts of transcripts, markers, timelines, renders.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
         from workshop_video_brain.workspace.manifest import read_manifest
 
         ws = Path(workspace_path)
+        if not ws.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         manifest = read_manifest(ws)
 
         transcripts = list((ws / "transcripts").glob("*_transcript.json")) if (ws / "transcripts").exists() else []
@@ -629,6 +762,13 @@ def transitions_apply(
         Path to the updated .kdenlive file.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
         from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_versioned
@@ -637,7 +777,7 @@ def transitions_apply(
         from workshop_video_brain.core.utils.naming import slugify
         from workshop_video_brain.workspace.manifest import read_manifest
 
-        working_copies = Path(workspace_path) / "projects" / "working_copies"
+        working_copies = ws_path / "projects" / "working_copies"
         kdenlive_files = sorted(working_copies.glob("*.kdenlive"))
         if not kdenlive_files:
             return _err("No .kdenlive files found in projects/working_copies/")
@@ -677,12 +817,12 @@ def transitions_apply(
         patched = patch_project(
             project,
             intents,
-            workspace_root=Path(workspace_path),
+            workspace_root=ws_path,
             project_path=latest,
         )
         manifest = read_manifest(workspace_path)
         slug = manifest.slug or "project"
-        out_path = serialize_versioned(patched, Path(workspace_path), slug)
+        out_path = serialize_versioned(patched, ws_path, slug)
         return _ok({
             "kdenlive_path": str(out_path),
             "transitions_applied": len(intents),
@@ -709,10 +849,17 @@ def subtitles_generate(workspace_path: str) -> dict:
         List of generated SRT file paths.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         from workshop_video_brain.core.models.transcript import Transcript
         from workshop_video_brain.edit_mcp.pipelines.subtitle_pipeline import generate_srt, save_srt
 
-        transcripts_dir = Path(workspace_path) / "transcripts"
+        transcripts_dir = ws_path / "transcripts"
         if not transcripts_dir.exists():
             return _ok({"generated": [], "count": 0})
 
@@ -723,7 +870,7 @@ def subtitles_generate(workspace_path: str) -> dict:
                 transcript = Transcript.from_json(json_path.read_text(encoding="utf-8"))
                 srt_content = generate_srt(transcript)
                 stem = json_path.stem.replace("_transcript", "")
-                out_path = save_srt(srt_content, Path(workspace_path), f"{stem}.srt")
+                out_path = save_srt(srt_content, ws_path, f"{stem}.srt")
                 generated.append(str(out_path))
             except Exception as exc:
                 errors.append(f"{json_path.name}: {exc}")
@@ -745,7 +892,14 @@ def subtitles_export(workspace_path: str, format: str = "srt") -> dict:
         List of SRT file paths in the reports directory.
     """
     try:
-        reports_dir = Path(workspace_path) / "reports"
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
+        reports_dir = ws_path / "reports"
         if not reports_dir.exists():
             return _ok({"files": [], "count": 0})
         if format == "srt":
@@ -775,16 +929,28 @@ def render_preview(workspace_path: str) -> dict:
         Render job status and output path.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         from workshop_video_brain.edit_mcp.pipelines.render_pipeline import run_render
 
-        working_copies = Path(workspace_path) / "projects" / "working_copies"
+        working_copies = ws_path / "projects" / "working_copies"
+        if not working_copies.exists():
+            return _err(
+                "No projects/working_copies/ directory found. "
+                "Run project_create_working_copy first."
+            )
         kdenlive_files = sorted(working_copies.glob("*.kdenlive"))
         if not kdenlive_files:
             return _err("No .kdenlive files found in projects/working_copies/")
 
         latest = kdenlive_files[-1]
         job = run_render(
-            workspace_root=Path(workspace_path),
+            workspace_root=ws_path,
             project_path=latest,
             profile_name="preview",
         )
@@ -810,6 +976,13 @@ def render_status(workspace_path: str) -> dict:
         List of render jobs with status, profile, and output paths.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         from workshop_video_brain.edit_mcp.pipelines.render_pipeline import list_renders
 
         jobs = list_renders(workspace_path)
@@ -852,11 +1025,18 @@ def voiceover_extract_segments(workspace_path: str) -> dict:
         reason, category, and confidence score.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         from workshop_video_brain.production_brain.skills.voiceover import (
             extract_fixable_segments,
         )
 
-        segments = extract_fixable_segments(Path(workspace_path))
+        segments = extract_fixable_segments(ws_path)
         return _ok({
             "segments": segments,
             "count": len(segments),
@@ -881,10 +1061,17 @@ def snapshot_list(workspace_path: str) -> dict:
         List of snapshot records with IDs, timestamps, and descriptions.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         from workshop_video_brain.workspace.snapshot import list_snapshots
 
         records = list_snapshots(workspace_path)
-        snaps_dir = Path(workspace_path) / "projects" / "snapshots"
+        snaps_dir = ws_path / "projects" / "snapshots"
         snap_dirs = sorted(snaps_dir.iterdir()) if snaps_dir.exists() else []
         dir_names = [d.name for d in snap_dirs if d.is_dir()]
 
@@ -921,9 +1108,16 @@ def clips_label(workspace_path: str) -> dict:
         Count of labels generated and a summary of content types found.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         from workshop_video_brain.edit_mcp.pipelines.clip_labeler import generate_labels
 
-        labels = generate_labels(Path(workspace_path))
+        labels = generate_labels(ws_path)
         content_type_counts: dict[str, int] = {}
         for label in labels:
             content_type_counts[label.content_type] = (
@@ -961,9 +1155,18 @@ def clips_search(workspace_path: str, query: str) -> dict:
         Ranked list of matching clips with scores.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        if not query or not query.strip():
+            return _err("query must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         from workshop_video_brain.edit_mcp.pipelines.clip_search import search_clips
 
-        results = search_clips(Path(workspace_path), query)
+        results = search_clips(ws_path, query)
         return _ok({
             "results": results,
             "count": len(results),
@@ -993,9 +1196,16 @@ def broll_suggest(workspace_path: str) -> dict:
         Suggestions grouped by category with total count and formatted markdown.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         from workshop_video_brain.production_brain.skills.broll import extract_and_format
 
-        markdown, suggestions = extract_and_format(Path(workspace_path))
+        markdown, suggestions = extract_and_format(ws_path)
         by_category: dict[str, int] = {}
         for s in suggestions:
             by_category[s["category"]] = by_category.get(s["category"], 0) + 1
@@ -1030,10 +1240,24 @@ def replay_generate(workspace_path: str, target_duration: float = 60.0) -> dict:
         Path to the generated .kdenlive file and replay report data.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
+        # Coerce target_duration from string if needed
+        try:
+            target_duration = float(target_duration)
+        except (TypeError, ValueError):
+            return _err(f"target_duration must be a number, got: {target_duration!r}")
+        if target_duration <= 0:
+            return _err(f"target_duration must be positive, got: {target_duration}")
         from workshop_video_brain.edit_mcp.pipelines.replay_generator import generate_replay
 
         output_path = generate_replay(
-            workspace_root=Path(workspace_path),
+            workspace_root=ws_path,
             target_duration=target_duration,
         )
         return _ok({
@@ -1058,6 +1282,21 @@ def snapshot_restore(workspace_path: str, snapshot_id: str) -> dict:
         Confirmation of the restore with the original file path.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        if not snapshot_id or not snapshot_id.strip():
+            return _err("snapshot_id must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
+        # Validate that snapshot_id exists
+        snap_dir = ws_path / "projects" / "snapshots" / snapshot_id
+        if not snap_dir.exists():
+            return _err(
+                f"Snapshot '{snapshot_id}' not found in {workspace_path}/projects/snapshots/"
+            )
         from workshop_video_brain.workspace.snapshot import restore, list_snapshots
 
         restore(workspace_path, snapshot_id)
@@ -1094,12 +1333,19 @@ def title_cards_generate(workspace_path: str) -> dict:
         List of title cards and the path to the saved JSON file.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         from workshop_video_brain.edit_mcp.pipelines.title_cards import (
             generate_title_cards,
             save_title_cards,
         )
 
-        workspace_root = Path(workspace_path)
+        workspace_root = ws_path
         cards = generate_title_cards(workspace_root)
         out_path = save_title_cards(cards, workspace_root)
         return _ok({
@@ -1132,15 +1378,26 @@ def pacing_analyze(workspace_path: str) -> dict:
         energy drops, and a formatted Markdown summary.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         from workshop_video_brain.core.models.transcript import Transcript
         from workshop_video_brain.edit_mcp.pipelines.pacing_analyzer import (
             analyze_pacing,
             format_pacing_report,
         )
 
-        transcripts_dir = Path(workspace_path) / "transcripts"
+        transcripts_dir = ws_path / "transcripts"
         if not transcripts_dir.exists():
-            return _ok({"reports": [], "count": 0})
+            return _ok({
+                "reports": [],
+                "count": 0,
+                "message": "No transcripts/ directory found. Run transcript_generate first.",
+            })
 
         reports = []
         errors = []
@@ -1193,12 +1450,18 @@ def pattern_extract(workspace_path: str) -> dict:
         and notes_path where build_notes.md was saved.
     """
     try:
+        if not workspace_path or not workspace_path.strip():
+            return _err("workspace_path must be a non-empty string")
+        ws_path = Path(workspace_path)
+        if not ws_path.exists():
+            return _err(f"Workspace path does not exist: {workspace_path}")
+        if not ws_path.is_dir():
+            return _err(f"Workspace path is not a directory: {workspace_path}")
         from workshop_video_brain.production_brain.skills.pattern import (
             extract_and_format,
             save_build_notes,
         )
 
-        ws_path = Path(workspace_path)
         result = extract_and_format(ws_path)
         build_data = result["build_data"]
         overlay_text = result["overlay_text"]

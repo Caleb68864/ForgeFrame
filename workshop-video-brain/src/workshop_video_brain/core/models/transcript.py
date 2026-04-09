@@ -1,7 +1,7 @@
 """Transcript models."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from pydantic import Field
@@ -38,4 +38,4 @@ class Transcript(SerializableMixin):
     language: str = ""
     segments: list[TranscriptSegment] = Field(default_factory=list)
     raw_text: str = ""
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))

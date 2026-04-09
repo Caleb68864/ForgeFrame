@@ -1,7 +1,7 @@
 """Workspace manager: create, open, and update workspaces."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -107,5 +107,5 @@ class WorkspaceManager:
         # Workspace and VideoProject use use_enum_values=True so we can assign
         # either the enum member or its string value directly.
         workspace.project.status = new_status  # type: ignore[assignment]
-        workspace.project.updated_at = datetime.utcnow()
+        workspace.project.updated_at = datetime.now(tz=timezone.utc)
         WorkspaceManager.save_manifest(workspace)

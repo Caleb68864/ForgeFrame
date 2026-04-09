@@ -6,7 +6,7 @@ Syncs frontmatter from workspace manifest.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -87,7 +87,7 @@ def _build_frontmatter(workspace_root: Path, data: dict) -> dict[str, Any]:
         except Exception:
             pass
 
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
 
     fm: dict[str, Any] = {
         "title": (
@@ -176,7 +176,7 @@ def _update_existing_note(
     # Build frontmatter updates (only fields present in data / manifest)
     fm_updates = _build_frontmatter(workspace_root, data)
     # Always update the 'updated' timestamp
-    fm_updates["updated"] = datetime.utcnow().strftime("%Y-%m-%d")
+    fm_updates["updated"] = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
 
     # Read existing frontmatter to avoid clobbering extra keys
     existing_fm, _ = parse_note(note_path)
