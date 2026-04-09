@@ -104,7 +104,10 @@ def _parse_tractor(elem: ET.Element) -> tuple[dict, list[Track], list[OpaqueElem
     for child in elem:
         if child.tag == "track":
             producer_ref = child.get("producer", "")
-            # Determine type from producer_ref heuristic or hide attribute
+            # Skip serializer-generated infrastructure tracks
+            if producer_ref == "black_track" or producer_ref.endswith("_kdpair"):
+                continue
+            # Determine type from hide attribute
             hide = child.get("hide", "")
             if hide == "video":
                 track_type = "audio"
@@ -171,6 +174,10 @@ def parse_project(path: Path) -> KdenliveProject:
             profile = _parse_profile(elem)
 
         elif tag == "producer":
+            producer_id = elem.get("id", "")
+            # Skip the serializer-generated background producer
+            if producer_id == "black_track":
+                continue
             try:
                 producers.append(_parse_producer(elem))
             except Exception as exc:
@@ -178,6 +185,10 @@ def parse_project(path: Path) -> KdenliveProject:
                 opaque_elements.append(_elem_to_opaque(elem))
 
         elif tag == "playlist":
+            playlist_id = elem.get("id", "")
+            # Skip serializer-generated infrastructure playlists
+            if playlist_id == "main_bin" or playlist_id.endswith("_kdpair"):
+                continue
             try:
                 playlist, child_opaques = _parse_playlist(elem)
                 playlists.append(playlist)
