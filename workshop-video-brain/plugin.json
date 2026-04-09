@@ -2,76 +2,10 @@
   "name": "workshop-video-brain",
   "version": "0.1.0",
   "description": "Local-first video production assistant: Obsidian planning + Kdenlive edit automation for tutorial makers",
-  "author": "Caleb Bennett",
+  "author": {
+    "name": "Caleb Bennett"
+  },
   "license": "MIT",
-  "skills": [
-    {
-      "name": "ff-video-idea-to-outline",
-      "path": "skills/ff-video-idea-to-outline"
-    },
-    {
-      "name": "ff-tutorial-script",
-      "path": "skills/ff-tutorial-script"
-    },
-    {
-      "name": "ff-shot-plan",
-      "path": "skills/ff-shot-plan"
-    },
-    {
-      "name": "ff-obsidian-video-note",
-      "path": "skills/ff-obsidian-video-note"
-    },
-    {
-      "name": "ff-rough-cut-review",
-      "path": "skills/ff-rough-cut-review"
-    },
-    {
-      "name": "ff-capture-prep",
-      "path": "skills/ff-capture-prep"
-    },
-    {
-      "name": "ff-auto-editor",
-      "path": "skills/ff-auto-editor"
-    },
-    {
-      "name": "ff-broll-whisperer",
-      "path": "skills/ff-broll-whisperer"
-    },
-    {
-      "name": "ff-pacing-meter",
-      "path": "skills/ff-pacing-meter"
-    },
-    {
-      "name": "ff-audio-cleanup",
-      "path": "skills/ff-audio-cleanup"
-    },
-    {
-      "name": "ff-pattern-brain",
-      "path": "skills/ff-pattern-brain"
-    },
-    {
-      "name": "ff-voiceover-fixer",
-      "path": "skills/ff-voiceover-fixer"
-    },
-    {
-      "name": "ff-publish",
-      "path": "skills/ff-publish"
-    },
-    {
-      "name": "ff-social-clips",
-      "path": "skills/ff-social-clips"
-    },
-    {
-      "name": "ff-init",
-      "path": "skills/ff-init"
-    },
-    {
-      "name": "ff-new-project",
-      "path": "skills/ff-new-project"
-    },
-    {
-      "name": "ff-youtube-analytics",
-      "path": "skills/ff-youtube-analytics"
-    }
-  ]
+  "repository": "https://github.com/Caleb68864/ForgeFrame",
+  "skills": "./skills/"
 }
