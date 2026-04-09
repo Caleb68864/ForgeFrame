@@ -40,6 +40,15 @@ from .transcript import Transcript, TranscriptSegment, WordTiming
 from .validation import ValidationItem, ValidationReport
 from .workspace import Workspace
 from .clips import ClipLabel
+from .pacing import PacingSegment, PacingReport
+from .title_cards import TitleCard
+from .patterns import (
+    BuildData,
+    BuildStep,
+    BuildTip,
+    MaterialItem,
+    Measurement,
+)
 
 __all__ = [
     # enums
@@ -97,8 +106,19 @@ __all__ = [
     "Workspace",
     # clips
     "ClipLabel",
+    # pacing
+    "PacingSegment",
+    "PacingReport",
     # transitions
     "TransitionType",
     "TransitionPreset",
     "TransitionInstruction",
+    # title cards
+    "TitleCard",
+    # patterns
+    "MaterialItem",
+    "Measurement",
+    "BuildStep",
+    "BuildTip",
+    "BuildData",
 ]

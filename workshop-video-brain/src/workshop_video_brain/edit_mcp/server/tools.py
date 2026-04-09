@@ -973,6 +973,79 @@ def clips_search(workspace_path: str, query: str) -> dict:
         return _err(str(exc))
 
 
+# ---------------------------------------------------------------------------
+# B-Roll tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def broll_suggest(workspace_path: str) -> dict:
+    """Analyze transcript and suggest specific B-roll shots.
+
+    Scans all transcript files in the workspace, detects visual description
+    patterns, and returns categorised B-roll shot suggestions with timestamps,
+    descriptions, and confidence scores.
+
+    Args:
+        workspace_path: Path to the workspace root directory.
+
+    Returns:
+        Suggestions grouped by category with total count and formatted markdown.
+    """
+    try:
+        from workshop_video_brain.production_brain.skills.broll import extract_and_format
+
+        markdown, suggestions = extract_and_format(Path(workspace_path))
+        by_category: dict[str, int] = {}
+        for s in suggestions:
+            by_category[s["category"]] = by_category.get(s["category"], 0) + 1
+        return _ok({
+            "suggestions": suggestions,
+            "count": len(suggestions),
+            "by_category": by_category,
+            "markdown": markdown,
+        })
+    except Exception as exc:
+        return _err(str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Replay tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def replay_generate(workspace_path: str, target_duration: float = 60.0) -> dict:
+    """Generate a highlight-reel replay .kdenlive project from workspace markers.
+
+    Ranks markers by score, greedily selects non-overlapping segments until
+    target_duration is reached, pads each segment by 2 s, merges adjacent
+    segments (gap < 3 s), and writes a versioned .kdenlive file.
+
+    Args:
+        workspace_path: Path to the workspace root directory.
+        target_duration: Target replay duration in seconds (default 60).
+
+    Returns:
+        Path to the generated .kdenlive file and replay report data.
+    """
+    try:
+        from workshop_video_brain.edit_mcp.pipelines.replay_generator import generate_replay
+
+        output_path = generate_replay(
+            workspace_root=Path(workspace_path),
+            target_duration=target_duration,
+        )
+        return _ok({
+            "kdenlive_path": str(output_path),
+            "target_duration": target_duration,
+        })
+    except ValueError as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(str(exc))
+
+
 @mcp.tool()
 def snapshot_restore(workspace_path: str, snapshot_id: str) -> dict:
     """Restore a snapshot by its directory name (timestamp-slug).
@@ -996,6 +1069,155 @@ def snapshot_restore(workspace_path: str, snapshot_id: str) -> dict:
     except FileNotFoundError as exc:
         return _err(f"Snapshot not found: {exc}")
     except ValueError as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Title card tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def title_cards_generate(workspace_path: str) -> dict:
+    """Generate title cards from chapter markers in the workspace.
+
+    Reads chapter_candidate markers from the markers/ directory and produces
+    a list of TitleCard objects, inserting an "Intro" card at the beginning
+    if needed.  The cards are saved to reports/title_cards.json.
+
+    Args:
+        workspace_path: Path to the workspace root directory.
+
+    Returns:
+        List of title cards and the path to the saved JSON file.
+    """
+    try:
+        from workshop_video_brain.edit_mcp.pipelines.title_cards import (
+            generate_title_cards,
+            save_title_cards,
+        )
+
+        workspace_root = Path(workspace_path)
+        cards = generate_title_cards(workspace_root)
+        out_path = save_title_cards(cards, workspace_root)
+        return _ok({
+            "title_cards": [json.loads(c.to_json()) for c in cards],
+            "count": len(cards),
+            "saved_to": str(out_path),
+        })
+    except Exception as exc:
+        return _err(str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Pacing tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def pacing_analyze(workspace_path: str) -> dict:
+    """Analyse pacing and energy for all transcripts in the workspace.
+
+    Divides each transcript into 30-second segments and computes WPM,
+    speech density, word variety, and pace classification. Detects weak
+    intros and energy drops (3+ consecutive slow segments).
+
+    Args:
+        workspace_path: Path to the workspace root directory.
+
+    Returns:
+        Per-file pacing reports with overall stats, segment breakdown,
+        energy drops, and a formatted Markdown summary.
+    """
+    try:
+        from workshop_video_brain.core.models.transcript import Transcript
+        from workshop_video_brain.edit_mcp.pipelines.pacing_analyzer import (
+            analyze_pacing,
+            format_pacing_report,
+        )
+
+        transcripts_dir = Path(workspace_path) / "transcripts"
+        if not transcripts_dir.exists():
+            return _ok({"reports": [], "count": 0})
+
+        reports = []
+        errors = []
+        for json_path in sorted(transcripts_dir.glob("*_transcript.json")):
+            try:
+                transcript = Transcript.from_json(json_path.read_text(encoding="utf-8"))
+                report = analyze_pacing(transcript)
+                markdown = format_pacing_report(report)
+                reports.append({
+                    "file": json_path.name,
+                    "overall_wpm": report.overall_wpm,
+                    "overall_pace": report.overall_pace,
+                    "weak_intro": report.weak_intro,
+                    "energy_drop_count": len(report.energy_drops),
+                    "energy_drops": report.energy_drops,
+                    "segment_count": len(report.segments),
+                    "summary": report.summary,
+                    "markdown": markdown,
+                })
+            except Exception as exc:
+                errors.append(f"{json_path.name}: {exc}")
+
+        return _ok({
+            "reports": reports,
+            "count": len(reports),
+            "errors": errors,
+        })
+    except Exception as exc:
+        return _err(str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Pattern Brain tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def pattern_extract(workspace_path: str) -> dict:
+    """Extract MYOG build data (materials, measurements, steps, tips) from workspace transcripts.
+
+    Reads the first available transcript in the workspace, runs the pattern
+    brain pipeline, and returns extracted build data along with overlay text
+    and a printable build notes markdown document.
+
+    Args:
+        workspace_path: Path to the workspace root directory.
+
+    Returns:
+        Dict with build_data fields, overlay_text list, build_notes_md string,
+        and notes_path where build_notes.md was saved.
+    """
+    try:
+        from workshop_video_brain.production_brain.skills.pattern import (
+            extract_and_format,
+            save_build_notes,
+        )
+
+        ws_path = Path(workspace_path)
+        result = extract_and_format(ws_path)
+        build_data = result["build_data"]
+        overlay_text = result["overlay_text"]
+        build_notes_md = result["build_notes_md"]
+
+        # Auto-save build notes
+        notes_path = save_build_notes(ws_path, build_notes_md)
+
+        return _ok({
+            "project_title": build_data.project_title,
+            "materials": [m.model_dump() for m in build_data.materials],
+            "measurements": [m.model_dump() for m in build_data.measurements],
+            "steps": [s.model_dump() for s in build_data.steps],
+            "tips": [t.model_dump() for t in build_data.tips],
+            "overlay_text": overlay_text,
+            "build_notes_md": build_notes_md,
+            "notes_path": str(notes_path),
+        })
+    except FileNotFoundError as exc:
         return _err(str(exc))
     except Exception as exc:
         return _err(str(exc))

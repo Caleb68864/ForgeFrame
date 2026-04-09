@@ -767,5 +767,203 @@ def clips_search(workspace_path: str, query: str) -> None:
         sys.exit(1)
 
 
+# ---------------------------------------------------------------------------
+# broll group
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def broll() -> None:
+    """B-Roll suggestion commands."""
+
+
+@broll.command("suggest")
+@click.argument("workspace_path")
+def broll_suggest(workspace_path: str) -> None:
+    """Analyse transcripts in WORKSPACE_PATH and print B-roll suggestions."""
+    from pathlib import Path
+    from workshop_video_brain.production_brain.skills.broll import extract_and_format
+
+    try:
+        markdown, suggestions = extract_and_format(Path(workspace_path))
+        if not suggestions:
+            click.echo("No B-roll opportunities detected.")
+            return
+        click.echo(markdown)
+        click.echo(f"Total suggestions: {len(suggestions)}")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# replay group
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def replay() -> None:
+    """Replay / highlight-reel generation commands."""
+
+
+@replay.command("generate")
+@click.argument("workspace_path")
+@click.option("--duration", default=60.0, type=float,
+              help="Target replay duration in seconds (default 60).")
+def generate(workspace_path: str, duration: float) -> None:
+    """Generate a highlight-reel replay for WORKSPACE_PATH."""
+    from pathlib import Path
+    from workshop_video_brain.edit_mcp.pipelines.replay_generator import generate_replay
+
+    try:
+        out = generate_replay(workspace_root=Path(workspace_path), target_duration=duration)
+        click.echo(f"Replay generated: {out}")
+        click.echo(f"  Target duration: {duration}s")
+    except ValueError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# title-cards group
+# ---------------------------------------------------------------------------
+
+
+@main.group("title-cards")
+def title_cards_group() -> None:
+    """Title card generation commands."""
+
+
+@title_cards_group.command("generate")
+@click.argument("workspace_path")
+def title_cards_generate(workspace_path: str) -> None:
+    """Generate title cards from chapter markers in WORKSPACE_PATH."""
+    from pathlib import Path
+    from workshop_video_brain.edit_mcp.pipelines.title_cards import (
+        generate_title_cards,
+        save_title_cards,
+    )
+
+    try:
+        workspace_root = Path(workspace_path)
+        cards = generate_title_cards(workspace_root)
+        out_path = save_title_cards(cards, workspace_root)
+        click.echo(f"Generated {len(cards)} title card(s):")
+        for card in cards:
+            click.echo(
+                f"  [{card.timestamp_seconds:.1f}s] {card.chapter_title}"
+                + (f" -- {card.subtitle}" if card.subtitle else "")
+            )
+        click.echo(f"Saved to: {out_path}")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# pacing group
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def pacing() -> None:
+    """Pacing and energy analysis commands."""
+
+
+@pacing.command("analyze")
+@click.argument("workspace_path")
+def pacing_analyze(workspace_path: str) -> None:
+    """Analyse pacing and energy for all transcripts in WORKSPACE_PATH."""
+    from pathlib import Path
+    from workshop_video_brain.core.models.transcript import Transcript
+    from workshop_video_brain.edit_mcp.pipelines.pacing_analyzer import (
+        analyze_pacing,
+        format_pacing_report,
+    )
+
+    try:
+        transcripts_dir = Path(workspace_path) / "transcripts"
+        if not transcripts_dir.exists():
+            click.echo("No transcripts/ directory found. Run 'media ingest' first.")
+            return
+
+        json_files = sorted(transcripts_dir.glob("*_transcript.json"))
+        if not json_files:
+            click.echo("No transcript JSON files found.")
+            return
+
+        for json_path in json_files:
+            try:
+                transcript = Transcript.from_json(json_path.read_text(encoding="utf-8"))
+                report = analyze_pacing(transcript)
+                markdown = format_pacing_report(report)
+                stem = json_path.stem.replace("_transcript", "")
+                click.echo(f"\n{'='*60}")
+                click.echo(f"  {stem}")
+                click.echo(f"{'='*60}")
+                click.echo(markdown)
+            except Exception as exc:
+                click.echo(f"  Warning: {json_path.name}: {exc}", err=True)
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# wvb group
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def wvb() -> None:
+    """Workshop Video Brain pattern extraction commands."""
+
+
+@wvb.group("pattern")
+def wvb_pattern() -> None:
+    """MYOG Pattern Brain commands."""
+
+
+@wvb_pattern.command("extract")
+@click.argument("workspace_path")
+def wvb_pattern_extract(workspace_path: str) -> None:
+    """Extract MYOG build data from transcripts in WORKSPACE_PATH.
+
+    Reads the first available transcript, extracts materials, measurements,
+    build steps, and tips/warnings, saves build_notes.md to reports/, and
+    prints a summary.
+    """
+    from pathlib import Path
+    from workshop_video_brain.production_brain.skills.pattern import (
+        extract_and_format,
+        save_build_notes,
+    )
+
+    try:
+        ws_path = Path(workspace_path)
+        result = extract_and_format(ws_path)
+        build_data = result["build_data"]
+        build_notes_md = result["build_notes_md"]
+
+        notes_path = save_build_notes(ws_path, build_notes_md)
+
+        click.echo(f"Pattern Brain extraction complete:")
+        click.echo(f"  Materials:    {len(build_data.materials)}")
+        click.echo(f"  Measurements: {len(build_data.measurements)}")
+        click.echo(f"  Steps:        {len(build_data.steps)}")
+        click.echo(f"  Tips:         {len([t for t in build_data.tips if t.tip_type == 'tip'])}")
+        click.echo(f"  Warnings:     {len([t for t in build_data.tips if t.tip_type == 'warning'])}")
+        click.echo(f"  Saved to:     {notes_path}")
+    except FileNotFoundError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     main()
