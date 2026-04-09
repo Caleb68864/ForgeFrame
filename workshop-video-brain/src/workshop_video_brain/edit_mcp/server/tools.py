@@ -2810,3 +2810,63 @@ def forgeframe_status() -> dict:
         return _ok(check_status())
     except Exception as exc:
         return _err(str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Project tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def project_new(
+    title: str,
+    brain_dump: str = "",
+    project_type: str = "tutorial",
+) -> dict:
+    """Create a new video project with workspace, vault note, and production plan.
+
+    If a brain dump is provided, automatically generates outline, script,
+    and shot plan. Creates organized folder structure for media intake.
+
+    Args:
+        title: Project title (e.g., "Zippered Bikepacking Pouch")
+        brain_dump: Optional rough idea/description to kick off planning
+        project_type: Type of video: tutorial, review, vlog, build
+    """
+    try:
+        if not title or not title.strip():
+            return _err("title must be a non-empty string")
+        from workshop_video_brain.edit_mcp.pipelines.new_project import create_new_project
+        result = create_new_project(
+            title=title,
+            brain_dump=brain_dump,
+            project_type=project_type,
+        )
+        return _ok({
+            "project_title": result.project_title,
+            "project_slug": result.project_slug,
+            "workspace_path": result.workspace_path,
+            "vault_note_path": result.vault_note_path,
+            "media_folders_created": result.media_folders_created,
+            "outline_generated": result.outline_generated,
+            "script_generated": result.script_generated,
+            "shot_plan_generated": result.shot_plan_generated,
+            "brain_dump": result.brain_dump,
+        })
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def project_list() -> dict:
+    """List all ForgeFrame projects with their status.
+
+    Scans the configured projects root for workspace.yaml files and returns
+    project names, statuses, and paths.
+    """
+    try:
+        from workshop_video_brain.edit_mcp.pipelines.new_project import list_projects
+        projects = list_projects()
+        return _ok({"projects": projects, "count": len(projects)})
+    except Exception as exc:
+        return _err(str(exc))

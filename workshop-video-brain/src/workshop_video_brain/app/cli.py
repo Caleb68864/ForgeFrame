@@ -1608,5 +1608,134 @@ def init_quick(vault_path: str, projects_root: str) -> None:
     click.echo(f"  Media folders: {len(result.media_folders_created)} created")
 
 
+# ---------------------------------------------------------------------------
+# new-project and list-projects top-level commands
+# ---------------------------------------------------------------------------
+
+
+@main.command("new-project")
+@click.argument("title")
+@click.option("--brain-dump", "-b", default="", help="Rough idea to start planning from")
+@click.option("--type", "project_type", default="tutorial",
+              type=click.Choice(["tutorial", "review", "vlog", "build"]))
+def new_project(title: str, brain_dump: str, project_type: str) -> None:
+    """Create a new video project and start the planning process.
+
+    Examples:
+
+        wvb new-project "Zippered Pouch Tutorial"
+
+        wvb new-project "Stove Bag Build" -b "Make a lightweight alcohol stove bag from X-Pac"
+    """
+    from workshop_video_brain.edit_mcp.pipelines.new_project import create_new_project
+    from pathlib import Path
+
+    click.echo(f"\nCreating project: {title}")
+    click.echo("=" * (len("Creating project: ") + len(title)))
+    click.echo()
+
+    try:
+        result = create_new_project(
+            title=title,
+            brain_dump=brain_dump,
+            project_type=project_type,
+        )
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    # Workspace section
+    workspace_display = result.workspace_path
+    try:
+        workspace_display = str(Path(result.workspace_path).relative_to(Path.home().parent.parent))
+    except ValueError:
+        pass
+    try:
+        workspace_display = "~/" + str(Path(result.workspace_path).relative_to(Path.home()))
+    except ValueError:
+        pass
+
+    click.echo(f"Workspace: {workspace_display}/")
+    click.echo("  \u2713 Folder structure created")
+    click.echo("  \u2713 Intake folder ready (drop raw files here)")
+    click.echo()
+
+    # Vault note section
+    if result.vault_note_path:
+        note_display = result.vault_note_path
+        try:
+            note_display = "~/" + str(Path(result.vault_note_path).relative_to(Path.home()))
+        except ValueError:
+            pass
+        click.echo(f"Vault note: {note_display}")
+        if brain_dump:
+            click.echo("  \u2713 Note created with brain dump")
+        else:
+            click.echo("  \u2713 Note created")
+        click.echo()
+    else:
+        click.echo("Vault note: (skipped — no vault path configured)")
+        click.echo()
+
+    # Planning section
+    if brain_dump:
+        click.echo("Planning from brain dump...")
+        if result.outline_generated:
+            click.echo("  \u2713 Outline generated")
+        if result.script_generated:
+            click.echo("  \u2713 Script drafted")
+        if result.shot_plan_generated:
+            click.echo("  \u2713 Shot plan created")
+        click.echo()
+
+    # Next steps
+    click.echo("Next steps:")
+    step = 1
+    if result.vault_note_path:
+        note_disp = result.vault_note_path
+        try:
+            note_disp = "~/" + str(Path(result.vault_note_path).relative_to(Path.home()))
+        except ValueError:
+            pass
+        click.echo(f"  {step}. Review the outline: open {note_disp}")
+        step += 1
+    ws_disp = result.workspace_path
+    try:
+        ws_disp = "~/" + str(Path(result.workspace_path).relative_to(Path.home()))
+    except ValueError:
+        pass
+    click.echo(f"  {step}. Drop raw footage into {ws_disp}/intake/")
+    step += 1
+    click.echo(f"  {step}. Run: wvb media ingest {ws_disp}/")
+    click.echo()
+
+
+@main.command("list-projects")
+def list_projects() -> None:
+    """List all ForgeFrame video projects."""
+    from workshop_video_brain.edit_mcp.pipelines.new_project import list_projects as _list_projects
+
+    try:
+        projects = _list_projects()
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    if not projects:
+        click.echo("No projects found.")
+        click.echo("Run 'wvb new-project \"My Title\"' to create your first project.")
+        return
+
+    click.echo(f"Projects ({len(projects)}):")
+    click.echo()
+    for p in projects:
+        click.echo(f"  {p['name']}")
+        click.echo(f"    Status: {p['status']}")
+        click.echo(f"    Path:   {p['workspace_path']}")
+        if p.get("vault_note_path"):
+            click.echo(f"    Note:   {p['vault_note_path']}")
+        click.echo()
+
+
 if __name__ == "__main__":
     main()
