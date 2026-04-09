@@ -3501,3 +3501,489 @@ def youtube_save_to_vault(channel_url: str, max_videos: int = 50) -> dict:
         })
     except Exception as exc:
         return _err(str(exc))
+
+
+@mcp.tool()
+def project_archive(
+    workspace_path: str,
+    output_dir: str,
+    include_renders: bool = True,
+    include_raw: bool = False,
+    format: str = "tar.gz",
+) -> dict:
+    """Archive the workspace into a tar.gz or zip file."""
+    from workshop_video_brain.edit_mcp.pipelines.archive import create_archive
+    try:
+        manifest = create_archive(
+            Path(workspace_path),
+            Path(output_dir),
+            include_renders=include_renders,
+            include_raw=include_raw,
+            format=format,
+        )
+        return _ok(manifest.model_dump())
+    except Exception as e:
+        return _err(str(e))
+
+
+@mcp.tool()
+def color_analyze(file_path: str) -> dict:
+    """Analyze color metadata of a media file.
+
+    Returns color space, primaries, transfer characteristics, HDR detection,
+    and actionable recommendations for delivery workflows.
+    """
+    from workshop_video_brain.edit_mcp.pipelines.color_tools import analyze_color
+
+    p = Path(file_path)
+    if not p.exists():
+        return _err(f"File not found: {file_path}")
+
+    analysis = analyze_color(p)
+    return _ok(analysis.model_dump())
+
+
+@mcp.tool()
+def color_apply_lut(
+    workspace_path: str,
+    project_file: str,
+    track: int,
+    clip: int,
+    lut_path: str,
+) -> dict:
+    """Apply a LUT file to a clip in a Kdenlive project.
+
+    Creates a snapshot before modifying the project. The LUT is applied via
+    the avfilter.lut3d effect and appended to any existing effects on the clip.
+    """
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
+    from workshop_video_brain.edit_mcp.pipelines.color_tools import apply_lut_to_project
+    from workshop_video_brain.workspace.manager import WorkspaceManager
+
+    try:
+        ws_path, workspace = _require_workspace(workspace_path)
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+
+    project_path = ws_path / project_file
+    if not project_path.exists():
+        return _err(f"Project file not found: {project_file}")
+
+    lut = Path(lut_path)
+    if not lut.exists():
+        return _err(f"LUT file not found: {lut_path}")
+
+    # Snapshot before modify
+    WorkspaceManager.create_snapshot(ws_path, f"before_lut_{lut.stem}")
+
+    project = parse_project(project_path)
+    try:
+        patched = apply_lut_to_project(project, track, clip, str(lut))
+    except (IndexError, ValueError) as exc:
+        return _err(f"Failed to apply LUT: {exc}")
+
+    serialize_project(patched, project_path)
+    return _ok({
+        "project_file": project_file,
+        "track": track,
+        "clip": clip,
+        "lut_applied": str(lut),
+    })
+
+
+# ---------------------------------------------------------------------------
+# VFR Detection tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def media_check_vfr(workspace_path: str) -> dict:
+    """Scan workspace for variable frame rate (VFR) video files.
+
+    VFR media causes audio drift and editing artifacts. This tool identifies
+    files that need transcode to constant frame rate before editing.
+
+    Args:
+        workspace_path: Absolute path to the workspace root directory.
+
+    Returns:
+        Report with files_checked count, list of VFR files with divergence
+        details, and all_cfr flag.
+    """
+    try:
+        ws_root = _validate_workspace_path(workspace_path)
+        from workshop_video_brain.edit_mcp.pipelines.vfr_check import check_vfr
+        from dataclasses import asdict
+        report = check_vfr(ws_root)
+        data = asdict(report)
+        return _ok(data)
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(f"VFR check failed: {exc}")
+
+
+@mcp.tool()
+def media_transcode_cfr(
+    workspace_path: str,
+    file_path: str,
+    target_fps: int = 0,
+) -> dict:
+    """Transcode a VFR video file to constant frame rate (CFR).
+
+    Produces a new file alongside the source with a '_cfr' suffix.
+
+    Args:
+        workspace_path: Absolute path to the workspace root directory.
+        file_path: Path to the VFR file (absolute or relative to workspace).
+        target_fps: Target frame rate. Use 0 to auto-detect from source.
+
+    Returns:
+        Path to the new CFR file.
+    """
+    try:
+        ws_root = _validate_workspace_path(workspace_path)
+        source = Path(file_path)
+        if not source.is_absolute():
+            source = ws_root / source
+        if not source.exists():
+            return _err(f"Source file not found: {source}")
+
+        from workshop_video_brain.edit_mcp.pipelines.vfr_check import transcode_to_cfr
+        fps = target_fps if target_fps > 0 else None
+        output = transcode_to_cfr(source, target_fps=fps)
+        return _ok({"output_path": str(output), "target_fps": target_fps or "auto"})
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+    except RuntimeError as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(f"Transcode failed: {exc}")
+
+
+@mcp.tool()
+def effect_add(
+    workspace_path: str,
+    project_file: str,
+    track: int,
+    clip: int,
+    effect_name: str,
+    params: str = "",
+) -> dict:
+    """Add a named effect to a clip in a Kdenlive project.
+
+    effect_name is any MLT service identifier (e.g. 'avfilter.eq',
+    'lift_gamma_gain'). params is a JSON string of key-value pairs
+    (e.g. '{"av.brightness": "0.1"}') or empty for effect defaults.
+    Snapshot is created before modifying the project.
+    """
+    import json as _json
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
+    from workshop_video_brain.edit_mcp.pipelines.effect_apply import apply_effect
+    from workshop_video_brain.workspace.manager import WorkspaceManager
+
+    try:
+        ws_path, workspace = _require_workspace(workspace_path)
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+
+    project_path = ws_path / project_file
+    if not project_path.exists():
+        return _err(f"Project file not found: {project_file}")
+
+    if not effect_name or not effect_name.strip():
+        return _err("effect_name must be a non-empty string")
+
+    # Parse params JSON
+    param_dict: dict[str, str] = {}
+    if params.strip():
+        try:
+            param_dict = _json.loads(params)
+        except _json.JSONDecodeError as exc:
+            return _err(f"Invalid params JSON: {exc}")
+
+    # Snapshot before modify
+    WorkspaceManager.create_snapshot(ws_path, f"before_effect_{effect_name}")
+
+    project = parse_project(project_path)
+    try:
+        patched = apply_effect(project, track, clip, effect_name, param_dict)
+    except (IndexError, ValueError) as exc:
+        return _err(f"Failed to apply effect: {exc}")
+
+    serialize_project(patched, project_path)
+    return _ok({
+        "project_file": project_file,
+        "track": track,
+        "clip": clip,
+        "effect_name": effect_name,
+        "params": param_dict,
+    })
+
+
+@mcp.tool()
+def effect_list_common() -> dict:
+    """List common Kdenlive/MLT effects with descriptions.
+
+    This is an informational reference -- any effect name can be used
+    with effect_add regardless of whether it appears in this list.
+    """
+    from workshop_video_brain.edit_mcp.pipelines.effect_apply import list_common_effects
+
+    return _ok({"effects": list_common_effects()})
+
+
+# ---------------------------------------------------------------------------
+# Render tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def render_final_tool(
+    workspace_path: str,
+    profile: str,
+    output_name: str = "",
+    project_file: str = "",
+) -> dict:
+    """Render the workspace project using a named render profile.
+
+    Creates a full-quality render of the latest .kdenlive project file
+    in the workspace using the specified profile (e.g. "youtube-1080p",
+    "master-prores").
+
+    Args:
+        workspace_path: Absolute path to the workspace root directory.
+        profile: Render profile name (see render_list_profiles for options).
+        output_name: Optional base name for the output file. Defaults to
+                     the profile name with a timestamp.
+
+    Returns:
+        RenderResult with output_path, profile_used, duration_seconds,
+        file_size_bytes, and codec_info.
+    """
+    try:
+        ws_root = _validate_workspace_path(workspace_path)
+        from workshop_video_brain.edit_mcp.pipelines.render_final import (
+            render_final as _render_final,
+        )
+        from dataclasses import asdict
+
+        name = output_name.strip() if output_name else None
+        proj = project_file.strip() if project_file else None
+        result = _render_final(ws_root, profile, output_name=name, project_file=proj)
+
+        data = asdict(result)
+        data["output_path"] = str(data["output_path"])
+        return _ok(data)
+    except FileNotFoundError as exc:
+        return _err(str(exc))
+    except RuntimeError as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(f"Render failed: {exc}")
+
+
+@mcp.tool()
+def render_list_profiles() -> dict:
+    """List all available render profiles with their names.
+
+    Returns a list of profile names that can be passed to render_final.
+    Profiles include platform-specific presets (youtube-1080p, youtube-4k,
+    vimeo-hq) and master formats (master-prores, master-dnxhr).
+
+    Returns:
+        List of profile name strings.
+    """
+    try:
+        from workshop_video_brain.edit_mcp.adapters.render.profiles import (
+            list_profiles,
+            load_profile,
+        )
+        names = list_profiles()
+        profiles = []
+        for name in names:
+            try:
+                p = load_profile(name)
+                profiles.append({
+                    "name": name,
+                    "codec": p.video_codec,
+                    "resolution": f"{p.width}x{p.height}",
+                    "fps": p.fps,
+                })
+            except Exception:
+                profiles.append({"name": name, "codec": "unknown"})
+        return _ok({"profiles": profiles})
+    except Exception as exc:
+        return _err(f"Failed to list profiles: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# Project profile tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def project_setup_profile(
+    workspace_path: str,
+    width: int,
+    height: int,
+    fps_num: int,
+    fps_den: int,
+    colorspace: int = 709,
+) -> dict:
+    """Set up project profile (resolution, fps, colorspace).
+
+    Args:
+        workspace_path: Path to workspace root.
+        width: Frame width in pixels.
+        height: Frame height in pixels.
+        fps_num: Frame rate numerator (e.g. 30 for 30fps, 30000 for 29.97).
+        fps_den: Frame rate denominator (e.g. 1 for 30fps, 1001 for 29.97).
+        colorspace: ITU colorspace code: 601, 709 (default), or 240.
+    """
+    from workshop_video_brain.edit_mcp.pipelines.project_profile import set_project_profile
+    try:
+        ws_path, project, latest = _load_latest_project(workspace_path)
+        updated = set_project_profile(project, width, height, fps_num, fps_den, colorspace)
+        out_path = _save_patched(ws_path, updated, workspace_path)
+        return _ok({
+            "kdenlive_path": str(out_path),
+            "width": width,
+            "height": height,
+            "fps_num": fps_num,
+            "fps_den": fps_den,
+            "colorspace": colorspace,
+        })
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def project_match_source(workspace_path: str, source_file: str) -> dict:
+    """Probe a source file and return recommended project profile settings.
+
+    Args:
+        workspace_path: Path to workspace root.
+        source_file: Path to source media file, relative to workspace root.
+    """
+    from workshop_video_brain.edit_mcp.pipelines.project_profile import match_profile_to_source
+    try:
+        source_path = Path(workspace_path) / source_file
+        result = match_profile_to_source(source_path)
+        return _ok(result)
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def qc_check(file_path: str, checks: str = "") -> dict:
+    """Run automated quality checks on a rendered media file.
+
+    Checks: black_frames, silence, loudness, clipping, file_size.
+    Pass a comma-separated subset or leave empty for all checks.
+    """
+    from workshop_video_brain.edit_mcp.pipelines.qc_check import run_qc
+
+    p = Path(file_path)
+    if not p.exists():
+        return _err(f"File not found: {file_path}")
+
+    check_list: list[str] | None = None
+    if checks.strip():
+        check_list = [c.strip() for c in checks.split(",") if c.strip()]
+
+    report = run_qc(p, check_list)
+    return _ok(report.model_dump())
+
+
+# ---------------------------------------------------------------------------
+# Compositing tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def composite_pip(
+    workspace_path: str,
+    project_file: str,
+    overlay_track: int,
+    base_track: int,
+    start_frame: int,
+    end_frame: int,
+    preset: str = "bottom_right",
+    scale: float = 0.25,
+) -> dict:
+    """Add a picture-in-picture composite to the project."""
+    from workshop_video_brain.core.models.compositing import PipPreset
+    from workshop_video_brain.edit_mcp.pipelines.compositing import get_pip_layout, apply_pip
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
+    from workshop_video_brain.workspace.manager import WorkspaceManager
+
+    try:
+        ws_path, workspace = _require_workspace(workspace_path)
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+
+    proj_path = ws_path / project_file
+    if not proj_path.exists():
+        return _err(f"Project file not found: {project_file}")
+
+    try:
+        pip_preset = PipPreset(preset)
+    except ValueError:
+        return _err(f"Invalid preset '{preset}'; valid values: {[p.value for p in PipPreset]}")
+
+    WorkspaceManager.create_snapshot(ws_path, f"before_pip_{preset}")
+
+    project = parse_project(proj_path)
+    try:
+        layout = get_pip_layout(pip_preset, project.profile.width, project.profile.height, scale)
+        updated = apply_pip(project, overlay_track, base_track, start_frame, end_frame, layout)
+    except (ValueError, KeyError) as exc:
+        return _err(str(exc))
+
+    serialize_project(updated, proj_path)
+    return _ok({"preset": preset, "layout": layout.model_dump(), "frames": [start_frame, end_frame]})
+
+
+@mcp.tool()
+def composite_wipe(
+    workspace_path: str,
+    project_file: str,
+    track_a: int,
+    track_b: int,
+    start_frame: int,
+    end_frame: int,
+    wipe_type: str = "dissolve",
+) -> dict:
+    """Add a wipe or dissolve transition between two tracks."""
+    from workshop_video_brain.edit_mcp.pipelines.compositing import apply_wipe
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
+    from workshop_video_brain.workspace.manager import WorkspaceManager
+
+    try:
+        ws_path, workspace = _require_workspace(workspace_path)
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+
+    proj_path = ws_path / project_file
+    if not proj_path.exists():
+        return _err(f"Project file not found: {project_file}")
+
+    WorkspaceManager.create_snapshot(ws_path, f"before_wipe_{wipe_type}")
+
+    project = parse_project(proj_path)
+    try:
+        updated = apply_wipe(project, track_a, track_b, start_frame, end_frame, wipe_type)
+    except ValueError as exc:
+        return _err(str(exc))
+
+    serialize_project(updated, proj_path)
+    return _ok({"wipe_type": wipe_type, "frames": [start_frame, end_frame]})

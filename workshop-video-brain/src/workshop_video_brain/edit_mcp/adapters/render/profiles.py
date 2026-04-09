@@ -31,6 +31,8 @@ class RenderProfile(SerializableMixin):
     audio_codec: str = "aac"
     audio_bitrate: str = "192k"
     extra_args: list[str] = Field(default_factory=list)
+    fast_start: bool = False
+    movflags: str | None = None
 
 
 def load_profile(

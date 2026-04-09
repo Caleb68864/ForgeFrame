@@ -1,0 +1,13 @@
+name: vimeo-hq
+width: 1920
+height: 1080
+fps: 30
+video_codec: prores_ks
+video_bitrate: "0"
+audio_codec: aac
+audio_bitrate: "320k"
+extra_args:
+  - "-profile:v"
+  - "3"
+  - "-pix_fmt"
+  - "yuv422p10le"

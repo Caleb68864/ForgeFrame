@@ -4,7 +4,9 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from workshop_video_brain.core.models import MediaAsset
@@ -15,6 +17,15 @@ DEFAULT_EXTENSIONS: set[str] = {
     ".mp4", ".mkv", ".mov", ".avi", ".webm",
     ".mts", ".m2ts", ".mp3", ".wav", ".flac",
 }
+
+
+def _parse_frame_rate(rate_str: str) -> float:
+    """Parse 'num/den' frame rate string to float."""
+    try:
+        num, den = rate_str.split("/")
+        return int(num) / int(den) if int(den) != 0 else 0.0
+    except (ValueError, ZeroDivisionError):
+        return 0.0
 
 
 def probe_media(path: Path) -> MediaAsset:
@@ -65,6 +76,20 @@ def probe_media(path: Path) -> MediaAsset:
     except (ValueError, ZeroDivisionError):
         pass
 
+    # VFR detection: compare r_frame_rate vs avg_frame_rate
+    avg_frame_rate = video_stream.get("avg_frame_rate", "0/1")
+    r_fps = _parse_frame_rate(r_frame_rate)
+    avg_fps = _parse_frame_rate(avg_frame_rate)
+    is_vfr = False
+    if r_fps > 0 and avg_fps > 0:
+        divergence = abs(r_fps - avg_fps) / max(r_fps, avg_fps)
+        is_vfr = divergence > 0.05
+
+    # Color metadata
+    color_space = video_stream.get("color_space")
+    color_primaries = video_stream.get("color_primaries")
+    color_transfer = video_stream.get("color_transfer")
+
     # Bitrate in bits/s
     bitrate = int(fmt.get("bit_rate") or 0)
 
@@ -114,6 +139,10 @@ def probe_media(path: Path) -> MediaAsset:
         file_size=file_size,
         file_size_bytes=file_size,
         hash=file_hash,
+        is_vfr=is_vfr,
+        color_space=color_space,
+        color_primaries=color_primaries,
+        color_transfer=color_transfer,
     )
 
 
@@ -151,3 +180,43 @@ def scan_directory(
             logger.warning("Failed to probe %s: %s", path, exc)
 
     return assets
+
+
+@dataclass
+class LoudnessResult:
+    """Loudness measurement result."""
+    input_i: float    # Integrated loudness (LUFS)
+    input_tp: float   # True peak (dBTP)
+    input_lra: float  # Loudness range (LU)
+
+
+def measure_loudness(path: Path) -> LoudnessResult | None:
+    """Measure integrated loudness, true peak, and loudness range using FFmpeg loudnorm filter.
+
+    Returns LoudnessResult with input_i (LUFS), input_tp (dBTP), input_lra (LU).
+    Returns None on failure.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-i", str(path),
+                "-af", "loudnorm=print_format=json",
+                "-f", "null", "-"
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        # loudnorm JSON is in stderr
+        match = re.search(r'\{[^}]*"input_i"[^}]*\}', result.stderr, re.DOTALL)
+        if match:
+            data = json.loads(match.group())
+            return LoudnessResult(
+                input_i=float(data.get("input_i", 0)),
+                input_tp=float(data.get("input_tp", 0)),
+                input_lra=float(data.get("input_lra", 0)),
+            )
+        return None
+    except Exception:
+        logger.warning("Loudness measurement failed for %s", path)
+        return None

@@ -24,6 +24,10 @@
     {
       "name": "ff-rough-cut-review",
       "path": "skills/ff-rough-cut-review"
+    },
+    {
+      "name": "ff-capture-prep",
+      "path": "skills/ff-capture-prep"
     }
   ]
 }

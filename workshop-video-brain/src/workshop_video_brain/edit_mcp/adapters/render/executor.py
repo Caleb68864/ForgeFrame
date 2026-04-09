@@ -21,6 +21,38 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT_SECONDS = 1800
 
 
+def check_codec_available(codec_name: str) -> bool:
+    """Check if an FFmpeg encoder is available on this system.
+
+    Runs ``ffmpeg -codecs`` and searches for the codec name in the output.
+
+    Args:
+        codec_name: Encoder name, e.g. "libx264", "prores_ks", "dnxhd".
+
+    Returns:
+        True if the codec is listed in FFmpeg's codec output, False otherwise.
+    """
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-codecs"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        # Each codec line looks like: " DEV.L. libx264   description..."
+        # Search for the codec name as a whole word
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 2:
+                # The codec name is typically the second token after the flags
+                if codec_name in parts:
+                    return True
+        return False
+    except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+        logger.warning("Could not check codec availability for '%s'", codec_name)
+        return False
+
+
 def execute_render(
     job: RenderJob,
     profile: RenderProfile,

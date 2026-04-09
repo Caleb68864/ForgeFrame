@@ -25,6 +25,8 @@ from .planning import MaterialList, ReviewNote, ScriptDraft, Shot, ShotPlan
 from .project import RenderJob, SnapshotRecord, VideoProject
 from .timeline import (
     AddClip,
+    AddComposition,
+    AddEffect,
     AddGuide,
     AddSubtitleRegion,
     AddTransition,
@@ -62,6 +64,10 @@ from .broll_library import BRollEntry, BRollLibrary
 from .publishing import PublishBundle, TitleVariants, VideoSummary
 from .social import ClipCandidate, ClipExport, SocialPost
 from .youtube import YouTubeVideo, ChannelStats, VideoAnalytics
+from .archive import ArchiveManifest
+from .color import ColorAnalysis
+from .compositing import PipPreset, PipLayout
+from .qc import QCReport, TimeRange
 
 __all__ = [
     # enums
@@ -107,6 +113,8 @@ __all__ = [
     "AudioFade",
     "SetTrackMute",
     "SetTrackVisibility",
+    "AddEffect",
+    "AddComposition",
     # kdenlive models
     "KdenliveProject",
     "ProjectProfile",
@@ -161,4 +169,14 @@ __all__ = [
     "YouTubeVideo",
     "ChannelStats",
     "VideoAnalytics",
+    # archive
+    "ArchiveManifest",
+    # color
+    "ColorAnalysis",
+    # qc
+    "QCReport",
+    "TimeRange",
+    # compositing
+    "PipPreset",
+    "PipLayout",
 ]

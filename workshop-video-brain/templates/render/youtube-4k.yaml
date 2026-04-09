@@ -1,0 +1,17 @@
+name: youtube-4k
+width: 3840
+height: 2160
+fps: 30
+video_codec: libx264
+video_bitrate: "35M"
+audio_codec: aac
+audio_bitrate: "192k"
+fast_start: true
+movflags: "+faststart"
+extra_args:
+  - "-profile:v"
+  - "high"
+  - "-pix_fmt"
+  - "yuv420p"
+  - "-movflags"
+  - "+faststart"

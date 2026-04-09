@@ -20,6 +20,8 @@ from workshop_video_brain.core.models.kdenlive import (
 )
 from workshop_video_brain.core.models.timeline import (
     AddClip,
+    AddComposition,
+    AddEffect,
     AddGuide,
     AddSubtitleRegion,
     AddTransition,
@@ -170,6 +172,10 @@ def patch_project(
             _apply_set_track_mute(new_project, intent)
         elif isinstance(intent, SetTrackVisibility):
             _apply_set_track_visibility(new_project, intent)
+        elif isinstance(intent, AddEffect):
+            _apply_add_effect(new_project, intent)
+        elif isinstance(intent, AddComposition):
+            _apply_add_composition(new_project, intent)
         elif isinstance(intent, AddTransition):
             # Take a snapshot before applying the first transition
             if not _snapshot_taken and workspace_root and project_path:
@@ -679,6 +685,100 @@ def _apply_set_track_visibility(project: KdenliveProject, intent: SetTrackVisibi
     logger.info(
         "SetTrackVisibility: track '%s' visible=%s",
         intent.track_ref, intent.visible,
+    )
+
+
+def _apply_add_effect(project: KdenliveProject, intent: AddEffect) -> None:
+    """Insert an MLT filter element for a clip on a track.
+
+    Builds a <filter mlt_service="..."> XML element with <property> children
+    for each param, and appends it as an OpaqueElement.
+    """
+    # Resolve track by index
+    if intent.track_index < 0 or intent.track_index >= len(project.playlists):
+        logger.warning(
+            "AddEffect: track_index %d out of range (have %d playlists) -- skipped.",
+            intent.track_index, len(project.playlists),
+        )
+        return
+
+    playlist = project.playlists[intent.track_index]
+    real_entries = [e for e in playlist.entries if e.producer_id]
+
+    if intent.clip_index < 0 or intent.clip_index >= len(real_entries):
+        logger.warning(
+            "AddEffect: clip_index %d out of range (playlist '%s' has %d clips) -- skipped.",
+            intent.clip_index, playlist.id, len(real_entries),
+        )
+        return
+
+    entry = real_entries[intent.clip_index]
+
+    # Build filter XML
+    # Filters are OpaqueElement objects with position_hint="after_tractor",
+    # matching the existing SetClipSpeed and AudioFade patterns in the patcher.
+    props_xml = "".join(
+        f'<property name="{k}">{v}</property>' for k, v in intent.params.items()
+    )
+    filter_id = f"effect_{intent.track_index}_{intent.clip_index}_{intent.effect_name}"
+    xml = (
+        f'<filter id="{filter_id}" '
+        f'mlt_service="{intent.effect_name}" '
+        f'track="{intent.track_index}" '
+        f'clip_index="{intent.clip_index}">'
+        f'{props_xml}'
+        f'</filter>'
+    )
+
+    element = OpaqueElement(
+        tag="filter",
+        xml_string=xml,
+        position_hint="after_tractor",
+    )
+    project.opaque_elements.append(element)
+    logger.info(
+        "AddEffect: applied '%s' to clip %d on track '%s'",
+        intent.effect_name, intent.clip_index, playlist.id,
+    )
+
+
+def _apply_add_composition(project: KdenliveProject, intent: AddComposition) -> None:
+    """Insert an MLT transition element between two tracks.
+
+    Builds a <transition mlt_service="..."> element with a_track, b_track,
+    in, out properties plus any extra params, and appends it as an OpaqueElement.
+    """
+    # Build core properties
+    props = {
+        "a_track": str(intent.track_a),
+        "b_track": str(intent.track_b),
+        "in": str(intent.start_frame),
+        "out": str(intent.end_frame),
+    }
+    # Merge extra params (extra params cannot override core keys)
+    for k, v in intent.params.items():
+        if k not in props:
+            props[k] = v
+
+    props_xml = "".join(
+        f'<property name="{k}">{v}</property>' for k, v in props.items()
+    )
+    xml = (
+        f'<transition mlt_service="{intent.composition_type}">'
+        f'{props_xml}'
+        f'</transition>'
+    )
+
+    element = OpaqueElement(
+        tag="transition",
+        xml_string=xml,
+        position_hint="after_tractor",
+    )
+    project.opaque_elements.append(element)
+    logger.info(
+        "AddComposition: applied '%s' between tracks %d and %d (frames %d-%d)",
+        intent.composition_type, intent.track_a, intent.track_b,
+        intent.start_frame, intent.end_frame,
     )
 
 

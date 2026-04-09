@@ -129,3 +129,29 @@ class SetTrackVisibility(TimelineIntent):
     """Show or hide a video track."""
     track_ref: str = ""
     visible: bool = True
+
+
+class AddEffect(TimelineIntent):
+    """Apply an MLT filter (effect) to a clip on a track.
+
+    The patcher inserts a <filter mlt_service="{effect_name}"> element
+    with <property> children for each entry in params.
+    """
+    track_index: int = 0
+    clip_index: int = 0
+    effect_name: str = ""
+    params: dict[str, str] = Field(default_factory=dict)
+
+
+class AddComposition(TimelineIntent):
+    """Insert an MLT transition (composition) between two tracks.
+
+    The patcher inserts a <transition mlt_service="{composition_type}">
+    element with a_track, b_track, in, out properties and any extra params.
+    """
+    track_a: int = 0
+    track_b: int = 0
+    start_frame: int = 0
+    end_frame: int = 0
+    composition_type: str = ""
+    params: dict[str, str] = Field(default_factory=dict)

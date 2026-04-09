@@ -1,0 +1,13 @@
+name: master-prores
+width: 1920
+height: 1080
+fps: 30
+video_codec: prores_ks
+video_bitrate: "0"
+audio_codec: pcm_s24le
+audio_bitrate: "0"
+extra_args:
+  - "-profile:v"
+  - "3"
+  - "-pix_fmt"
+  - "yuv422p10le"

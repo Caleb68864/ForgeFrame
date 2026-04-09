@@ -38,3 +38,7 @@ class MediaAsset(SerializableMixin):
     proxy_status: ProxyStatus = ProxyStatus.not_needed
     transcript_status: TranscriptStatus = TranscriptStatus.pending
     analysis_status: AnalysisStatus = AnalysisStatus.pending
+    is_vfr: bool = False
+    color_space: str | None = None
+    color_primaries: str | None = None
+    color_transfer: str | None = None

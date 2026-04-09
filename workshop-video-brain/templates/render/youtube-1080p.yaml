@@ -1,0 +1,17 @@
+name: youtube-1080p
+width: 1920
+height: 1080
+fps: 30
+video_codec: libx264
+video_bitrate: "8M"
+audio_codec: aac
+audio_bitrate: "192k"
+fast_start: true
+movflags: "+faststart"
+extra_args:
+  - "-profile:v"
+  - "high"
+  - "-pix_fmt"
+  - "yuv420p"
+  - "-movflags"
+  - "+faststart"

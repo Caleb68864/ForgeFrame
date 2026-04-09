@@ -1,0 +1,13 @@
+name: master-dnxhr
+width: 1920
+height: 1080
+fps: 30
+video_codec: dnxhd
+video_bitrate: "0"
+audio_codec: pcm_s24le
+audio_bitrate: "0"
+extra_args:
+  - "-profile:v"
+  - "dnxhr_hqx"
+  - "-pix_fmt"
+  - "yuv422p10le"
