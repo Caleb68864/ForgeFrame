@@ -7,6 +7,7 @@ WORKSPACE_FOLDERS: list[str] = [
     "media/raw",
     "media/proxies",
     "media/derived_audio",
+    "media/processed",
     "transcripts",
     "markers",
     "projects/source",

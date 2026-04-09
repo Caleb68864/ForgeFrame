@@ -1393,5 +1393,105 @@ def assembly_build_cmd(
     click.echo(f"  Report:  {d['assembly_report_path']}")
 
 
+# ---------------------------------------------------------------------------
+# audio group -- processing commands (extends existing audio group above)
+# ---------------------------------------------------------------------------
+
+
+@audio.command("enhance")
+@click.argument("workspace_path")
+@click.option("--file", "file_path", default="", help="Path to audio file (default: latest in media/raw/).")
+@click.option("--preset", default="youtube_voice",
+              type=click.Choice(["youtube_voice", "podcast", "raw_cleanup"]),
+              help="Enhancement preset (default: youtube_voice).")
+def audio_enhance_cmd(workspace_path: str, file_path: str, preset: str) -> None:
+    """Apply full voice enhancement pipeline to an audio file in WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import audio_enhance
+
+    result = audio_enhance(workspace_path, file_path, preset)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Enhancement complete ({d['preset']} preset, {d['steps_count']} steps).")
+    click.echo(f"  Input:  {d['input']}")
+    click.echo(f"  Output: {d['output']}")
+
+
+@audio.command("normalize")
+@click.argument("workspace_path")
+@click.option("--file", "file_path", default="", help="Path to audio file (default: latest in media/raw/).")
+@click.option("--lufs", "target_lufs", default=-16.0, type=float, help="Target LUFS (default: -16.0).")
+def audio_normalize_cmd(workspace_path: str, file_path: str, target_lufs: float) -> None:
+    """Normalize audio loudness in WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import audio_normalize
+
+    result = audio_normalize(workspace_path, file_path, target_lufs)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Normalized to {d['target_lufs']} LUFS ({d['duration_ms']:.0f}ms).")
+    click.echo(f"  Input:  {d['input']}")
+    click.echo(f"  Output: {d['output']}")
+
+
+@audio.command("denoise")
+@click.argument("workspace_path")
+@click.option("--file", "file_path", default="", help="Path to audio file (default: latest in media/raw/).")
+@click.option("--strength", "strength_db", default=-25.0, type=float,
+              help="Noise floor in dB (default: -25.0).")
+def audio_denoise_cmd(workspace_path: str, file_path: str, strength_db: float) -> None:
+    """Remove background noise from audio in WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import audio_denoise
+
+    result = audio_denoise(workspace_path, file_path, strength_db)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Denoised (floor {d['strength_db']} dB, {d['duration_ms']:.0f}ms).")
+    click.echo(f"  Input:  {d['input']}")
+    click.echo(f"  Output: {d['output']}")
+
+
+@audio.command("analyze")
+@click.argument("workspace_path")
+@click.option("--file", "file_path", default="", help="Path to audio file (default: latest in media/raw/).")
+def audio_analyze_cmd(workspace_path: str, file_path: str) -> None:
+    """Analyze audio levels (LUFS, peak) in WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import audio_analyze
+
+    result = audio_analyze(workspace_path, file_path)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Audio analysis: {d['input']}")
+    click.echo(f"  Integrated LUFS: {d['integrated_lufs']:.1f}")
+    click.echo(f"  True peak:       {d['true_peak_db']:.1f} dBTP")
+    click.echo(f"  Loudness range:  {d['loudness_range']:.1f} LU")
+
+
+@audio.command("enhance-all")
+@click.argument("workspace_path")
+@click.option("--preset", default="youtube_voice",
+              type=click.Choice(["youtube_voice", "podcast", "raw_cleanup"]),
+              help="Enhancement preset (default: youtube_voice).")
+def audio_enhance_all_cmd(workspace_path: str, preset: str) -> None:
+    """Enhance all audio files in WORKSPACE_PATH media/raw/ folder."""
+    from workshop_video_brain.edit_mcp.server.tools import audio_enhance_all
+
+    result = audio_enhance_all(workspace_path, preset)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Batch enhancement complete ({preset} preset).")
+    click.echo(f"  Processed: {d['processed']}")
+    click.echo(f"  Failed:    {d['failed']}")
+    click.echo(f"  Output:    {d['output_dir']}")
+
+
 if __name__ == "__main__":
     main()
