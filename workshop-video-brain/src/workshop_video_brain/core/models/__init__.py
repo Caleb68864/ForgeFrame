@@ -59,6 +59,8 @@ from .patterns import (
 )
 from .assembly import AssemblyPlan, ClipAssignment, StepAssembly
 from .broll_library import BRollEntry, BRollLibrary
+from .publishing import PublishBundle, TitleVariants, VideoSummary
+from .social import ClipCandidate, ClipExport, SocialPost
 
 __all__ = [
     # enums
@@ -146,4 +148,12 @@ __all__ = [
     # broll library
     "BRollEntry",
     "BRollLibrary",
+    # publishing
+    "TitleVariants",
+    "VideoSummary",
+    "PublishBundle",
+    # social clips
+    "ClipCandidate",
+    "ClipExport",
+    "SocialPost",
 ]

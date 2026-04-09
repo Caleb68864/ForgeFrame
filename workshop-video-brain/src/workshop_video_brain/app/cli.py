@@ -1935,5 +1935,210 @@ def broll_library_stats() -> None:
         sys.exit(1)
 
 
+# ---------------------------------------------------------------------------
+# publish group
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def publish() -> None:
+    """YouTube publishing tools."""
+
+
+@publish.command("bundle")
+@click.argument("workspace_path")
+@click.option("--video-url", default="", help="YouTube URL for the published video.")
+@click.option("--links", default="", help="Comma-separated resource links.")
+def publish_bundle_cmd(workspace_path: str, video_url: str, links: str) -> None:
+    """Generate complete YouTube publish bundle for WORKSPACE_PATH."""
+    from pathlib import Path
+    from workshop_video_brain.edit_mcp.pipelines.publishing import package_publish_bundle
+
+    links_list = [l.strip() for l in links.split(",") if l.strip()] if links else None
+    try:
+        bundle = package_publish_bundle(Path(workspace_path), links=links_list)
+        publish_dir = Path(workspace_path) / "reports" / "publish"
+        click.echo(f"Publish bundle generated: {publish_dir}")
+        click.echo(f"  Title (searchable): {bundle.title_variants.searchable}")
+        click.echo(f"  Tags: {len(bundle.tags)}")
+        click.echo(f"  Hashtags: {len(bundle.hashtags)}")
+        click.echo(f"  Resources: {len(bundle.resources)}")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@publish.command("description")
+@click.argument("workspace_path")
+def publish_description_cmd(workspace_path: str) -> None:
+    """Generate YouTube description for WORKSPACE_PATH."""
+    from pathlib import Path
+    from workshop_video_brain.edit_mcp.pipelines.publishing import (
+        _transcript_text_from_workspace,
+        _read_chapters_from_workspace,
+        _get_workspace_title,
+        generate_youtube_description,
+    )
+
+    try:
+        ws_path = Path(workspace_path)
+        title = _get_workspace_title(ws_path)
+        transcript_text = _transcript_text_from_workspace(ws_path)
+        chapters = _read_chapters_from_workspace(ws_path)
+        description = generate_youtube_description(title, transcript_text, chapters)
+        click.echo(description)
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@publish.command("titles")
+@click.argument("workspace_path")
+def publish_titles_cmd(workspace_path: str) -> None:
+    """Generate 4 title variants for WORKSPACE_PATH."""
+    from pathlib import Path
+    from workshop_video_brain.edit_mcp.pipelines.publishing import (
+        _transcript_text_from_workspace,
+        _get_workspace_title,
+        generate_title_variants,
+    )
+
+    try:
+        ws_path = Path(workspace_path)
+        title = _get_workspace_title(ws_path)
+        transcript_text = _transcript_text_from_workspace(ws_path)
+        variants = generate_title_variants(title, transcript_text)
+        click.echo(f"Searchable: {variants.searchable}")
+        click.echo(f"Curiosity:  {variants.curiosity}")
+        click.echo(f"How-to:     {variants.how_to}")
+        click.echo(f"Short:      {variants.short_punchy}")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@publish.command("tags")
+@click.argument("workspace_path")
+def publish_tags_cmd(workspace_path: str) -> None:
+    """Generate SEO tags and hashtags for WORKSPACE_PATH."""
+    from pathlib import Path
+    from workshop_video_brain.edit_mcp.pipelines.publishing import (
+        _transcript_text_from_workspace,
+        _get_workspace_title,
+        generate_tags,
+        generate_hashtags,
+    )
+
+    try:
+        ws_path = Path(workspace_path)
+        title = _get_workspace_title(ws_path)
+        transcript_text = _transcript_text_from_workspace(ws_path)
+        tags = generate_tags(transcript_text, title)
+        hashtags = generate_hashtags(tags)
+        click.echo("Tags:")
+        for tag in tags:
+            click.echo(f"  {tag}")
+        click.echo("\nHashtags:")
+        for ht in hashtags:
+            click.echo(f"  {ht}")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# social group
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def social() -> None:
+    """Social media clip tools."""
+
+
+@social.command("find-clips")
+@click.argument("workspace_path")
+@click.option("--max-clips", default=5, type=int, help="Maximum number of clips to find.")
+@click.option("--min-duration", default=15.0, type=float, help="Minimum clip duration in seconds.")
+@click.option("--max-duration", default=60.0, type=float, help="Maximum clip duration in seconds.")
+def find_clips(
+    workspace_path: str,
+    max_clips: int,
+    min_duration: float,
+    max_duration: float,
+) -> None:
+    """Find highlight clips for social media from WORKSPACE_PATH."""
+    from pathlib import Path
+    from workshop_video_brain.core.models.transcript import Transcript
+    from workshop_video_brain.edit_mcp.pipelines.social_clips import find_highlight_segments
+
+    try:
+        ws_path = Path(workspace_path)
+        transcripts_dir = ws_path / "transcripts"
+        if not transcripts_dir.exists():
+            click.echo("No transcripts/ directory found. Run 'media ingest' first.")
+            sys.exit(1)
+
+        all_segments: list[dict] = []
+        all_text_parts: list[str] = []
+        for json_path in sorted(transcripts_dir.glob("*_transcript.json")):
+            transcript = Transcript.from_json(json_path.read_text(encoding="utf-8"))
+            for seg in transcript.segments:
+                all_segments.append({
+                    "start_seconds": seg.start_seconds,
+                    "end_seconds": seg.end_seconds,
+                    "text": seg.text,
+                })
+                all_text_parts.append(seg.text)
+
+        transcript_text = " ".join(all_text_parts)
+        candidates = find_highlight_segments(
+            transcript_text, all_segments,
+            min_duration=min_duration,
+            max_duration=max_duration,
+        )
+        candidates = candidates[:max_clips]
+
+        click.echo(f"Found {len(candidates)} clip candidate(s):")
+        for i, c in enumerate(candidates, start=1):
+            mm_s = int(c.start_seconds // 60)
+            ss_s = int(c.start_seconds % 60)
+            mm_e = int(c.end_seconds // 60)
+            ss_e = int(c.end_seconds % 60)
+            click.echo(
+                f"  [{i}] {mm_s:02d}:{ss_s:02d} – {mm_e:02d}:{ss_e:02d} "
+                f"({c.duration_seconds:.1f}s) score={c.overall_score:.2f}"
+            )
+            click.echo(f"       Hook: {c.hook_text[:80]}")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@social.command("package")
+@click.argument("workspace_path")
+@click.option("--max-clips", default=5, type=int, help="Maximum number of clips.")
+@click.option("--aspect", default="9:16", help="Aspect ratio (9:16 or 16:9).")
+def package(workspace_path: str, max_clips: int, aspect: str) -> None:
+    """Generate complete social media package for WORKSPACE_PATH."""
+    from pathlib import Path
+    from workshop_video_brain.edit_mcp.pipelines.social_clips import generate_social_package
+
+    try:
+        result = generate_social_package(
+            workspace_root=Path(workspace_path),
+            max_clips=max_clips,
+            aspect_ratio=aspect,
+        )
+        click.echo(f"Social package generated: {result['clips_found']} clip(s)")
+        click.echo(f"  Manifest: {result['manifest_path']}")
+        click.echo(f"  Summary:  {result['summary_path']}")
+        for pf in result.get("post_files", []):
+            click.echo(f"  Post:     {pf}")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     main()
