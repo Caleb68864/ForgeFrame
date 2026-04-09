@@ -1493,5 +1493,120 @@ def audio_enhance_all_cmd(workspace_path: str, preset: str) -> None:
     click.echo(f"  Output:    {d['output_dir']}")
 
 
+# ---------------------------------------------------------------------------
+# init / init-quick commands
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.option(
+    "--vault-path",
+    prompt="Where should your video vault live?",
+    default="~/Videos",
+    help="Path to master Obsidian vault",
+)
+@click.option(
+    "--projects-root",
+    prompt="Where do your project workspaces live?",
+    default="~/Projects",
+    help="Root folder for project workspaces",
+)
+@click.option(
+    "--media-library",
+    default="",
+    help="Separate media library path (default: inside projects root)",
+)
+def init(vault_path: str, projects_root: str, media_library: str) -> None:
+    """Initialize ForgeFrame: create vault structure, media folders, and config."""
+    from pathlib import Path as _Path
+    from workshop_video_brain.app.init_system import initialize_forgeframe
+
+    media_lib = _Path(media_library) if media_library else None
+
+    click.echo("ForgeFrame Init")
+    click.echo("===============")
+    click.echo("")
+
+    try:
+        result = initialize_forgeframe(
+            vault_path=vault_path,
+            projects_root=projects_root,
+            media_library_root=media_lib,
+        )
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    # Vault
+    click.echo(f"Creating vault at {result.vault_path}...")
+    _shown_vault: set[str] = set()
+    for folder in result.vault_folders_created:
+        top = folder.split("/")[0]
+        if top not in _shown_vault:
+            click.echo(f"  + {top}/")
+            _shown_vault.add(top)
+    click.echo(f"  Created {len(result.vault_folders_created)} vault folders")
+    click.echo("")
+
+    # Media
+    click.echo(f"Creating media library at {result.projects_root}/Media Library/...")
+    _shown_media: set[str] = set()
+    for folder in result.media_folders_created:
+        top = folder.split("/")[0]
+        if top not in _shown_media:
+            click.echo(f"  + {top}/")
+            _shown_media.add(top)
+    click.echo(f"  Created {len(result.media_folders_created)} media folders")
+    click.echo("")
+
+    # Config
+    click.echo("Writing config...")
+    click.echo(f"  + .env")
+    click.echo(f"  + {result.config_file_written}")
+    click.echo("")
+
+    # Templates
+    click.echo("Templates created:")
+    for tmpl in [
+        "Templates/YouTube/Video Idea.md",
+        "Templates/YouTube/In Progress.md",
+        "Templates/YouTube/Published.md",
+        "Templates/YouTube/B-Roll Entry.md",
+    ]:
+        click.echo(f"  + {tmpl}")
+    click.echo("")
+
+    click.echo(f"Done! Open {result.vault_path}/ in Obsidian to see your vault.")
+
+    if result.notes:
+        for note in result.notes:
+            click.echo(f"  Note: {note}")
+
+
+@main.command("init-quick")
+@click.argument("vault_path")
+@click.argument("projects_root")
+def init_quick(vault_path: str, projects_root: str) -> None:
+    """Quick init with paths as arguments (no prompts)."""
+    from workshop_video_brain.app.init_system import initialize_forgeframe
+
+    try:
+        result = initialize_forgeframe(
+            vault_path=vault_path,
+            projects_root=projects_root,
+        )
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    click.echo(f"ForgeFrame initialized.")
+    click.echo(f"  Vault:         {result.vault_path}")
+    click.echo(f"  Projects root: {result.projects_root}")
+    click.echo(f"  Config:        {result.config_file_written}")
+    click.echo(f"  .env:          {result.env_file_written}")
+    click.echo(f"  Vault folders: {len(result.vault_folders_created)} created")
+    click.echo(f"  Media folders: {len(result.media_folders_created)} created")
+
+
 if __name__ == "__main__":
     main()

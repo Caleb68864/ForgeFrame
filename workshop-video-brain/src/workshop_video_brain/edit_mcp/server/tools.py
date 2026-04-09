@@ -2743,3 +2743,70 @@ def audio_analyze(workspace_path: str, file_path: str = "") -> dict:
         })
     except Exception as exc:
         return _err(str(exc))
+
+
+# ---------------------------------------------------------------------------
+# ForgeFrame init tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def forgeframe_init(
+    vault_path: str,
+    projects_root: str,
+    media_library: str = "",
+) -> dict:
+    """Initialize ForgeFrame environment with vault structure, media folders, and config.
+
+    Args:
+        vault_path: Path to the Obsidian vault root (created if missing).
+        projects_root: Root folder for project workspaces.
+        media_library: Optional separate media library path.
+            Defaults to ``projects_root/Media Library``.
+
+    Returns:
+        Structured result with created paths and counts.
+    """
+    try:
+        from pathlib import Path as _Path
+        from workshop_video_brain.app.init_system import initialize_forgeframe
+
+        if not vault_path or not vault_path.strip():
+            return _err("vault_path must be a non-empty string")
+        if not projects_root or not projects_root.strip():
+            return _err("projects_root must be a non-empty string")
+
+        media_lib = _Path(media_library) if media_library and media_library.strip() else None
+        result = initialize_forgeframe(
+            vault_path=vault_path,
+            projects_root=projects_root,
+            media_library_root=media_lib,
+        )
+        return _ok({
+            "vault_path": result.vault_path,
+            "projects_root": result.projects_root,
+            "vault_folders_created": result.vault_folders_created,
+            "media_folders_created": result.media_folders_created,
+            "config_file_written": result.config_file_written,
+            "env_file_written": result.env_file_written,
+            "notes": result.notes,
+        })
+    except Exception as exc:
+        return _err(str(exc))
+
+
+@mcp.tool()
+def forgeframe_status() -> dict:
+    """Check ForgeFrame initialization status.
+
+    Reports what's configured and what's missing: vault path existence,
+    projects root, media library, FFmpeg availability, and Whisper availability.
+
+    Returns:
+        Structured status report.
+    """
+    try:
+        from workshop_video_brain.app.init_system import check_status
+        return _ok(check_status())
+    except Exception as exc:
+        return _err(str(exc))
