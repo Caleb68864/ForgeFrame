@@ -1,0 +1,375 @@
+candidates:
+  # =========================================================================
+  # EXPLICIT TECHNOLOGIES
+  # =========================================================================
+
+  - name: "FFmpeg / FFprobe"
+    technology: "ffmpeg"
+    version: "latest (system-installed)"
+    reference_class: "official_documentation"
+    confidence: "exact_match"
+    scope_recommendation: "shared"
+    existing_match: null
+    sources:
+      - url: "https://ffmpeg.org/ffmpeg-filters.html"
+        media_type: "html"
+        trust_level: "canonical"
+      - url: "https://ffmpeg.org/ffprobe.html"
+        media_type: "html"
+        trust_level: "canonical"
+    reason: "Core tool for probing, transcoding (VFR->CFR), rendering, QC checks (blackdetect, silencedetect, astats, loudnorm). Used in sub-specs 1, 3, 5, 6, 7."
+    action: "harvest"
+
+  - name: "FFmpeg loudnorm filter"
+    technology: "ffmpeg-loudnorm"
+    version: "latest"
+    reference_class: "official_documentation"
+    confidence: "exact_match"
+    scope_recommendation: "shared"
+    existing_match: null
+    sources:
+      - url: "https://ffmpeg.org/ffmpeg-filters.html#loudnorm"
+        media_type: "html"
+        trust_level: "canonical"
+    reason: "Sub-spec 1 (measure_loudness) and sub-spec 7 (QC loudness check) parse loudnorm JSON output."
+    action: "harvest"
+
+  - name: "FFmpeg blackdetect filter"
+    technology: "ffmpeg-blackdetect"
+    version: "latest"
+    reference_class: "official_documentation"
+    confidence: "exact_match"
+    scope_recommendation: "project"
+    existing_match: null
+    sources:
+      - url: "https://ffmpeg.org/ffmpeg-filters.html#blackdetect"
+        media_type: "html"
+        trust_level: "canonical"
+    reason: "Sub-spec 7 QC check parses blackdetect stderr for black_start/black_end."
+    action: "harvest"
+
+  - name: "FFmpeg silencedetect filter"
+    technology: "ffmpeg-silencedetect"
+    version: "latest"
+    reference_class: "official_documentation"
+    confidence: "exact_match"
+    scope_recommendation: "project"
+    existing_match: null
+    sources:
+      - url: "https://ffmpeg.org/ffmpeg-filters.html#silencedetect"
+        media_type: "html"
+        trust_level: "canonical"
+    reason: "Sub-spec 7 QC check parses silencedetect stderr for silence_start/silence_end."
+    action: "harvest"
+
+  - name: "FFmpeg astats filter"
+    technology: "ffmpeg-astats"
+    version: "latest"
+    reference_class: "official_documentation"
+    confidence: "exact_match"
+    scope_recommendation: "project"
+    existing_match: null
+    sources:
+      - url: "https://ffmpeg.org/ffmpeg-filters.html#astats-1"
+        media_type: "html"
+        trust_level: "canonical"
+    reason: "Sub-spec 7 audio clipping check parses astats metadata."
+    action: "harvest"
+
+  - name: "Kdenlive"
+    technology: "kdenlive"
+    version: "latest"
+    reference_class: "official_documentation"
+    confidence: "exact_match"
+    scope_recommendation: "shared"
+    existing_match: "docs/reference/kdenlive/introduction.md"
+    existing_match_status: "partial"
+    sources:
+      - url: "https://userbase.kde.org/Kdenlive"
+        media_type: "html"
+        trust_level: "canonical"
+    reason: "NLE target. Sub-specs 2, 8, 9, 10, 11 manipulate .kdenlive project XML."
+    action: "skip"
+    skip_reason: "Partial docs exist; XML format understood from codebase. MLT docs more useful."
+
+  - name: "MLT Framework"
+    technology: "mlt"
+    version: "7.x"
+    reference_class: "official_documentation"
+    confidence: "high_confidence"
+    scope_recommendation: "shared"
+    existing_match: null
+    sources:
+      - url: "https://www.mltframework.org/docs/"
+        media_type: "html"
+        trust_level: "canonical"
+      - url: "https://github.com/mltframework/mlt"
+        media_type: "source_repository"
+        trust_level: "canonical"
+    reason: "Kdenlive .kdenlive XML is MLT XML. Filter and transition elements follow MLT schema. Sub-specs 2, 8, 9, 11 insert MLT elements."
+    action: "harvest"
+
+  - name: "MLT Filter/Transition XML Reference"
+    technology: "mlt-xml"
+    version: "7.x"
+    reference_class: "official_documentation"
+    confidence: "high_confidence"
+    scope_recommendation: "project"
+    existing_match: null
+    sources:
+      - url: "https://www.mltframework.org/plugins/"
+        media_type: "html"
+        trust_level: "canonical"
+    reason: "Authoritative list of MLT service names (filter/transition identifiers). Critical for sub-specs 2, 8, 9, 11."
+    action: "harvest"
+
+  - name: "Pydantic v2"
+    technology: "pydantic"
+    version: ">=2.0,<3"
+    reference_class: "sdk_or_library_docs"
+    confidence: "exact_match"
+    scope_recommendation: "shared"
+    existing_match: null
+    sources:
+      - url: "https://docs.pydantic.dev/latest/"
+        media_type: "html"
+        trust_level: "canonical"
+    reason: "All models use Pydantic BaseModel. Every sub-spec creates or extends Pydantic models."
+    action: "skip"
+    skip_reason: "Well-known library, patterns already established in codebase."
+
+  - name: "FastMCP"
+    technology: "fastmcp"
+    version: ">=2.0"
+    reference_class: "sdk_or_library_docs"
+    confidence: "exact_match"
+    scope_recommendation: "shared"
+    existing_match: null
+    sources:
+      - url: "https://github.com/jlowin/fastmcp"
+        media_type: "source_repository"
+        trust_level: "high"
+    reason: "MCP server framework used for all tool registrations."
+    action: "skip"
+    skip_reason: "Patterns already established in codebase; @mcp.tool() usage is clear."
+
+  - name: "PyYAML"
+    technology: "pyyaml"
+    version: ">=6.0"
+    reference_class: "sdk_or_library_docs"
+    confidence: "exact_match"
+    scope_recommendation: "shared"
+    existing_match: null
+    action: "skip"
+    skip_reason: "Standard library-like usage for YAML loading."
+
+  - name: "H.264 / libx264"
+    technology: "libx264"
+    version: "system FFmpeg build"
+    reference_class: "official_documentation"
+    confidence: "exact_match"
+    scope_recommendation: "project"
+    existing_match: null
+    sources:
+      - url: "https://trac.ffmpeg.org/wiki/Encode/H.264"
+        media_type: "html"
+        trust_level: "high"
+    reason: "YouTube render profiles use libx264. Sub-spec 3 creates profiles, sub-spec 6 renders with them."
+    action: "harvest"
+
+  - name: "Apple ProRes (prores_ks)"
+    technology: "prores"
+    version: "system FFmpeg build"
+    reference_class: "official_documentation"
+    confidence: "exact_match"
+    scope_recommendation: "project"
+    existing_match: null
+    sources:
+      - url: "https://trac.ffmpeg.org/wiki/Encode/VFX"
+        media_type: "html"
+        trust_level: "high"
+    reason: "Master and Vimeo render profiles use prores_ks. Sub-spec 3."
+    action: "harvest"
+
+  - name: "DNxHR (dnxhd)"
+    technology: "dnxhr"
+    version: "system FFmpeg build"
+    reference_class: "official_documentation"
+    confidence: "exact_match"
+    scope_recommendation: "project"
+    existing_match: null
+    sources:
+      - url: "https://trac.ffmpeg.org/wiki/Encode/VFX"
+        media_type: "html"
+        trust_level: "high"
+    reason: "Master render profile uses dnxhd encoder. Sub-spec 3."
+    action: "harvest"
+
+  - name: "Python tarfile/zipfile"
+    technology: "python-stdlib"
+    version: "3.12+"
+    reference_class: "official_documentation"
+    confidence: "exact_match"
+    scope_recommendation: "shared"
+    existing_match: null
+    action: "skip"
+    skip_reason: "Python stdlib, well-documented, patterns straightforward."
+
+  - name: "pytest"
+    technology: "pytest"
+    version: "latest"
+    reference_class: "sdk_or_library_docs"
+    confidence: "exact_match"
+    scope_recommendation: "shared"
+    existing_match: null
+    action: "skip"
+    skip_reason: "Already heavily used in codebase with established patterns."
+
+  # =========================================================================
+  # IMPLIED TECHNOLOGIES
+  # =========================================================================
+
+  - name: "ITU-R BT.709 / BT.601 / BT.2020 Color Standards"
+    technology: "itu-color-standards"
+    version: "current"
+    reference_class: "standards_or_protocol_docs"
+    confidence: "high_confidence"
+    scope_recommendation: "shared"
+    existing_match: null
+    sources:
+      - url: "https://en.wikipedia.org/wiki/Rec._709"
+        media_type: "html"
+        trust_level: "medium"
+      - url: "https://en.wikipedia.org/wiki/Rec._2020"
+        media_type: "html"
+        trust_level: "medium"
+    reason: "Sub-spec 8 (color analysis) and sub-spec 10 (project profile) reference color standards. ffprobe reports color_space, color_primaries, color_transfer using these identifiers."
+    action: "harvest"
+
+  - name: "HDR Standards (PQ/HDR10, HLG)"
+    technology: "hdr-standards"
+    version: "current"
+    reference_class: "standards_or_protocol_docs"
+    confidence: "high_confidence"
+    scope_recommendation: "project"
+    existing_match: null
+    sources:
+      - url: "https://en.wikipedia.org/wiki/HDR10"
+        media_type: "html"
+        trust_level: "medium"
+    reason: "Sub-spec 8 detects HDR via smpte2084 (PQ) and arib-std-b67 (HLG) transfer characteristics."
+    action: "skip"
+    skip_reason: "Out of scope for Phase 3 (HDR workflows deferred). Detection logic is straightforward string matching."
+
+  - name: "EBU R128 Loudness Standard"
+    technology: "ebu-r128"
+    version: "current"
+    reference_class: "standards_or_protocol_docs"
+    confidence: "high_confidence"
+    scope_recommendation: "shared"
+    existing_match: null
+    sources:
+      - url: "https://tech.ebu.ch/docs/r/r128.pdf"
+        media_type: "pdf"
+        trust_level: "canonical"
+    reason: "Sub-spec 1 (loudnorm) and sub-spec 7 (QC loudness check) use LUFS/dBTP thresholds from EBU R128."
+    action: "harvest"
+
+  - name: "LUT File Formats (.cube, .3dl)"
+    technology: "lut-formats"
+    version: "current"
+    reference_class: "standards_or_protocol_docs"
+    confidence: "medium_confidence"
+    scope_recommendation: "project"
+    existing_match: null
+    sources:
+      - url: "https://wwwimages2.adobe.com/content/dam/acom/en/products/speedgrade/cc/pdfs/cube-lut-specification-1.0.pdf"
+        media_type: "pdf"
+        trust_level: "canonical"
+    reason: "Sub-spec 8 applies LUT files to clips via avfilter.lut3d. Understanding .cube format useful for validation."
+    action: "skip"
+    skip_reason: "ForgeFrame passes LUT path through to FFmpeg/MLT; does not parse LUT files itself."
+
+  - name: "frei0r Plugins"
+    technology: "frei0r"
+    version: "latest"
+    reference_class: "official_documentation"
+    confidence: "medium_confidence"
+    scope_recommendation: "shared"
+    existing_match: null
+    sources:
+      - url: "https://frei0r.dyne.org/"
+        media_type: "html"
+        trust_level: "high"
+    reason: "Sub-spec 9 curated effect list includes frei0r.colgate, frei0r.IIRblur, frei0r.lut3d. Informational only."
+    action: "skip"
+    skip_reason: "Effect names are pass-through strings; no validation against frei0r. Curated list is informational."
+
+  - name: "YouTube Upload Encoding Recommendations"
+    technology: "youtube-encoding"
+    version: "2026"
+    reference_class: "official_documentation"
+    confidence: "high_confidence"
+    scope_recommendation: "project"
+    existing_match: null
+    sources:
+      - url: "https://support.google.com/youtube/answer/1722171"
+        media_type: "html"
+        trust_level: "canonical"
+    reason: "Sub-spec 3 YouTube profiles (1080p, 4K) should match YouTube recommended encoding settings. Sub-spec 7 QC loudness targets (-14 LUFS) based on YouTube normalization."
+    action: "harvest"
+
+  - name: "Vimeo Upload Guidelines"
+    technology: "vimeo-encoding"
+    version: "2026"
+    reference_class: "official_documentation"
+    confidence: "high_confidence"
+    scope_recommendation: "project"
+    existing_match: null
+    sources:
+      - url: "https://vimeo.com/help/compression"
+        media_type: "html"
+        trust_level: "canonical"
+    reason: "Sub-spec 3 vimeo-hq profile should match Vimeo recommended encoding settings."
+    action: "harvest"
+
+  - name: "FFmpeg VFR/CFR Transcoding"
+    technology: "ffmpeg-vfr"
+    version: "latest"
+    reference_class: "community_reference"
+    confidence: "high_confidence"
+    scope_recommendation: "project"
+    existing_match: null
+    sources:
+      - url: "https://trac.ffmpeg.org/wiki/ChangingFrameRate"
+        media_type: "html"
+        trust_level: "high"
+    reason: "Sub-spec 5 uses -vsync cfr -r {fps} for VFR->CFR transcode. Wiki page documents correct flags."
+    action: "harvest"
+
+  - name: "ffprobe JSON Output Format"
+    technology: "ffprobe-json"
+    version: "latest"
+    reference_class: "official_documentation"
+    confidence: "exact_match"
+    scope_recommendation: "project"
+    existing_match: null
+    sources:
+      - url: "https://ffmpeg.org/ffprobe.html"
+        media_type: "html"
+        trust_level: "canonical"
+    reason: "Sub-spec 1 parses ffprobe JSON for color_space, color_primaries, color_transfer, r_frame_rate, avg_frame_rate fields."
+    action: "harvest"
+
+  - name: "Kdenlive Project XML Format"
+    technology: "kdenlive-xml"
+    version: "latest"
+    reference_class: "project_specific_artifact"
+    confidence: "exact_match"
+    scope_recommendation: "project"
+    existing_match: "docs/reference/kdenlive/"
+    existing_match_status: "partial"
+    sources: []
+    reason: "Sub-specs 2, 8, 9, 10, 11 modify .kdenlive XML. Codebase parser/serializer is the authoritative reference."
+    action: "reuse"
+    reuse_reason: "Existing codebase parser/serializer is the primary reference. MLT docs supplement."

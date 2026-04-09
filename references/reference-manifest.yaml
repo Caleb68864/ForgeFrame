@@ -1,0 +1,56 @@
+harvested:
+  - name: "FFmpeg QC Filters Reference"
+    scope: "project"
+    artifact_path: "references/ffmpeg-filters-qc.md"
+    trust_level: "high"
+    confidence: "exact_match"
+    harvested_at: "2026-04-09"
+    covers_sub_specs: [1, 7]
+
+  - name: "ffprobe Color Metadata and VFR Fields"
+    scope: "project"
+    artifact_path: "references/ffprobe-color-metadata.md"
+    trust_level: "high"
+    confidence: "exact_match"
+    harvested_at: "2026-04-09"
+    covers_sub_specs: [1, 5, 8, 10]
+
+  - name: "MLT XML Reference"
+    scope: "shared"
+    artifact_path: "references/mlt-xml-reference.md"
+    trust_level: "canonical"
+    confidence: "exact_match"
+    harvested_at: "2026-04-09"
+    covers_sub_specs: [2, 8, 9, 11]
+
+  - name: "Render Codec Reference"
+    scope: "project"
+    artifact_path: "references/render-codec-reference.md"
+    trust_level: "high"
+    confidence: "exact_match"
+    harvested_at: "2026-04-09"
+    covers_sub_specs: [3, 6]
+
+  - name: "VFR Detection and CFR Transcode"
+    scope: "project"
+    artifact_path: "references/vfr-cfr-transcode.md"
+    trust_level: "high"
+    confidence: "exact_match"
+    harvested_at: "2026-04-09"
+    covers_sub_specs: [1, 5]
+
+reused:
+  - name: "Kdenlive Documentation"
+    existing_path: "docs/reference/kdenlive/"
+    covers_sub_specs: [2, 10, 11]
+
+unresolved:
+  - name: "EBU R128 Full Standard (PDF)"
+    reason: "PDF requires auth/purchase; thresholds already in spec"
+    confidence: "medium_confidence"
+    impact: "low -- threshold values documented in spec and reference files"
+
+  - name: "Vimeo Compression Guidelines"
+    reason: "Page redirects; settings derived from community sources"
+    confidence: "medium_confidence"
+    impact: "low -- ProRes HQ profile is a well-known mastering standard"

@@ -1,0 +1,109 @@
+actions:
+  - timestamp: "2026-04-09T00:00:00Z"
+    action: "harvest"
+    target: "FFmpeg QC Filters (loudnorm, blackdetect, silencedetect, astats)"
+    result: "success"
+    path: "references/ffmpeg-filters-qc.md"
+    sources:
+      - "http://k.ylo.ph/2016/04/04/loudnorm.html"
+      - "https://ayosec.github.io/ffmpeg-filters-docs/7.1/Filters/Audio/loudnorm.html"
+      - "https://blog.gdeltproject.org/using-ffmpegs-blackdetect-filter-to-identify-commercial-blocks/"
+    notes: "FFmpeg filters page (ffmpeg.org) blocked by Anubis; used mirrors and community sources"
+
+  - timestamp: "2026-04-09T00:00:00Z"
+    action: "harvest"
+    target: "ffprobe Color Metadata and VFR Detection Fields"
+    result: "success"
+    path: "references/ffprobe-color-metadata.md"
+    sources:
+      - "https://ffmpeg.org/ffprobe.html"
+      - "https://kdenlive.org/en/project/color-hell-ffmpeg-transcoding-and-preserving-bt-601/"
+      - "https://gist.github.com/termermc/2a62735201cede462763456542d8a266"
+      - "https://github.com/cdgriffith/FastFlix/issues/102"
+
+  - timestamp: "2026-04-09T00:00:00Z"
+    action: "harvest"
+    target: "MLT XML Reference (filters, transitions, document structure)"
+    result: "success"
+    path: "references/mlt-xml-reference.md"
+    sources:
+      - "https://www.mltframework.org/docs/mltxml/"
+      - "https://github.com/mltframework/mlt/blob/master/src/modules/xml/mlt-xml.dtd"
+
+  - timestamp: "2026-04-09T00:00:00Z"
+    action: "harvest"
+    target: "Render Codec Reference (H.264, ProRes, DNxHR, YouTube settings)"
+    result: "success"
+    path: "references/render-codec-reference.md"
+    sources:
+      - "https://support.google.com/youtube/answer/1722171"
+      - "https://academysoftwarefoundation.github.io/EncodingGuidelines/EncodeProres.html"
+      - "http://macilatthefront.blogspot.com/2018/12/tutorial-using-ffmpeg-for-dnxhddnxhr.html"
+      - "https://vibbit.ai/blog/youtube-upload-best-settings"
+    notes: "FFmpeg trac wiki pages blocked by Anubis; used Academy SW Foundation and community sources"
+
+  - timestamp: "2026-04-09T00:00:00Z"
+    action: "harvest"
+    target: "VFR Detection and CFR Transcode Reference"
+    result: "success"
+    path: "references/vfr-cfr-transcode.md"
+    sources:
+      - "https://trac.ffmpeg.org/wiki/ChangingFrameRate"
+      - "https://ffmpeg.org/ffprobe.html"
+    notes: "FFmpeg trac blocked; compiled from multiple search results and FFmpeg documentation"
+
+  - timestamp: "2026-04-09T00:00:00Z"
+    action: "reuse_existing"
+    target: "Kdenlive Documentation"
+    existing_path: "docs/reference/kdenlive/"
+    notes: "Existing introduction.md + documentation-workgroup.md; MLT XML reference supplements"
+
+  - timestamp: "2026-04-09T00:00:00Z"
+    action: "skip"
+    target: "Pydantic v2"
+    reason: "Well-known library; patterns already established in codebase"
+
+  - timestamp: "2026-04-09T00:00:00Z"
+    action: "skip"
+    target: "FastMCP"
+    reason: "Patterns already established in codebase; @mcp.tool() usage clear"
+
+  - timestamp: "2026-04-09T00:00:00Z"
+    action: "skip"
+    target: "PyYAML"
+    reason: "Standard library-like YAML loading usage"
+
+  - timestamp: "2026-04-09T00:00:00Z"
+    action: "skip"
+    target: "Python tarfile/zipfile"
+    reason: "Python stdlib; straightforward streaming archive patterns"
+
+  - timestamp: "2026-04-09T00:00:00Z"
+    action: "skip"
+    target: "pytest"
+    reason: "Already heavily used in codebase with 1,242+ tests"
+
+  - timestamp: "2026-04-09T00:00:00Z"
+    action: "skip"
+    target: "HDR Standards (PQ/HLG)"
+    reason: "Out of scope for Phase 3; detection is simple string matching"
+
+  - timestamp: "2026-04-09T00:00:00Z"
+    action: "skip"
+    target: "LUT File Formats (.cube/.3dl)"
+    reason: "ForgeFrame passes LUT path through to FFmpeg/MLT; does not parse"
+
+  - timestamp: "2026-04-09T00:00:00Z"
+    action: "skip"
+    target: "frei0r Plugins"
+    reason: "Effect names are pass-through strings; curated list is informational only"
+
+  - timestamp: "2026-04-09T00:00:00Z"
+    action: "skip"
+    target: "EBU R128 Loudness Standard"
+    reason: "Thresholds (-14 LUFS YouTube, -24 LUFS minimum) already documented in spec; PDF requires auth"
+
+  - timestamp: "2026-04-09T00:00:00Z"
+    action: "skip"
+    target: "Vimeo Upload Guidelines"
+    reason: "Page redirected; ProRes HQ profile settings already correct based on community knowledge"

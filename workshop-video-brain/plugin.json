@@ -28,6 +28,50 @@
     {
       "name": "ff-capture-prep",
       "path": "skills/ff-capture-prep"
+    },
+    {
+      "name": "ff-auto-editor",
+      "path": "skills/ff-auto-editor"
+    },
+    {
+      "name": "ff-broll-whisperer",
+      "path": "skills/ff-broll-whisperer"
+    },
+    {
+      "name": "ff-pacing-meter",
+      "path": "skills/ff-pacing-meter"
+    },
+    {
+      "name": "ff-audio-cleanup",
+      "path": "skills/ff-audio-cleanup"
+    },
+    {
+      "name": "ff-pattern-brain",
+      "path": "skills/ff-pattern-brain"
+    },
+    {
+      "name": "ff-voiceover-fixer",
+      "path": "skills/ff-voiceover-fixer"
+    },
+    {
+      "name": "ff-publish",
+      "path": "skills/ff-publish"
+    },
+    {
+      "name": "ff-social-clips",
+      "path": "skills/ff-social-clips"
+    },
+    {
+      "name": "ff-init",
+      "path": "skills/ff-init"
+    },
+    {
+      "name": "ff-new-project",
+      "path": "skills/ff-new-project"
+    },
+    {
+      "name": "ff-youtube-analytics",
+      "path": "skills/ff-youtube-analytics"
     }
   ]
 }
