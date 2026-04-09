@@ -11,7 +11,7 @@
   "mcpServers": {
     "workshop-video-brain": {
       "command": "uv",
-      "args": ["run", "--directory", "..", "workshop-video-brain-server"],
+      "args": ["run", "--directory", "${CLAUDE_PLUGIN_ROOT}", "workshop-video-brain-server"],
       "env": {}
     }
   }
