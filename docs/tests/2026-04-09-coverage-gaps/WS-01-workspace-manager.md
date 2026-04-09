@@ -1,3 +1,40 @@
+---
+scenario_id: "WS-01"
+title: "Workspace Manager"
+tool: "bash"
+type: test-scenario
+tags:
+  - test-scenario
+---
+
+# Scenario WS-01: Workspace Manager
+
+## Description
+Tests the `WorkspaceManager` static-method API in `workspace/manager.py`.
+
+The three core operations are:
+
+| Method | What it does |
+|--------|-------------|
+| `create` | Builds folder structure, writes `workspace.yaml`, returns `Workspace` |
+| `open` | Reads `workspace.yaml` from an existing path, returns `Workspace` |
+| `save_manifest` | Re-serialises the in-memory `Workspace` back to `workspace.yaml` |
+
+Additional coverage: `update_status` updates project status in memory and
+flushes the manifest.
+
+Edge cases: `open` on a missing path raises, `create` with an explicit
+`workspace_root` overrides the default slug-derived path.
+
+## Preconditions
+- Python 3.12+, `uv run pytest` available.
+- `tmp_path` provides isolated workspace directories.
+- No external processes required.
+
+## Test Cases
+
+```python
+# tests/unit/test_workspace_manager.py
 from pathlib import Path
 from uuid import UUID
 
@@ -144,3 +181,21 @@ class TestWorkspaceManagerUpdateStatus:
         WorkspaceManager.update_status(ws, ProjectStatus.filming)
         manifest = read_manifest(ws_root)
         assert manifest.status == ProjectStatus.filming
+```
+
+## Steps
+1. Read source module at `workshop-video-brain/src/workshop_video_brain/workspace/manager.py`
+2. Create `tests/unit/test_workspace_manager.py`
+3. Implement test cases above
+4. Run: `uv run pytest tests/unit/test_workspace_manager.py -v`
+
+## Expected Results
+- `WorkspaceManager.create` produces the full folder tree, writes `workspace.yaml`, and returns a `Workspace` with correct fields.
+- `WorkspaceManager.open` restores the workspace from disk with matching ID and title.
+- `WorkspaceManager.open` on a missing path raises an exception.
+- `WorkspaceManager.save_manifest` writes changes back to `workspace.yaml`.
+- `update_status` updates both in-memory state and the on-disk manifest.
+
+## Pass / Fail Criteria
+- Pass: All tests pass
+- Fail: Any test fails
