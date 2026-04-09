@@ -80,7 +80,14 @@ def serialize_project(
     for producer in project.producers:
         p_elem = ET.SubElement(root, "producer")
         p_elem.set("id", producer.id)
+        # Write the resource property first (critical for Kdenlive to find media)
+        if producer.resource:
+            resource_prop = ET.SubElement(p_elem, "property")
+            resource_prop.set("name", "resource")
+            resource_prop.text = producer.resource
         for name, value in producer.properties.items():
+            if name == "resource":
+                continue  # already written above
             prop = ET.SubElement(p_elem, "property")
             prop.set("name", name)
             prop.text = value
@@ -100,7 +107,7 @@ def serialize_project(
                 blank_elem = ET.SubElement(pl_elem, "blank")
                 blank_elem.set("length", str(entry.out_point + 1))
 
-    # Tractor
+    # Tractor (required for Kdenlive to recognise the timeline)
     if project.tractor is not None:
         tractor_elem = ET.SubElement(root, "tractor")
         for k, v in project.tractor.items():
@@ -108,6 +115,20 @@ def serialize_project(
         for track in project.tracks:
             t_elem = ET.SubElement(tractor_elem, "track")
             t_elem.set("producer", track.id)
+    elif project.playlists:
+        # Auto-generate a tractor from playlists so Kdenlive has a timeline
+        tractor_elem = ET.SubElement(root, "tractor")
+        tractor_elem.set("id", "tractor0")
+        # Calculate total out point from longest playlist
+        max_out = 0
+        for pl in project.playlists:
+            pl_out = sum((e.out_point - e.in_point + 1) for e in pl.entries if e.producer_id)
+            max_out = max(max_out, pl_out)
+        tractor_elem.set("in", "0")
+        tractor_elem.set("out", str(max_out - 1) if max_out > 0 else "0")
+        for pl in project.playlists:
+            t_elem = ET.SubElement(tractor_elem, "track")
+            t_elem.set("producer", pl.id)
 
     # Guides
     for guide in project.guides:
