@@ -33,9 +33,11 @@ class SubtitleCue(TimelineIntent):
 class AddClip(TimelineIntent):
     producer_id: str = ""
     track_id: str = ""
+    track_ref: str = ""  # playlist ID to target (alias for track_id)
     in_point: int = 0
     out_point: int = 0
-    position: int = 0
+    position: int = -1  # -1 = append at end
+    source_path: str = ""  # path to media resource
 
 
 class TrimClip(TimelineIntent):

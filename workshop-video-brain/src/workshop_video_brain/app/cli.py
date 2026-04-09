@@ -711,6 +711,114 @@ def prepare_tutorial_project(media_folder: str, title: str, vault_path: str) -> 
 
 
 # ---------------------------------------------------------------------------
+# transitions group
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def transitions() -> None:
+    """Transition commands for timeline editing."""
+
+
+@transitions.command("apply")
+@click.argument("workspace_path")
+@click.option("--type", "transition_type", default="crossfade",
+              help="Transition type (crossfade, dissolve, fade_in, fade_out).")
+@click.option("--preset", default="medium",
+              help="Duration preset (short, medium, long).")
+def transitions_apply_cmd(workspace_path: str, transition_type: str, preset: str) -> None:
+    """Apply transitions between all clips in WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import transitions_apply
+
+    result = transitions_apply(workspace_path, transition_type, preset)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Transitions applied: {d['transitions_applied']}")
+    click.echo(f"  Output: {d['kdenlive_path']}")
+
+
+@transitions.command("at")
+@click.argument("workspace_path")
+@click.argument("timestamp", type=float)
+@click.option("--type", "transition_type", default="crossfade",
+              help="Transition type (crossfade, dissolve, fade_in, fade_out).")
+@click.option("--preset", default="medium",
+              help="Duration preset (short, medium, long).")
+def apply_at(workspace_path: str, timestamp: float, transition_type: str, preset: str) -> None:
+    """Apply a transition at TIMESTAMP seconds in WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import transitions_apply_at
+
+    result = transitions_apply_at(workspace_path, timestamp, transition_type, preset)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Transition applied at {timestamp}s")
+    click.echo(f"  Output: {d['kdenlive_path']}")
+
+
+@transitions.command("between")
+@click.argument("workspace_path")
+@click.argument("clip_index", type=int)
+@click.option("--type", "transition_type", default="crossfade",
+              help="Transition type (crossfade, dissolve, fade_in, fade_out).")
+@click.option("--preset", default="medium",
+              help="Duration preset (short, medium, long).")
+def apply_between(workspace_path: str, clip_index: int, transition_type: str, preset: str) -> None:
+    """Apply a transition between clip CLIP_INDEX and clip_index+1 in WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import transitions_apply_between
+
+    result = transitions_apply_between(workspace_path, clip_index, transition_type, preset)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Transition applied between clips {clip_index} and {clip_index + 1}")
+    click.echo(f"  Output: {d['kdenlive_path']}")
+
+
+# ---------------------------------------------------------------------------
+# clip group
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def clip() -> None:
+    """Clip insertion and management commands."""
+
+
+@clip.command("insert")
+@click.argument("workspace_path")
+@click.argument("media_path")
+@click.option("--in", "in_seconds", default=0.0, type=float,
+              help="In-point in seconds (default: 0.0).")
+@click.option("--out", "out_seconds", default=-1.0, type=float,
+              help="Out-point in seconds (default: -1 = full duration).")
+@click.option("--position", default=-1, type=int,
+              help="Position index in playlist (default: -1 = append at end).")
+def clip_insert_cmd(
+    workspace_path: str,
+    media_path: str,
+    in_seconds: float,
+    out_seconds: float,
+    position: int,
+) -> None:
+    """Insert MEDIA_PATH into the timeline of WORKSPACE_PATH."""
+    from workshop_video_brain.edit_mcp.server.tools import clip_insert
+
+    result = clip_insert(workspace_path, media_path, in_seconds, out_seconds, position)
+    if result["status"] == "error":
+        click.echo(f"Error: {result['message']}", err=True)
+        sys.exit(1)
+    d = result["data"]
+    click.echo(f"Clip inserted: {d['producer_id']}")
+    click.echo(f"  Frames: {d['in_frame']} -> {d['out_frame']}")
+    click.echo(f"  Output: {d['kdenlive_path']}")
+
+
+# ---------------------------------------------------------------------------
 # clips group
 # ---------------------------------------------------------------------------
 

@@ -117,7 +117,7 @@ def patch_project(
         if isinstance(intent, AddGuide):
             _apply_add_guide(new_project, intent)
         elif isinstance(intent, AddClip):
-            _apply_add_clip_stub(new_project, intent)
+            _apply_add_clip(new_project, intent)
         elif isinstance(intent, AddTransition):
             # Take a snapshot before applying the first transition
             if not _snapshot_taken and workspace_root and project_path:
@@ -157,14 +157,64 @@ def _apply_add_guide(project: KdenliveProject, intent: AddGuide) -> None:
     project.guides.append(guide)
 
 
-def _apply_add_clip_stub(project: KdenliveProject, intent: AddClip) -> None:
-    """Stub for AddClip intent.  Logs a warning; full implementation deferred."""
-    logger.warning(
-        "AddClip intent for producer '%s' on track '%s' is not yet fully "
-        "implemented – stub only.",
-        intent.producer_id,
-        intent.track_id,
+def _apply_add_clip(project: KdenliveProject, intent: AddClip) -> None:
+    """Apply an AddClip intent: find playlist, ensure producer exists, insert entry."""
+    # Resolve which playlist to target: prefer track_ref, fall back to track_id
+    target_ref = intent.track_ref or intent.track_id
+
+    # Find the matching playlist
+    target_playlist: Playlist | None = None
+    for playlist in project.playlists:
+        if playlist.id == target_ref:
+            target_playlist = playlist
+            break
+
+    if target_playlist is None:
+        logger.warning(
+            "AddClip: no playlist found with id '%s' – skipped.",
+            target_ref,
+        )
+        return
+
+    # Ensure the producer exists in the project
+    existing_ids = {p.id for p in project.producers}
+    if intent.producer_id and intent.producer_id not in existing_ids:
+        new_producer = Producer(
+            id=intent.producer_id,
+            resource=intent.source_path or "",
+            properties={"resource": intent.source_path} if intent.source_path else {},
+        )
+        project.producers.append(new_producer)
+        logger.info(
+            "AddClip: created new producer '%s' with resource '%s'",
+            intent.producer_id,
+            intent.source_path,
+        )
+
+    # Create the new playlist entry
+    entry = PlaylistEntry(
+        producer_id=intent.producer_id,
+        in_point=intent.in_point,
+        out_point=intent.out_point,
     )
+
+    # Insert at the correct position
+    if intent.position is None or intent.position < 0:
+        target_playlist.entries.append(entry)
+        logger.info(
+            "AddClip: appended producer '%s' to playlist '%s'",
+            intent.producer_id,
+            target_ref,
+        )
+    else:
+        pos = min(intent.position, len(target_playlist.entries))
+        target_playlist.entries.insert(pos, entry)
+        logger.info(
+            "AddClip: inserted producer '%s' at position %d in playlist '%s'",
+            intent.producer_id,
+            pos,
+            target_ref,
+        )
 
 
 def _apply_add_transition(project: KdenliveProject, intent: AddTransition) -> None:
