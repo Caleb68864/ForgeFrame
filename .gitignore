@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+
+# Environment
+.env
+
+# Smoke test media (large files)
+smoke-test/footage/
+smoke-test/workspace/
+smoke-test/vault/
+smoke-test/*.mp4
+smoke-test/*.wav
+smoke-test/*.mp3
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

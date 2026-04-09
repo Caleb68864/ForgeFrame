@@ -104,6 +104,7 @@ def probe_media(path: Path) -> MediaAsset:
         video_codec=video_stream.get("codec_name", ""),
         audio_codec=audio_stream.get("codec_name", ""),
         duration=duration,
+        duration_seconds=duration,
         fps=fps,
         width=int(video_stream.get("width") or 0),
         height=int(video_stream.get("height") or 0),
@@ -111,6 +112,7 @@ def probe_media(path: Path) -> MediaAsset:
         sample_rate=sample_rate,
         bitrate=bitrate,
         file_size=file_size,
+        file_size_bytes=file_size,
         hash=file_hash,
     )
 

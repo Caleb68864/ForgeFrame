@@ -22,6 +22,7 @@ class MediaAsset(SerializableMixin):
     video_codec: str = ""
     audio_codec: str = ""
     duration: float = 0.0
+    duration_seconds: float = 0.0  # alias for duration (used by MCP tools)
     fps: float = 0.0
     width: int = 0
     height: int = 0
@@ -31,6 +32,7 @@ class MediaAsset(SerializableMixin):
     bitrate: int = 0
     created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
     file_size: int = 0
+    file_size_bytes: int = 0  # alias for file_size (used by MCP tools)
     hash: str = ""
     proxy_path: str = ""
     proxy_status: ProxyStatus = ProxyStatus.not_needed
