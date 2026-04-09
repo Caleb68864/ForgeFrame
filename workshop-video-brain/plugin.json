@@ -7,5 +7,12 @@
   },
   "license": "MIT",
   "repository": "https://github.com/Caleb68864/ForgeFrame",
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "mcpServers": {
+    "workshop-video-brain": {
+      "command": "uv",
+      "args": ["run", "--directory", "..", "workshop-video-brain-server"],
+      "env": {}
+    }
+  }
 }

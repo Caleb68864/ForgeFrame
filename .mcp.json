@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "workshop-video-brain": {
+      "command": "uv",
+      "args": ["run", "workshop-video-brain-server"],
+      "env": {}
+    }
+  }
+}
