@@ -1737,5 +1737,203 @@ def list_projects() -> None:
         click.echo()
 
 
+# ---------------------------------------------------------------------------
+# broll-library group
+# ---------------------------------------------------------------------------
+
+
+@main.group("broll-library")
+def broll_library_group() -> None:
+    """Cross-project B-roll library management."""
+
+
+def _get_vault_path() -> "Path | None":
+    """Resolve vault path from env var or config."""
+    import os
+    from pathlib import Path as _Path
+    vault = os.environ.get("WVB_VAULT_PATH")
+    if vault:
+        return _Path(vault).expanduser()
+    config_path = _Path.home() / ".forgeframe" / "config.json"
+    if config_path.exists():
+        try:
+            import json as _json
+            cfg = _json.loads(config_path.read_text(encoding="utf-8"))
+            if "vault_path" in cfg:
+                return _Path(cfg["vault_path"]).expanduser()
+        except Exception:
+            pass
+    return None
+
+
+@broll_library_group.command("index")
+@click.argument("workspace_path", default="")
+def broll_library_index(workspace_path: str) -> None:
+    """Index a project's clips into the B-roll library.
+
+    If WORKSPACE_PATH is omitted, indexes all configured projects.
+    """
+    from pathlib import Path as _Path
+    from workshop_video_brain.edit_mcp.pipelines.broll_library import (
+        index_project,
+        index_all_projects,
+    )
+
+    vault = _get_vault_path()
+    if vault is None:
+        click.echo(
+            "Error: Vault path not configured. Set WVB_VAULT_PATH or run 'wvb init'.",
+            err=True,
+        )
+        sys.exit(1)
+
+    try:
+        if workspace_path:
+            ws = _Path(workspace_path)
+            if not ws.exists():
+                click.echo(f"Error: Workspace path does not exist: {workspace_path}", err=True)
+                sys.exit(1)
+            result = index_project(vault, ws)
+            click.echo(f"Indexed {workspace_path}:")
+            click.echo(f"  Added:   {result['added']}")
+            click.echo(f"  Skipped: {result['skipped']}")
+            click.echo(f"  Total:   {result['total']}")
+        else:
+            import json as _json
+            config_path = _Path.home() / ".forgeframe" / "config.json"
+            if not config_path.exists():
+                click.echo(
+                    "Error: No workspace_path provided and no ~/.forgeframe/config.json found.",
+                    err=True,
+                )
+                sys.exit(1)
+            cfg = _json.loads(config_path.read_text(encoding="utf-8"))
+            projects_root = cfg.get("projects_root", "")
+            if not projects_root:
+                click.echo("Error: projects_root not set in config.", err=True)
+                sys.exit(1)
+            result = index_all_projects(vault, _Path(projects_root))
+            click.echo("Indexed all projects:")
+            click.echo(f"  Projects scanned: {result['projects_scanned']}")
+            click.echo(f"  Total added:      {result['total_added']}")
+            click.echo(f"  Total clips:      {result['total_clips']}")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@broll_library_group.command("search")
+@click.argument("query")
+@click.option("--type", "content_type", default="", help="Filter by content type.")
+@click.option("--shot", "shot_type", default="", help="Filter by shot type.")
+@click.option("--min-rating", default=0, type=int, help="Minimum rating (0-5).")
+def broll_library_search(query: str, content_type: str, shot_type: str, min_rating: int) -> None:
+    """Search B-roll library across all projects."""
+    from workshop_video_brain.edit_mcp.pipelines.broll_library import search_library
+
+    vault = _get_vault_path()
+    if vault is None:
+        click.echo(
+            "Error: Vault path not configured. Set WVB_VAULT_PATH or run 'wvb init'.",
+            err=True,
+        )
+        sys.exit(1)
+
+    try:
+        filters: dict = {}
+        if content_type:
+            filters["content_type"] = content_type
+        if shot_type:
+            filters["shot_type"] = shot_type
+        if min_rating > 0:
+            filters["min_rating"] = min_rating
+
+        results = search_library(vault, query, filters)
+        if not results:
+            click.echo("No matching clips found.")
+            return
+
+        click.echo(f"Found {len(results)} clip(s):\n")
+        for entry in results:
+            dur = f"{entry.duration_seconds:.1f}s" if entry.duration_seconds else "-"
+            click.echo(f"  {entry.clip_ref}")
+            click.echo(f"    Project:  {entry.source_project}")
+            click.echo(f"    Duration: {dur}")
+            click.echo(f"    Type:     {entry.content_type} / {entry.shot_type}")
+            click.echo(f"    Tags:     {', '.join(entry.tags[:6])}")
+            click.echo(f"    Path:     {entry.source_path}")
+            if entry.rating:
+                click.echo(f"    Rating:   {'*' * entry.rating}")
+            click.echo()
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@broll_library_group.command("tag")
+@click.argument("source_path")
+@click.option("--tags", default="", help="Comma-separated tags to add.")
+@click.option("--rating", default=-1, type=int, help="Rating 0-5 (-1 = no change).")
+@click.option("--description", default="", help="Description to set.")
+def broll_library_tag(source_path: str, tags: str, rating: int, description: str) -> None:
+    """Tag a clip in the B-roll library."""
+    from workshop_video_brain.edit_mcp.pipelines.broll_library import tag_clip
+
+    vault = _get_vault_path()
+    if vault is None:
+        click.echo(
+            "Error: Vault path not configured. Set WVB_VAULT_PATH or run 'wvb init'.",
+            err=True,
+        )
+        sys.exit(1)
+
+    try:
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+        entry = tag_clip(vault, source_path, tags=tag_list, rating=rating, description=description)
+        click.echo(f"Updated: {entry.clip_ref}")
+        click.echo(f"  Tags:   {', '.join(entry.tags)}")
+        if entry.rating:
+            click.echo(f"  Rating: {'*' * entry.rating}")
+        if entry.description:
+            click.echo(f"  Desc:   {entry.description}")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@broll_library_group.command("stats")
+def broll_library_stats() -> None:
+    """Show B-roll library statistics."""
+    from workshop_video_brain.edit_mcp.pipelines.broll_library import get_library_stats
+
+    vault = _get_vault_path()
+    if vault is None:
+        click.echo(
+            "Error: Vault path not configured. Set WVB_VAULT_PATH or run 'wvb init'.",
+            err=True,
+        )
+        sys.exit(1)
+
+    try:
+        stats = get_library_stats(vault)
+        click.echo(f"B-Roll Library Statistics:")
+        click.echo(f"  Total clips:      {stats['total_clips']}")
+        click.echo(f"  Projects indexed: {len(stats['projects_indexed'])}")
+        if stats["projects_indexed"]:
+            for proj in stats["projects_indexed"]:
+                click.echo(f"    - {proj}")
+        if stats["content_type_breakdown"]:
+            click.echo("\n  Content types:")
+            for ct, count in sorted(stats["content_type_breakdown"].items()):
+                click.echo(f"    {ct}: {count}")
+        if stats["top_tags"]:
+            click.echo("\n  Top tags:")
+            for tag, count in list(stats["top_tags"].items())[:10]:
+                click.echo(f"    {tag}: {count}")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     main()

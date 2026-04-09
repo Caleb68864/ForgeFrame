@@ -58,6 +58,7 @@ from .patterns import (
     Measurement,
 )
 from .assembly import AssemblyPlan, ClipAssignment, StepAssembly
+from .broll_library import BRollEntry, BRollLibrary
 
 __all__ = [
     # enums
@@ -142,4 +143,7 @@ __all__ = [
     "ClipAssignment",
     "StepAssembly",
     "AssemblyPlan",
+    # broll library
+    "BRollEntry",
+    "BRollLibrary",
 ]
