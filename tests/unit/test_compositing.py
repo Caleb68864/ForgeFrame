@@ -81,8 +81,10 @@ class TestApplyPip:
         intents = mock_patch.call_args[0][1]
         assert len(intents) == 1
         intent = intents[0]
-        assert intent.composition_type == "composite"
+        # Post-rewire: apply_pip delegates to apply_composite with blend_mode="cairoblend".
+        assert intent.composition_type == "frei0r.cairoblend"
         assert intent.params["geometry"] == "1420/790:480x270:100"
+        assert intent.params["1"] == "normal"
 
     @patch("workshop_video_brain.edit_mcp.pipelines.compositing.patch_project")
     def test_apply_pip_deep_copies(self, mock_patch):

@@ -4319,6 +4319,69 @@ def composite_wipe(
     return _ok({"wipe_type": wipe_type, "frames": [start_frame, end_frame]})
 
 
+@mcp.tool()
+def composite_set(
+    workspace_path: str,
+    project_file: str,
+    track_a: int,
+    track_b: int,
+    start_frame: int,
+    end_frame: int,
+    blend_mode: str = "cairoblend",
+    geometry: str = "",
+) -> dict:
+    """Add a composite transition between two tracks with a named blend mode."""
+    from workshop_video_brain.edit_mcp.pipelines.compositing import (
+        apply_composite,
+        BLEND_MODES,
+    )
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
+    from workshop_video_brain.workspace import create_snapshot
+
+    try:
+        ws_path, _workspace = _require_workspace(workspace_path)
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+
+    proj_path = ws_path / project_file
+    if not proj_path.exists():
+        return _err(f"Project file not found: {project_file}")
+
+    if blend_mode not in BLEND_MODES:
+        return _err(
+            f"Unknown blend_mode '{blend_mode}'; valid modes: {sorted(BLEND_MODES)}"
+        )
+
+    record = create_snapshot(
+        ws_path, proj_path, description=f"before_composite_set_{blend_mode}"
+    )
+
+    project = parse_project(proj_path)
+    try:
+        geom = geometry if geometry else None
+        updated = apply_composite(
+            project,
+            track_a=track_a,
+            track_b=track_b,
+            start_frame=start_frame,
+            end_frame=end_frame,
+            blend_mode=blend_mode,
+            geometry=geom,
+        )
+    except ValueError as exc:
+        return _err(str(exc))
+
+    serialize_project(updated, proj_path)
+    return _ok({
+        "composition_added": True,
+        "blend_mode": blend_mode,
+        "track_a": track_a,
+        "track_b": track_b,
+        "snapshot_id": record.snapshot_id,
+    })
+
+
 # ---------------------------------------------------------------------------
 # Stack-Ops tools (effects_copy / effects_paste / effect_reorder)
 # ---------------------------------------------------------------------------
