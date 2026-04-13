@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mlt LC_NUMERIC="C" version="7.22.0" title="masking_reference" producer="main_bin" root="/tmp">
+  <profile description="HD 1080p 30 fps" width="1920" height="1080" progressive="1" sample_aspect_num="1" sample_aspect_den="1" display_aspect_num="16" display_aspect_den="9" frame_rate_num="30" frame_rate_den="1" colorspace="709"/>
+  <producer id="producer0" in="0" out="120">
+    <property name="resource">/tmp/dummy.mp4</property>
+    <property name="mlt_service">avformat</property>
+  </producer>
+  <playlist id="playlist0">
+    <entry producer="producer0" in="0" out="120"/>
+  </playlist>
+  <tractor id="maintractor">
+    <track producer="playlist0"/>
+  </tractor>
+  <filter mlt_service="mask_start" track="0" clip_index="0">
+    <property name="mlt_service">mask_start</property>
+    <property name="kdenlive_id">mask_start-rotoscoping</property>
+    <property name="filter">rotoscoping</property>
+    <property name="filter.mode">alpha</property>
+    <property name="filter.alpha_operation">clear</property>
+    <property name="filter.invert">0</property>
+    <property name="filter.feather">0</property>
+    <property name="filter.feather_passes">1</property>
+    <property name="filter.spline">{"0": [[[0.1, 0.1], [0.1, 0.1], [0.1, 0.1]], [[0.9, 0.1], [0.9, 0.1], [0.9, 0.1]], [[0.9, 0.9], [0.9, 0.9], [0.9, 0.9]], [[0.1, 0.9], [0.1, 0.9], [0.1, 0.9]]]}</property>
+  </filter>
+  <filter mlt_service="brightness" track="0" clip_index="0">
+    <property name="mlt_service">brightness</property>
+    <property name="kdenlive_id">brightness</property>
+    <property name="level">0.5</property>
+  </filter>
+  <filter mlt_service="mask_apply" track="0" clip_index="0">
+    <property name="mlt_service">mask_apply</property>
+    <property name="kdenlive_id">mask_apply</property>
+    <property name="transition">qtblend</property>
+  </filter>
+</mlt>
