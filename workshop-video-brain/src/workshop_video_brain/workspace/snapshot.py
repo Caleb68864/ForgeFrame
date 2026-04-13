@@ -74,6 +74,7 @@ def create(
         project_file_path=str(file_to_snapshot),
         manifest_snapshot=manifest_snapshot,
         description=description,
+        snapshot_id=snap_name,
     )
 
     # Persist metadata

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mlt title="Keyframe Test" version="7" producer="main_bin">
+  <profile width="1920" height="1080" frame_rate_num="30" frame_rate_den="1" colorspace="709"/>
+  <producer id="producer0" in="0" out="299">
+    <property name="resource">/media/clip1.mp4</property>
+    <property name="length">300</property>
+  </producer>
+  <playlist id="playlist0"/>
+  <playlist id="playlist1"/>
+  <playlist id="playlist2">
+    <entry producer="producer0" in="0" out="299"/>
+  </playlist>
+  <tractor id="tractor0" in="0" out="299">
+    <track producer="playlist0"/>
+    <track producer="playlist1"/>
+    <track producer="playlist2"/>
+  </tractor>
+  <filter id="effect_2_0_affine" mlt_service="affine" track="2" clip_index="0"><property name="kdenlive_id">transform</property><property name="rect">0 0 1920 1080 1</property></filter>
+</mlt>

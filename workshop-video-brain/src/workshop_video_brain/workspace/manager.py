@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from workshop_video_brain.core.models.enums import ProjectStatus
 from workshop_video_brain.core.models.project import VideoProject
-from workshop_video_brain.core.models.workspace import Workspace
+from workshop_video_brain.core.models.workspace import KeyframeDefaults, Workspace
 from workshop_video_brain.core.utils.naming import slugify
 
 from .folders import create_workspace_structure
@@ -48,12 +48,14 @@ class WorkspaceManager:
             status=ProjectStatus.idea,
         )
 
+        keyframe_defaults = KeyframeDefaults()
         manifest = WorkspaceManifest(
             workspace_id=project.id,
             project_title=title,
             slug=slug,
             status=ProjectStatus.idea,
             media_root=str(media_root),
+            keyframe_defaults=keyframe_defaults,
         )
         write_manifest(workspace_root, manifest)
 
@@ -63,6 +65,7 @@ class WorkspaceManager:
             media_root=str(media_root),
             workspace_root=str(workspace_root),
             config=config or {},
+            keyframe_defaults=keyframe_defaults,
         )
         return workspace
 
@@ -85,6 +88,7 @@ class WorkspaceManager:
             media_root=manifest.media_root,
             vault_note_path=manifest.vault_note_path,
             workspace_root=str(path),
+            keyframe_defaults=manifest.keyframe_defaults,
         )
 
     @staticmethod
@@ -98,6 +102,7 @@ class WorkspaceManager:
             content_type=workspace.project.content_type,
             vault_note_path=workspace.vault_note_path,
             media_root=workspace.media_root,
+            keyframe_defaults=workspace.keyframe_defaults,
         )
         write_manifest(Path(workspace.workspace_root), manifest)
 

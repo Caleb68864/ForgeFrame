@@ -10,6 +10,7 @@ from pydantic import Field
 
 from workshop_video_brain.core.models._base import SerializableMixin
 from workshop_video_brain.core.models.enums import ProjectStatus
+from workshop_video_brain.core.models.workspace import KeyframeDefaults
 
 
 class WorkspaceManifest(SerializableMixin):
@@ -27,6 +28,7 @@ class WorkspaceManifest(SerializableMixin):
     proxy_policy: dict = Field(default_factory=dict)
     stt_engine: str = "whisper"
     default_sort_mode: str = "chronological"
+    keyframe_defaults: KeyframeDefaults = Field(default_factory=KeyframeDefaults)
 
 
 _MANIFEST_FILENAME = "workspace.yaml"

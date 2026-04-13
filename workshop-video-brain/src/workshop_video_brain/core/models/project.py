@@ -47,3 +47,4 @@ class SnapshotRecord(SerializableMixin):
     project_file_path: str = ""
     manifest_snapshot: dict = Field(default_factory=dict)
     description: str = ""
+    snapshot_id: str = ""

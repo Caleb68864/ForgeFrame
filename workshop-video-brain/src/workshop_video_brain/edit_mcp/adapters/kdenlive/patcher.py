@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from workshop_video_brain.core.models.kdenlive import (
@@ -816,4 +817,145 @@ def _apply_add_transition(project: KdenliveProject, intent: AddTransition) -> No
         t_type,
         track,
         duration,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Effect-property accessors (additive; used by the keyframe pipeline).
+# ---------------------------------------------------------------------------
+
+
+def _iter_clip_filters(
+    project: KdenliveProject,
+    clip_ref: tuple[int, int],
+) -> list[tuple[int, OpaqueElement, ET.Element]]:
+    """Return [(effect_index, opaque_element, parsed_root), ...] for a clip.
+
+    effect_index is the position of the filter within this clip's filter
+    stack (0-based), NOT the index in project.opaque_elements. Stack order
+    matches insertion order in project.opaque_elements.
+
+    Raises IndexError if clip_ref refers to a non-existent track or clip.
+    """
+    track_index, clip_index = clip_ref
+
+    if track_index < 0 or track_index >= len(project.playlists):
+        raise IndexError(
+            f"track_index {track_index} out of range "
+            f"(have {len(project.playlists)} playlists)"
+        )
+
+    playlist = project.playlists[track_index]
+    real_entries = [e for e in playlist.entries if e.producer_id]
+    if clip_index < 0 or clip_index >= len(real_entries):
+        raise IndexError(
+            f"clip_index {clip_index} out of range "
+            f"(track has {len(real_entries)} clips)"
+        )
+
+    result: list[tuple[int, OpaqueElement, ET.Element]] = []
+    track_attr = str(track_index)
+    clip_attr = str(clip_index)
+    effect_index = 0
+    for elem in project.opaque_elements:
+        if elem.tag != "filter":
+            continue
+        try:
+            root = ET.fromstring(elem.xml_string)
+        except ET.ParseError:
+            continue
+        if root.get("track") != track_attr or root.get("clip_index") != clip_attr:
+            continue
+        result.append((effect_index, elem, root))
+        effect_index += 1
+    return result
+
+
+def list_effects(
+    project: KdenliveProject,
+    clip_ref: tuple[int, int],
+) -> list[dict]:
+    """Enumerate filters on a clip in stack order.
+
+    Each dict has keys: index, mlt_service, kdenlive_id, properties.
+    """
+    out: list[dict] = []
+    for effect_index, _elem, root in _iter_clip_filters(project, clip_ref):
+        properties: dict[str, str] = {}
+        kdenlive_id = ""
+        for child in root:
+            if child.tag != "property":
+                continue
+            name = child.get("name")
+            if name is None:
+                continue
+            text = child.text or ""
+            properties[name] = text
+            if name == "kdenlive_id":
+                kdenlive_id = text
+        out.append(
+            {
+                "index": effect_index,
+                "mlt_service": root.get("mlt_service") or "",
+                "kdenlive_id": kdenlive_id,
+                "properties": properties,
+            }
+        )
+    return out
+
+
+def get_effect_property(
+    project: KdenliveProject,
+    clip_ref: tuple[int, int],
+    effect_index: int,
+    property_name: str,
+) -> str | None:
+    """Return the property value for a filter on a clip, or None if missing.
+
+    Raises IndexError if effect_index is out of range for the clip's stack.
+    """
+    filters = _iter_clip_filters(project, clip_ref)
+    if effect_index < 0 or effect_index >= len(filters):
+        raise IndexError(
+            f"effect_index {effect_index} out of range "
+            f"(clip has {len(filters)} filters)"
+        )
+    _idx, _elem, root = filters[effect_index]
+    for child in root:
+        if child.tag == "property" and child.get("name") == property_name:
+            return child.text or ""
+    return None
+
+
+def set_effect_property(
+    project: KdenliveProject,
+    clip_ref: tuple[int, int],
+    effect_index: int,
+    property_name: str,
+    value: str,
+) -> None:
+    """Set (or create) a <property name=...> entry on a clip's filter.
+
+    Mutates project.opaque_elements in place by re-serializing the target
+    filter's XML. Raises IndexError on bad clip_ref or effect_index.
+    """
+    filters = _iter_clip_filters(project, clip_ref)
+    if effect_index < 0 or effect_index >= len(filters):
+        raise IndexError(
+            f"effect_index {effect_index} out of range "
+            f"(clip has {len(filters)} filters)"
+        )
+    _idx, elem, root = filters[effect_index]
+    target = None
+    for child in root:
+        if child.tag == "property" and child.get("name") == property_name:
+            target = child
+            break
+    if target is None:
+        target = ET.SubElement(root, "property", {"name": property_name})
+    target.text = value
+    elem.xml_string = ET.tostring(root, encoding="unicode")
+    logger.info(
+        "set_effect_property: clip %s effect %d property '%s'",
+        clip_ref, effect_index, property_name,
     )
