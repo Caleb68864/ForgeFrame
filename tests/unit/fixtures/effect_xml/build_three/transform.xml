@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<!DOCTYPE kpartgui>
+<effect xmlns="https://www.kdenlive.org" tag="affine" type="video">
+    <name>Transform</name>
+    <description>Position and scale</description>
+    <parameter type="constant" name="opacity" max="1" min="0" default="1" decimals="2">
+        <name>Opacity</name>
+    </parameter>
+    <parameter type="geometry" name="rect" default="0 0 100 100">
+        <name>Rectangle</name>
+    </parameter>
+</effect>

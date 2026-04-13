@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<effect xmlns="https://www.kdenlive.org" tag="test.loc" type="video">
+    <name>Foo</name>
+    <name lang="fr">Foo-fr</name>
+    <description>Has both</description>
+    <parameter type="constant" name="x" default="0">
+        <name>X</name>
+        <name lang="fr">X-fr</name>
+    </parameter>
+</effect>

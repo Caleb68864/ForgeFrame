@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<effect xmlns="https://www.kdenlive.org" tag="test.list" type="video">
+    <name>List No Display</name>
+    <description>Test fixture</description>
+    <parameter type="list" name="mode" default="0" paramlist="0;1;2">
+        <name>Mode</name>
+    </parameter>
+</effect>

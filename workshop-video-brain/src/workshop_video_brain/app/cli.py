@@ -2235,5 +2235,81 @@ def youtube_save(channel_url: str, max_videos: int, vault_path: str) -> None:
         sys.exit(1)
 
 
+# ---------------------------------------------------------------------------
+# catalog group
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def catalog() -> None:
+    """Effect catalog management commands."""
+
+
+@catalog.command("regenerate")
+@click.option(
+    "--no-upstream-check",
+    is_flag=True,
+    default=False,
+    help="Skip the upstream Kdenlive cross-check.",
+)
+@click.option(
+    "--output",
+    default=None,
+    help="Output path for generated catalog.py.",
+)
+@click.option(
+    "--source-dir",
+    default="/usr/share/kdenlive/effects/",
+    help="Directory of Kdenlive effect XML files.",
+)
+@click.option(
+    "--source-version",
+    default=None,
+    help="Override detected Kdenlive version string.",
+)
+def catalog_regenerate(
+    no_upstream_check: bool,
+    output: str | None,
+    source_dir: str,
+    source_version: str | None,
+) -> None:
+    """Regenerate the effect catalog from Kdenlive XML."""
+    from pathlib import Path
+
+    from workshop_video_brain.edit_mcp.pipelines.effect_catalog_gen import (
+        _detect_source_version,
+        build_catalog,
+        emit_python_module,
+    )
+
+    src = Path(source_dir)
+    if not src.is_dir():
+        click.echo(
+            f"Error: Kdenlive source dir not found: {src}. "
+            "Install Kdenlive or pass --source-dir.",
+            err=True,
+        )
+        sys.exit(1)
+
+    if output:
+        out = Path(output)
+    else:
+        out = Path(
+            "workshop-video-brain/src/workshop_video_brain/"
+            "edit_mcp/pipelines/effect_catalog.py"
+        )
+    version = source_version or _detect_source_version()
+    try:
+        effects, diff = build_catalog(src, check_upstream=not no_upstream_check)
+        emit_python_module(effects, out, version, diff)
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    click.echo(
+        f"Wrote {out}: {len(effects)} effects "
+        f"(upstream check: {diff.upstream_check})"
+    )
+
+
 if __name__ == "__main__":
     main()

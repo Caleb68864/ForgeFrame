@@ -3730,9 +3730,80 @@ def effect_list_common() -> dict:
     This is an informational reference -- any effect name can be used
     with effect_add regardless of whether it appears in this list.
     """
-    from workshop_video_brain.edit_mcp.pipelines.effect_apply import list_common_effects
+    try:
+        from workshop_video_brain.edit_mcp.pipelines import (
+            effect_catalog as _catalog,
+        )
+    except ModuleNotFoundError:
+        return _err(
+            "Effect catalog not generated. Run: "
+            "uv run workshop-video-brain catalog regenerate "
+            "(or scripts/generate_effect_catalog.py)"
+        )
+    effects = []
+    for eff in _catalog.CATALOG.values():
+        desc = eff.description or ""
+        short = desc if len(desc) <= 80 else desc[:80] + "..."
+        effects.append({
+            "kdenlive_id": eff.kdenlive_id,
+            "mlt_service": eff.mlt_service,
+            "display_name": eff.display_name,
+            "category": eff.category,
+            "short_description": short,
+        })
+    return _ok({"effects": effects})
 
-    return _ok({"effects": list_common_effects()})
+
+def _effect_def_to_dict(eff) -> dict:
+    return {
+        "kdenlive_id": eff.kdenlive_id,
+        "mlt_service": eff.mlt_service,
+        "display_name": eff.display_name,
+        "description": eff.description,
+        "category": eff.category,
+        "params": [
+            {
+                "name": p.name,
+                "display_name": p.display_name,
+                "type": p.type.value,
+                "default": p.default,
+                "min": p.min,
+                "max": p.max,
+                "decimals": p.decimals,
+                "values": list(p.values),
+                "value_labels": list(p.value_labels),
+                "keyframable": p.keyframable,
+            }
+            for p in eff.params
+        ],
+    }
+
+
+@mcp.tool()
+def effect_info(name: str) -> dict:
+    """Return full schema for a Kdenlive effect by kdenlive_id or MLT service tag.
+
+    Looks up the catalog generated from /usr/share/kdenlive/effects/. Use
+    `effect_list_common` to discover available effect ids.
+    """
+    if not name or not name.strip():
+        return _err("Effect name cannot be empty.")
+    try:
+        from workshop_video_brain.edit_mcp.pipelines import (
+            effect_catalog as _catalog,
+        )
+    except ModuleNotFoundError:
+        return _err(
+            "Effect catalog not generated. Run: "
+            "uv run workshop-video-brain catalog regenerate "
+            "(or scripts/generate_effect_catalog.py)"
+        )
+    eff = _catalog.find_by_name(name) or _catalog.find_by_service(name)
+    if eff is None:
+        return _err(
+            f"Effect not found: {name}. Try `effect_list_common` for the registry."
+        )
+    return _ok(_effect_def_to_dict(eff))
 
 
 # ---------------------------------------------------------------------------

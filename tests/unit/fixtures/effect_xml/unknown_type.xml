@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<effect xmlns="https://www.kdenlive.org" tag="test.unknown" type="video">
+    <name>Unknown Type Test</name>
+    <description></description>
+    <parameter type="quantum_flux" name="bogus" default="42">
+        <name>Bogus</name>
+    </parameter>
+</effect>

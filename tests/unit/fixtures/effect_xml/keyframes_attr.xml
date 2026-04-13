@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<effect xmlns="https://www.kdenlive.org" tag="test.kf" type="video">
+    <name>Keyframes Attr Test</name>
+    <description></description>
+    <parameter type="constant" name="opacity" max="1" min="0" default="1" keyframes="1">
+        <name>Opacity</name>
+    </parameter>
+</effect>
