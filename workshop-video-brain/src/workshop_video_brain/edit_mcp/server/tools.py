@@ -4246,3 +4246,169 @@ def composite_wipe(
 
     serialize_project(updated, proj_path)
     return _ok({"wipe_type": wipe_type, "frames": [start_frame, end_frame]})
+
+
+# ---------------------------------------------------------------------------
+# Stack-Ops tools (effects_copy / effects_paste / effect_reorder)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def effects_copy(
+    workspace_path: str,
+    project_file: str,
+    track: int,
+    clip: int,
+) -> dict:
+    """Serialize a clip's filter stack to a JSON-friendly dict (read-only).
+
+    Returns ``{"stack": {...}, "effect_count": int}``. The ``stack`` value is
+    the output of ``stack_ops.serialize_stack`` and can be JSON-encoded and
+    passed back to ``effects_paste``.
+    """
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
+    from workshop_video_brain.edit_mcp.pipelines import stack_ops
+
+    try:
+        ws_path, _workspace = _require_workspace(workspace_path)
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+
+    project_path = ws_path / project_file
+    if not project_path.exists():
+        return _err(f"Project file not found: {project_file}")
+
+    project = parse_project(project_path)
+    try:
+        stack = stack_ops.serialize_stack(project, (track, clip))
+    except IndexError as exc:
+        return _err(str(exc))
+
+    return _ok({
+        "project_file": project_file,
+        "stack": stack,
+        "effect_count": len(stack["effects"]),
+    })
+
+
+@mcp.tool()
+def effects_paste(
+    workspace_path: str,
+    project_file: str,
+    track: int,
+    clip: int,
+    stack: str,
+    mode: str = "append",
+) -> dict:
+    """Paste a serialized filter stack onto a clip.
+
+    ``stack`` is a JSON string (output of ``effects_copy`` ``data.stack``).
+    ``mode`` is one of ``append``, ``prepend``, ``replace``. Snapshot is
+    created before modifying the project.
+    """
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
+    from workshop_video_brain.edit_mcp.pipelines import stack_ops
+    from workshop_video_brain.workspace import create_snapshot
+
+    try:
+        ws_path, _workspace = _require_workspace(workspace_path)
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+
+    project_path = ws_path / project_file
+    if not project_path.exists():
+        return _err(f"Project file not found: {project_file}")
+
+    try:
+        stack_dict = json.loads(stack)
+    except json.JSONDecodeError as exc:
+        return _err(
+            f"Invalid stack JSON (expected output of effects_copy): {exc}"
+        )
+
+    try:
+        record = create_snapshot(
+            ws_path, project_path, description=f"before_effects_paste_{mode}"
+        )
+        snapshot_id = record.snapshot_id
+    except Exception as exc:
+        return _err(f"Snapshot failed: {exc}")
+
+    project = parse_project(project_path)
+    try:
+        count = stack_ops.apply_paste(project, (track, clip), stack_dict, mode)
+    except (ValueError, IndexError) as exc:
+        return _err(str(exc))
+
+    serialize_project(project, project_path)
+    return _ok({
+        "project_file": project_file,
+        "track": track,
+        "clip": clip,
+        "effects_pasted": count,
+        "mode": mode,
+        "snapshot_id": snapshot_id,
+    })
+
+
+@mcp.tool()
+def effect_reorder(
+    workspace_path: str,
+    project_file: str,
+    track: int,
+    clip: int,
+    from_index: int,
+    to_index: int,
+) -> dict:
+    """Reorder a filter within a clip's filter stack.
+
+    Snapshot is created before modifying the project. Returns an error envelope
+    naming the current stack length when indices are out of range.
+    """
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
+    from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
+    from workshop_video_brain.edit_mcp.pipelines import stack_ops
+    from workshop_video_brain.workspace import create_snapshot
+
+    try:
+        ws_path, _workspace = _require_workspace(workspace_path)
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+
+    project_path = ws_path / project_file
+    if not project_path.exists():
+        return _err(f"Project file not found: {project_file}")
+
+    try:
+        record = create_snapshot(
+            ws_path, project_path, description="before_effect_reorder"
+        )
+        snapshot_id = record.snapshot_id
+    except Exception as exc:
+        return _err(f"Snapshot failed: {exc}")
+
+    project = parse_project(project_path)
+    try:
+        stack_ops.reorder_stack(project, (track, clip), from_index, to_index)
+    except IndexError as exc:
+        try:
+            available = patcher.list_effects(project, (track, clip))
+        except Exception:
+            available = []
+        return _err(
+            f"{exc}. Current stack: {len(available)} filters: {available}"
+        )
+    except ValueError as exc:
+        return _err(str(exc))
+
+    serialize_project(project, project_path)
+    return _ok({
+        "project_file": project_file,
+        "track": track,
+        "clip": clip,
+        "from_index": from_index,
+        "to_index": to_index,
+        "snapshot_id": snapshot_id,
+    })

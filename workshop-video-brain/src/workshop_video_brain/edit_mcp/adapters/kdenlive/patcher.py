@@ -959,3 +959,113 @@ def set_effect_property(
         "set_effect_property: clip %s effect %d property '%s'",
         clip_ref, effect_index, property_name,
     )
+
+
+def insert_effect_xml(
+    project: KdenliveProject,
+    clip_ref: tuple[int, int],
+    xml_string: str,
+    position: int,
+) -> None:
+    """Insert a new filter OpaqueElement into a clip's effect stack.
+
+    `position` is a per-clip stack index in [0, len(stack)]. 0 inserts at
+    the top of the stack; `len(stack)` appends to the bottom.
+
+    Raises IndexError on bad clip_ref or out-of-range position.
+    """
+    filters = _iter_clip_filters(project, clip_ref)
+    if position < 0 or position > len(filters):
+        raise IndexError(
+            f"position {position} out of range "
+            f"(clip has {len(filters)} filters)"
+        )
+
+    new_element = OpaqueElement(
+        tag="filter",
+        xml_string=xml_string,
+        position_hint="after_tractor",
+    )
+
+    if len(filters) == 0:
+        project.opaque_elements.append(new_element)
+    elif position < len(filters):
+        abs_index = project.opaque_elements.index(filters[position][1])
+        project.opaque_elements.insert(abs_index, new_element)
+    else:
+        abs_index = project.opaque_elements.index(filters[-1][1]) + 1
+        project.opaque_elements.insert(abs_index, new_element)
+
+    logger.info(
+        "insert_effect_xml: clip %s position %d (stack len now %d)",
+        clip_ref, position, len(filters) + 1,
+    )
+
+
+def remove_effect(
+    project: KdenliveProject,
+    clip_ref: tuple[int, int],
+    effect_index: int,
+) -> None:
+    """Remove the filter at stack-index `effect_index` from a clip.
+
+    Raises IndexError on bad clip_ref or out-of-range effect_index.
+    """
+    filters = _iter_clip_filters(project, clip_ref)
+    if effect_index < 0 or effect_index >= len(filters):
+        raise IndexError(
+            f"effect_index {effect_index} out of range "
+            f"(clip has {len(filters)} filters)"
+        )
+    target_elem = filters[effect_index][1]
+    project.opaque_elements.remove(target_elem)
+    logger.info(
+        "remove_effect: clip %s effect %d (stack len now %d)",
+        clip_ref, effect_index, len(filters) - 1,
+    )
+
+
+def reorder_effects(
+    project: KdenliveProject,
+    clip_ref: tuple[int, int],
+    from_index: int,
+    to_index: int,
+) -> None:
+    """Move a filter within a clip's stack from `from_index` to `to_index`.
+
+    Semantics mirror `list.insert(to, list.pop(from))` applied to the clip's
+    filter subset. `from_index == to_index` is a silent no-op.
+
+    Raises IndexError on bad clip_ref or out-of-range indices.
+    """
+    if from_index == to_index:
+        return
+
+    filters = _iter_clip_filters(project, clip_ref)
+    if from_index < 0 or from_index >= len(filters):
+        raise IndexError(
+            f"from_index {from_index} out of range "
+            f"(clip has {len(filters)} filters)"
+        )
+    if to_index < 0 or to_index >= len(filters):
+        raise IndexError(
+            f"to_index {to_index} out of range "
+            f"(clip has {len(filters)} filters)"
+        )
+
+    moving = filters[from_index][1]
+    project.opaque_elements.remove(moving)
+
+    filters_after = _iter_clip_filters(project, clip_ref)
+    if to_index < len(filters_after):
+        abs_index = project.opaque_elements.index(filters_after[to_index][1])
+    elif len(filters_after) > 0:
+        abs_index = project.opaque_elements.index(filters_after[-1][1]) + 1
+    else:
+        abs_index = len(project.opaque_elements)
+
+    project.opaque_elements.insert(abs_index, moving)
+    logger.info(
+        "reorder_effects: clip %s moved %d -> %d",
+        clip_ref, from_index, to_index,
+    )
