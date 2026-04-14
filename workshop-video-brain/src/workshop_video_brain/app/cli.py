@@ -2311,5 +2311,52 @@ def catalog_regenerate(
     )
 
 
+@catalog.command("regenerate-wrappers")
+@click.option(
+    "--output",
+    default=None,
+    help="Output directory for generated effect_wrappers package.",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="Overwrite existing files in the output directory.",
+)
+def catalog_regenerate_wrappers(output: str | None, force: bool) -> None:
+    """Regenerate per-effect MCP wrapper modules from the catalog."""
+    from pathlib import Path
+
+    from workshop_video_brain.edit_mcp.pipelines.effect_catalog import CATALOG
+    from workshop_video_brain.edit_mcp.pipelines.effect_wrapper_gen import (
+        emit_wrappers_package,
+        select_wrappable_effects,
+    )
+
+    if output:
+        out = Path(output)
+    else:
+        out = Path(
+            "workshop-video-brain/src/workshop_video_brain/"
+            "edit_mcp/pipelines/effect_wrappers"
+        )
+
+    effects = select_wrappable_effects(CATALOG)
+    if len(effects) < 20:
+        click.echo(
+            f"Error: selection heuristic yielded {len(effects)} effects "
+            "(< 20). Tune heuristic before regenerating.",
+            err=True,
+        )
+        sys.exit(1)
+
+    try:
+        emit_wrappers_package(effects, out, force=force)
+    except FileExistsError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    click.echo(f"Wrote {out}: {len(effects)} wrapper modules")
+
+
 if __name__ == "__main__":
     main()
