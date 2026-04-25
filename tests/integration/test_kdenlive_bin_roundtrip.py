@@ -217,7 +217,8 @@ class TestProducerKdenliveMetadata:
             # Kdenlive 25.x uses 0 (auto-detect) on chains, not 3 (AV).
             assert _props(prod).get("kdenlive:clip_type") == "0", f"Expected 0 (auto) for {pid}"
 
-    def test_title_producers_clip_type_6(self, tmp_path):
+    def test_title_producers_clip_type_2(self, tmp_path):
+        # Kdenlive 25.x saves kdenlivetitle clips with clip_type=2.
         project = _make_mixed_project()
         out = tmp_path / "mixed.kdenlive"
         serialize_project(project, out)
@@ -225,7 +226,7 @@ class TestProducerKdenliveMetadata:
         for pid in ("title0", "title1"):
             prod = _find_producer_or_chain(root, pid)
             assert prod is not None, f"title producer {pid} missing"
-            assert _props(prod).get("kdenlive:clip_type") == "6", f"Expected 6 (Text) for {pid}"
+            assert _props(prod).get("kdenlive:clip_type") == "2", f"Expected 2 for {pid}"
 
 
 class TestInfrastructureElements:

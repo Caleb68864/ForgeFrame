@@ -7,6 +7,7 @@
 - [[kdenlive-twin-chain-pattern]] — every avformat clip gets two `<chain>` elements, linked by `control_uuid`
 - [[kdenlive-per-track-tractor-pattern]] — track wiring with A/B playlists + audio filters
 - [[kdenlive-bin-loader-source-pointers]] — exact Kdenlive source files & lines for the load checks
+- [[kdenlive-title-card-pattern]] — editable title cards (`mlt_service=kdenlivetitle` with `xmldata`)
 
 ## Process
 

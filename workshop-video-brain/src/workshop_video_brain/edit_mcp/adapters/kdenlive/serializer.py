@@ -57,29 +57,31 @@ def _project_uuid(title: str) -> str:
 
 
 def _clip_type(properties: dict[str, str]) -> str:
-    """Return Kdenlive clip_type from ClipType::ProducerType enum.
+    """Return Kdenlive clip_type matching what Kdenlive 25.x writes.
 
-    Values from kdenlive/src/definitions.h:
-      0=Unknown, 1=Audio, 2=Video, 3=AV, 4=Color, 5=Image,
-      6=Text, 7=SlideShow, 9=Playlist, 15=QML, 17=Timeline
+    Reference values empirically observed in Kdenlive-saved projects:
+      0 -- avformat ``<chain>`` (auto-detect from element type)
+      2 -- kdenlivetitle (editable title card) AND avformat with no audio
+      4 -- color generators
+      5 -- image producers (qimage / pixbuf)
+      9 -- xml / playlist producers
 
-    NOTE: Kdenlive 25.x writes ``kdenlive:clip_type=0`` (Unknown / auto-detect)
-    on avformat ``<chain>`` elements -- the chain element itself encodes that
-    it is an AV media producer, so the clip_type property is left unspecific.
-    Setting it to ``3`` causes the bin loader to reject the chain.
+    The legacy ``definitions.h`` enum (3=AV, 6=Text) does *not* match what
+    Kdenlive actually saves: writing 3 on a chain or 6 on a kdenlivetitle
+    causes the bin loader to reject the producer.
     """
     service = properties.get("mlt_service", "")
     if service == "kdenlivetitle":
-        return "6"  # Text
+        return "2"
     if service == "color":
-        return "4"  # Color
+        return "4"
     if service in ("qimage", "pixbuf"):
-        return "5"  # Image
+        return "5"
     if service.startswith("avformat"):
-        return "0"  # Auto-detect from chain (was 3 = AV; rejected by Kdenlive 25)
+        return "0"
     if service in ("xml", "consumer"):
-        return "9"  # Playlist
-    return "0"  # Unknown
+        return "9"
+    return "0"
 
 
 def _fps_to_rational(fps: float) -> tuple[int, int]:
@@ -309,6 +311,12 @@ def serialize_project(
     # Color, title and other generators stay as a single ``<producer>``.
     # ------------------------------------------------------------------
     bin_chain_id_for: dict[str, str] = {}
+    kdenlive_id_for: dict[str, str] = {}
+
+    # Kdenlive reserves integer ids 2 and 3 for the "Sequences" bin folder
+    # and the project's main sequence respectively.  User clips must start
+    # at 4 so they don't collide with the sequence id.
+    _USER_KDENLIVE_ID_START = 4
 
     def _emit_media_element(
         producer,
@@ -361,12 +369,23 @@ def serialize_project(
             "kdenlive:folderid",
             producer.properties.get("kdenlive:folderid", "-1"),
         )
-        if is_bin and is_chain:
-            _set_prop(elem, "kdenlive:monitorPosition", "0")
+        # ``kextractor=1`` belongs on every chain (timeline twins and bin
+        # twins both); the reference Kdenlive saves both with this flag.
+        if is_chain:
             _set_prop(elem, "kdenlive:kextractor", "1")
+            if is_bin:
+                _set_prop(elem, "kdenlive:monitorPosition", "0")
+                # Bin twin uses validating service so Kdenlive re-probes and
+                # populates meta.media.* on import; timeline twin uses
+                # ``avformat-novalidate`` for fast playback.  Override the
+                # service property the patcher seeded.
+                for child in elem.findall("property"):
+                    if child.get("name") == "mlt_service":
+                        child.text = "avformat"
+                        break
         return elem
 
-    for kdenlive_id, producer in enumerate(project.producers, start=2):
+    for kdenlive_id, producer in enumerate(project.producers, start=_USER_KDENLIVE_ID_START):
         service = producer.properties.get("mlt_service", "")
         is_chain = service.startswith("avformat") or service == "timewarp"
         # Timeline element (referenced by playlist <entry> children)
@@ -377,6 +396,7 @@ def serialize_project(
             bin_chain_id_for[producer.id] = f"{producer.id}_bin"
         else:
             bin_chain_id_for[producer.id] = producer.id
+        kdenlive_id_for[producer.id] = str(kdenlive_id)
 
     # ------------------------------------------------------------------
     # black_track background producer
@@ -413,6 +433,12 @@ def serialize_project(
                     e_elem.set("producer", entry.producer_id)
                     e_elem.set("in", str(entry.in_point))
                     e_elem.set("out", str(entry.out_point))
+                    # Kdenlive's timeline parser keys clip uses by the bin
+                    # clip's integer id; emit it as a child property so
+                    # Kdenlive can resolve the entry to its bin clip.
+                    bin_id = kdenlive_id_for.get(entry.producer_id)
+                    if bin_id is not None:
+                        _set_prop(e_elem, "kdenlive:id", bin_id)
                 else:
                     blank = ET.SubElement(a_elem, "blank")
                     blank.set("length", str(entry.out_point + 1))
@@ -458,6 +484,11 @@ def serialize_project(
     seq_elem.set("in", "0")
     seq_elem.set("out", str(total_frames - 1))
     _set_prop(seq_elem, "kdenlive:uuid", seq_uuid)
+    # The main sequence tractor also carries ``kdenlive:control_uuid`` (set
+    # to the same value as kdenlive:uuid).  Reference projects always
+    # include it; without it Kdenlive's bin loader treats the sequence as
+    # unrecoverable.
+    _set_prop(seq_elem, "kdenlive:control_uuid", seq_uuid)
     _set_prop(seq_elem, "kdenlive:clipname", "Sequence 1")
     _set_prop(seq_elem, "kdenlive:sequenceproperties.hasAudio",
               "1" if any(t.track_type == "audio" for t in tracks_source) else "0")
@@ -487,10 +518,12 @@ def serialize_project(
     _set_prop(seq_elem, "kdenlive:clip_type", "0")
     _set_prop(seq_elem, "kdenlive:folderid", "2")
 
-    # Tracks: black at index 0, then each per-track tractor
+    # Tracks: black at index 0, then each per-track tractor.
+    # Note: the reference does NOT set ``hide`` on the sequence's
+    # ``<track producer="black_track">`` -- adding it makes Kdenlive
+    # consider the sequence corrupted.
     bt_track = ET.SubElement(seq_elem, "track")
     bt_track.set("producer", "black_track")
-    bt_track.set("hide", "video")
     for track in tracks_source:
         t_elem = ET.SubElement(seq_elem, "track")
         t_elem.set("producer", _track_tractor_id(track.id))

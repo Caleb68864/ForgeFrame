@@ -136,17 +136,19 @@ class TestProducerMetadata:
 
         assert _control_uuid(out1) == _control_uuid(out2)
 
-    def test_kdenlive_id_starts_at_2(self, tmp_path):
+    def test_kdenlive_id_starts_at_4(self, tmp_path):
+        # Kdenlive reserves integer id 2 for the "Sequences" bin folder and
+        # 3 for the project's main sequence; user clips start at 4.
         project = _make_project()
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
         prod = _find_producer_or_chain(root, "prod0")
         props = _get_props(prod)
-        assert props["kdenlive:id"] == "2"
+        assert props["kdenlive:id"] == "4"
 
     def test_kdenlive_id_sequential(self, tmp_path):
-        """Multiple producers get sequential IDs starting at 2."""
+        """Multiple producers get sequential IDs starting at 4."""
         project = _make_project(
             producers=[
                 Producer(id="p0", resource="/a.mp4", properties={"resource": "/a.mp4"}),
@@ -164,11 +166,12 @@ class TestProducerMetadata:
         serialize_project(project, out)
         root = ET.parse(out).getroot()
         ids = {}
-        for prod in root.findall("producer"):
-            pid = prod.get("id")
-            if pid in ("p0", "p1", "p2"):
-                ids[pid] = _get_props(prod)["kdenlive:id"]
-        assert ids == {"p0": "2", "p1": "3", "p2": "4"}
+        for tag in ("producer", "chain"):
+            for prod in root.findall(tag):
+                pid = prod.get("id")
+                if pid in ("p0", "p1", "p2"):
+                    ids[pid] = _get_props(prod)["kdenlive:id"]
+        assert ids == {"p0": "4", "p1": "5", "p2": "6"}
 
     def test_clip_type_avformat(self, tmp_path):
         project = _make_project(
@@ -201,7 +204,9 @@ class TestProducerMetadata:
         serialize_project(project, out)
         root = ET.parse(out).getroot()
         prod = _find_producer_or_chain(root, "title0")
-        assert _get_props(prod)["kdenlive:clip_type"] == "6"  # Text
+        # Kdenlive 25.x saves kdenlivetitle clips with clip_type=2 (the
+        # legacy 6 from definitions.h is no longer accepted by the bin loader).
+        assert _get_props(prod)["kdenlive:clip_type"] == "2"
 
     def test_clip_type_generic_defaults_to_0(self, tmp_path):
         project = _make_project(
