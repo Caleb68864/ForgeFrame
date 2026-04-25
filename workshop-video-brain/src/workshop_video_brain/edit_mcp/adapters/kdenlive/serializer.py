@@ -1,8 +1,69 @@
 """Kdenlive project serializer.  Writes a KdenliveProject to a versioned
 .kdenlive XML file under projects/working_copies/.
 
+Targets Kdenlive 25.x / MLT 7.x.  Five hand-saved Kdenlive references in
+``tests/fixtures/kdenlive_references/`` are the authoritative shape
+sources; the wiki pages under ``vault/wiki/kdenlive-*`` distill the
+hard-won contract.  The most important rules, all enforced by this
+module:
+
+1.  ``kdenlive:uuid`` belongs ONLY on the main sequence tractor.  Putting
+    it on a producer or chain makes Kdenlive's bin loader treat the entry
+    as a sequence and skip registration -- "Clip ... not found in project
+    bin".  Use ``kdenlive:control_uuid`` for media instead.  See
+    ``vault/wiki/kdenlive-uuid-vs-control-uuid.md``.
+
+2.  Every ``avformat`` media file emits TWO ``<chain>`` elements: a
+    timeline twin (``mlt_service=avformat-novalidate``) and a bin twin
+    (``mlt_service=avformat``, ``kdenlive:kextractor=1``,
+    ``kdenlive:monitorPosition=0``).  Both share ``kdenlive:control_uuid``
+    and ``kdenlive:id``.  Bin twin id uses a ``_kdbin`` suffix (NOT
+    ``_bin``) so a producer named ``main`` doesn't collide with the
+    reserved ``<playlist id="main_bin">``.  See
+    ``vault/wiki/kdenlive-twin-chain-pattern.md``.
+
+3.  Each track is its own ``<tractor>`` wrapping two ``<playlist>``
+    children (an ``A`` content playlist and a ``*_kdpair`` empty
+    companion).  Audio track tractors carry ``volume``/``panner``/
+    ``audiolevel`` filters with ``internal_added=237``.  See
+    ``vault/wiki/kdenlive-per-track-tractor-pattern.md``.
+
+4.  Profile names use the canonical Kdenlive set
+    (``atsc_1080p_2997`` etc.) when the (size, framerate) combination is
+    known; Kdenlive otherwise warns "non standard framerate".
+
+5.  Title cards use ``mlt_service=kdenlivetitle`` with an ``xmldata``
+    payload describing text and viewport;  ``kdenlive:clip_type=2``
+    (NOT 6).  Font must exist on the host (Windows: ``Segoe UI``).
+    See ``vault/wiki/kdenlive-title-card-pattern.md``.
+
+6.  Cross-dissolves are stacked-track only -- Kdenlive 25 disabled
+    same-track dissolves at the source level.  Always emit
+    ``a_track < b_track``; encode direction via the ``reverse`` property.
+    See ``vault/wiki/kdenlive-cross-dissolve-pattern.md``.
+
+7.  Image producers use ``mlt_service=qimage``, ``kdenlive:clip_type=2``
+    (NOT 5), timecode-format ``length`` and ``kdenlive:duration``,
+    ``ttl=25``, ``format=1``.  Single-instance (no separate twin) but
+    still carry ``kdenlive:kextractor=1``.  Ken Burns / parallax uses
+    a ``qtblend`` filter (NOT ``affine``) inside the playlist
+    ``<entry>``, with rect keyframes in ENTRY-LOCAL time (not absolute
+    sequence frames).  See ``vault/wiki/kdenlive-image-and-qtblend-pattern.md``.
+
+8.  Clip speed uses a separate ``<producer mlt_service="timewarp">``
+    referenced by the timeline entry; the original chain stays as the
+    bin clip.  ``resource="<speed>:<original_path>"``.  See
+    ``vault/wiki/kdenlive-clip-speed-pattern.md``.
+
+9.  ``kdenlive:id`` integers reserve 2 for the "Sequences" bin folder
+    and 3 for the project's main sequence; user clips start at 4.
+
+10. ``main_bin <entry>`` ``out`` attribute uses ``length-1`` (frames),
+    NOT 0; zero-span entries are rejected.  Resource paths use forward
+    slashes even on Windows.
+
 A snapshot of any pre-existing file at the target path is created before
-writing.
+writing so a corrupt save can be rolled back.
 """
 from __future__ import annotations
 

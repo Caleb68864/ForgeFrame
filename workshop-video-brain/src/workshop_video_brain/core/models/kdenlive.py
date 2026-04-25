@@ -1,4 +1,29 @@
-"""Kdenlive project internal model."""
+"""Kdenlive project internal model.
+
+The shape this model serializes to (in ``adapters/kdenlive/serializer.py``)
+follows Kdenlive 25.x / MLT 7.x conventions verified against five hand-saved
+references in ``tests/fixtures/kdenlive_references/``.  Detailed contracts
+for each pattern live in ``vault/wiki/kdenlive-*.md``; the most relevant:
+
+* ``kdenlive-25-document-shape`` -- top-level structure (per-track tractors,
+  main sequence, project tractor wrapper, ``main_bin`` doc-properties).
+* ``kdenlive-uuid-vs-control-uuid`` -- never put ``kdenlive:uuid`` on a
+  producer/chain; it makes the bin loader skip registration.
+* ``kdenlive-twin-chain-pattern`` -- avformat clips emit two ``<chain>``
+  elements (timeline + bin), linked by ``kdenlive:control_uuid`` and
+  ``kdenlive:id``, distinguished by the ``_kdbin`` suffix on the bin twin.
+* ``kdenlive-per-track-tractor-pattern`` -- each track is its own tractor
+  with two playlists; audio tracks carry internal volume/panner/audiolevel
+  filters.
+* ``kdenlive-title-card-pattern`` -- editable titles (``mlt_service=
+  kdenlivetitle`` + ``xmldata``).
+* ``kdenlive-cross-dissolve-pattern`` -- stacked-clip dissolves; ``a_track <
+  b_track``; encode direction via ``reverse``.
+* ``kdenlive-image-and-qtblend-pattern`` -- image producers + Ken Burns
+  ``qtblend`` filters with entry-local keyframes.
+* ``kdenlive-clip-speed-pattern`` -- separate ``timewarp`` producer per
+  unique speed; original chain stays as the bin clip.
+"""
 from __future__ import annotations
 
 from pydantic import Field
@@ -23,8 +48,18 @@ class EntryFilter(SerializableMixin):
     """A filter (effect) attached to a playlist entry.
 
     Emitted as a ``<filter>`` child inside the entry's ``<entry>`` element.
-    Used for transform/colour/blur effects that apply to a single clip use,
-    such as a Ken Burns ``qtblend`` parallax pan on an image.
+    Used for transform / colour / blur effects that apply to a single
+    clip use -- e.g. a Ken Burns ``qtblend`` parallax pan on an image, a
+    static PIP rect on a webcam overlay, or a colour grade.
+
+    Important contract gotchas (see
+    ``vault/wiki/kdenlive-image-and-qtblend-pattern.md``):
+
+    * Transforms use ``mlt_service=qtblend`` -- NOT ``affine``.  Kdenlive's
+      UI labels both as "Transform" but writes ``qtblend``.
+    * Keyframe timestamps in ``rect`` / ``rotation`` properties are
+      ENTRY-LOCAL (run from ``00:00:00.000`` to the entry's local
+      duration), not absolute sequence frames.
 
     Attributes:
         id: Optional element id (Kdenlive auto-numbers these as
@@ -84,15 +119,23 @@ class OpaqueElement(SerializableMixin):
 class SequenceTransition(SerializableMixin):
     """A user-added transition emitted into the main sequence tractor.
 
-    The serializer wires the auto-internal mix/qtblend transitions per track
-    automatically; this model holds *additional* transitions like cross-
-    dissolves that span an overlap region between two stacked clips.
+    The serializer wires the auto-internal mix/qtblend transitions per
+    track automatically; this model holds *additional* transitions like
+    cross-dissolves that span an overlap region between two stacked
+    clips.  See ``vault/wiki/kdenlive-cross-dissolve-pattern.md``.
+
+    HARD RULE: ``a_track < b_track``.  The lower-numbered track ordinal
+    goes into ``a_track`` regardless of dissolve direction.  Encode
+    direction via the ``reverse`` property in ``properties`` (``"0"`` =
+    upper fades in, ``"1"`` = upper fades out revealing lower).
+    Reversing the ordinals instead produces the "Incorrect composition
+    ... was set to forced track" warning at project-load.
 
     Attributes:
         id: Element id (e.g. ``"dissolve_v1_v2"``); must be unique.
-        a_track: 1-based ordinal of the lower (outgoing) track in the main
-            sequence's track list (0 = black_track).
-        b_track: 1-based ordinal of the upper (incoming) track.
+        a_track: 1-based ordinal of the LOWER track in the main sequence's
+            track list (0 = black_track).  Must be ``< b_track``.
+        b_track: 1-based ordinal of the HIGHER track.
         in_frame: Absolute sequence frame where the transition starts.
         out_frame: Absolute sequence frame where the transition ends.
         mlt_service: MLT service name, e.g. ``"luma"`` for a dissolve.
