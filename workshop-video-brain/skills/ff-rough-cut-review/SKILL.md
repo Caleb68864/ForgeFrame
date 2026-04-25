@@ -104,7 +104,7 @@ Output:
 2. Structured dict via Python engine
 
 ```python
-from production_brain.skills.review import generate_review
+from workshop_video_brain.production_brain.skills.review import generate_review
 md, data = generate_review(
     transcript_text=<transcript>,
     markers=<list_of_marker_dicts>,

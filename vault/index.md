@@ -15,3 +15,4 @@
 ## Process
 
 - [[golden-fixture-testing]] — testing the serializer against a real Kdenlive save without launching Kdenlive
+- [[external-kdenlive-examples-survey]] — survey of upstream KDE test suite + dev-docs, with a 10-item priority backlog of patterns we don't yet implement
