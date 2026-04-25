@@ -259,6 +259,127 @@ def test_028_video_fade_from_to_black():
     not USER_OUTPUT_DIR.parent.exists(),
     reason="User's Video Production tests folder not available",
 )
+def test_030_lift_gamma_gain_three_way_grade():
+    """3-way colour grading via the ``lift_gamma_gain`` MLT effect.
+    Nine scalar params (lift_r/g/b, gamma_r/g/b, gain_r/g/b).  Pattern
+    from ``mlt-plus-video-effects.kdenlive`` in the KDE test suite."""
+    clip = _resolve_clip(
+        USER_TEST_KDENLIVE / "8832126-uhd_3840_2160_30fps.mp4",
+        GENERATED_CLIP,
+    )
+    if clip is None:
+        pytest.skip("No clip available")
+
+    fps = 29.97
+    duration = int(5 * fps)
+    project = _build_initial_project("smoke_030_three_way_grade", fps=fps)
+    project = _add_clip(
+        project,
+        producer_id="vid",
+        track_id="playlist_video",
+        in_point=0,
+        out_point=duration - 1,
+        source_path=str(clip),
+    )
+    pl = next(p for p in project.playlists if p.id == "playlist_video")
+    entry = pl.entries[0]
+    # Push shadows cool (negative blue lift), gamma neutral, lift highlights
+    # warm (positive red gain).  Subtle teal-and-orange grade.
+    entry.filters.append(
+        EntryFilter(
+            id="lift_gamma_gain",
+            properties={
+                "mlt_service": "lift_gamma_gain",
+                "kdenlive_id": "lift_gamma_gain",
+                "lift_r": "0.50",  "lift_g": "0.50",  "lift_b": "0.55",  # cool shadows
+                "gamma_r": "0.50", "gamma_g": "0.50", "gamma_b": "0.50",  # neutral mids
+                "gain_r": "0.55",  "gain_g": "0.50",  "gain_b": "0.45",  # warm highlights
+                "kdenlive:collapsed": "0",
+            },
+        )
+    )
+    out_path = _output_dir() / "030-three-way-color-grade.kdenlive"
+    serialize_project(project, out_path)
+    assert out_path.exists()
+
+
+@pytest.mark.skipif(
+    not USER_OUTPUT_DIR.parent.exists(),
+    reason="User's Video Production tests folder not available",
+)
+def test_031_dissolve_with_mixcut_property():
+    """Cross-dissolve carrying the ``kdenlive:mixcut=12`` property the
+    KDE test suite uses on every user-placed luma transition.  Same
+    SequenceTransition shape as smoke 004 but with the extra property."""
+    from workshop_video_brain.core.models.kdenlive import SequenceTransition
+    from workshop_video_brain.core.models.timeline import CreateTrack
+
+    clip_a = _resolve_clip(
+        USER_TEST_KDENLIVE / "15647204_3840_2160_30fps.mp4",
+        GENERATED_CLIP,
+    )
+    clip_b = _resolve_clip(
+        USER_TEST_KDENLIVE / "13203211_2160_3840_60fps.mp4",
+        GENERATED_CLIP,
+    )
+    if not (clip_a and clip_b):
+        pytest.skip("Need two clips")
+
+    fps = 29.97
+    seg = int(3 * fps)
+    overlap = int(1 * fps)
+    project = _build_initial_project("smoke_031_dissolve_mixcut", fps=fps)
+    project = patch_project(project, [CreateTrack(track_type="video", name="V2")])
+
+    project = _add_clip(
+        project,
+        producer_id="clip_a",
+        track_id="playlist_video",
+        in_point=0,
+        out_point=seg - 1,
+        source_path=str(clip_a),
+    )
+    pl_b = next(p for p in project.playlists if p.id == "playlist_video_1")
+    pl_b.entries.append(PlaylistEntry(producer_id="", in_point=0, out_point=seg - overlap - 1))
+    project = _add_clip(
+        project,
+        producer_id="clip_b",
+        track_id="playlist_video_1",
+        in_point=0,
+        out_point=seg - 1,
+        source_path=str(clip_b),
+    )
+
+    project.sequence_transitions.append(
+        SequenceTransition(
+            id="dissolve_with_mixcut",
+            a_track=1,        # V1 ordinal
+            b_track=3,        # V2 ordinal (after A1 at 2)
+            in_frame=seg - overlap,
+            out_frame=seg - 1,
+            mlt_service="luma",
+            kdenlive_id="dissolve",
+            properties={
+                "factory": "loader",
+                "resource": "",
+                "softness": "0",
+                "reverse": "0",
+                "alpha_over": "1",
+                "fix_background_alpha": "1",
+                "kdenlive:mixcut": "12",  # the property the test suite always carries
+            },
+        )
+    )
+
+    out_path = _output_dir() / "031-dissolve-with-mixcut.kdenlive"
+    serialize_project(project, out_path)
+    assert out_path.exists()
+
+
+@pytest.mark.skipif(
+    not USER_OUTPUT_DIR.parent.exists(),
+    reason="User's Video Production tests folder not available",
+)
 def test_029_effect_zone_scoped_brightness():
     """Demonstrates ``kdenlive:zone_in`` / ``kdenlive:zone_out`` -- the
     brightness boost only takes effect for a sub-range of the clip
