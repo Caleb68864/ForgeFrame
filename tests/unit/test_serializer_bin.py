@@ -41,6 +41,15 @@ def _get_props(elem: ET.Element) -> dict[str, str]:
     }
 
 
+def _find_producer_or_chain(root: ET.Element, producer_id: str) -> ET.Element | None:
+    """Locate a media element by id; avformat sources are emitted as <chain>."""
+    for tag in ("producer", "chain"):
+        for elem in root.findall(tag):
+            if elem.get("id") == producer_id:
+                return elem
+    return None
+
+
 def _make_project(
     producers: list[Producer] | None = None,
     playlists: list[Playlist] | None = None,
@@ -84,47 +93,55 @@ def _make_project(
 
 
 class TestProducerMetadata:
-    def test_uuid_present(self, tmp_path):
-        project = _make_project()
-        out = tmp_path / "test.kdenlive"
-        serialize_project(project, out)
-        root = ET.parse(out).getroot()
-        prod = next(p for p in root.findall("producer") if p.get("id") == "prod0")
-        props = _get_props(prod)
-        assert "kdenlive:uuid" in props
+    # Kdenlive 25.x uses ``property_exists("kdenlive:uuid")`` on bin entries
+    # as the discriminator for "this is a sequence".  Media producers / chains
+    # therefore must NOT carry ``kdenlive:uuid`` -- only ``kdenlive:control_uuid``.
+    # See projectitemmodel.cpp ``loadBinPlaylist`` in the Kdenlive source.
 
-    def test_uuid_format(self, tmp_path):
+    def test_control_uuid_present(self, tmp_path):
         project = _make_project()
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        prod = next(p for p in root.findall("producer") if p.get("id") == "prod0")
+        prod = _find_producer_or_chain(root, "prod0")
         props = _get_props(prod)
-        assert _UUID_RE.match(props["kdenlive:uuid"]), (
-            f"UUID not in {{uuid}} format: {props['kdenlive:uuid']}"
+        assert "kdenlive:control_uuid" in props
+        # And kdenlive:uuid must be absent (otherwise Kdenlive routes the
+        # entry into the sequence-handling branch and fails to register it).
+        assert "kdenlive:uuid" not in props
+
+    def test_control_uuid_format(self, tmp_path):
+        project = _make_project()
+        out = tmp_path / "test.kdenlive"
+        serialize_project(project, out)
+        root = ET.parse(out).getroot()
+        prod = _find_producer_or_chain(root, "prod0")
+        props = _get_props(prod)
+        assert _UUID_RE.match(props["kdenlive:control_uuid"]), (
+            f"control_uuid not in {{uuid}} format: {props['kdenlive:control_uuid']}"
         )
 
-    def test_uuid_deterministic(self, tmp_path):
-        """Same producer id must produce the same UUID across two serializations."""
+    def test_control_uuid_deterministic(self, tmp_path):
+        """Same producer id must produce the same control_uuid across two serializations."""
         project = _make_project()
         out1 = tmp_path / "a.kdenlive"
         out2 = tmp_path / "b.kdenlive"
         serialize_project(project, out1)
         serialize_project(project, out2)
 
-        def _uuid(path):
+        def _control_uuid(path):
             root = ET.parse(path).getroot()
-            prod = next(p for p in root.findall("producer") if p.get("id") == "prod0")
-            return _get_props(prod)["kdenlive:uuid"]
+            prod = _find_producer_or_chain(root, "prod0")
+            return _get_props(prod)["kdenlive:control_uuid"]
 
-        assert _uuid(out1) == _uuid(out2)
+        assert _control_uuid(out1) == _control_uuid(out2)
 
     def test_kdenlive_id_starts_at_2(self, tmp_path):
         project = _make_project()
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        prod = next(p for p in root.findall("producer") if p.get("id") == "prod0")
+        prod = _find_producer_or_chain(root, "prod0")
         props = _get_props(prod)
         assert props["kdenlive:id"] == "2"
 
@@ -166,8 +183,9 @@ class TestProducerMetadata:
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        prod = next(p for p in root.findall("producer") if p.get("id") == "vid0")
-        assert _get_props(prod)["kdenlive:clip_type"] == "3"  # AV (avformat)
+        prod = _find_producer_or_chain(root, "vid0")
+        # Kdenlive 25.x writes 0 (auto-detect from chain) on avformat chains.
+        assert _get_props(prod)["kdenlive:clip_type"] == "0"
 
     def test_clip_type_kdenlivetitle(self, tmp_path):
         project = _make_project(
@@ -182,7 +200,7 @@ class TestProducerMetadata:
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        prod = next(p for p in root.findall("producer") if p.get("id") == "title0")
+        prod = _find_producer_or_chain(root, "title0")
         assert _get_props(prod)["kdenlive:clip_type"] == "6"  # Text
 
     def test_clip_type_generic_defaults_to_0(self, tmp_path):
@@ -198,7 +216,7 @@ class TestProducerMetadata:
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        prod = next(p for p in root.findall("producer") if p.get("id") == "gen0")
+        prod = _find_producer_or_chain(root, "gen0")
         assert _get_props(prod)["kdenlive:clip_type"] == "0"
 
     def test_folderid_default(self, tmp_path):
@@ -206,7 +224,7 @@ class TestProducerMetadata:
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        prod = next(p for p in root.findall("producer") if p.get("id") == "prod0")
+        prod = _find_producer_or_chain(root, "prod0")
         assert _get_props(prod)["kdenlive:folderid"] == "-1"
 
     def test_folderid_custom_preserved(self, tmp_path):
@@ -222,7 +240,7 @@ class TestProducerMetadata:
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        prod = next(p for p in root.findall("producer") if p.get("id") == "prod0")
+        prod = _find_producer_or_chain(root, "prod0")
         assert _get_props(prod)["kdenlive:folderid"] == "3"
 
     def test_existing_properties_preserved(self, tmp_path):
@@ -239,7 +257,7 @@ class TestProducerMetadata:
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        prod = next(p for p in root.findall("producer") if p.get("id") == "prod0")
+        prod = _find_producer_or_chain(root, "prod0")
         props = _get_props(prod)
         assert props.get("length") == "300"
 
@@ -309,10 +327,17 @@ class TestMainBin:
         main_bin = root.find("./playlist[@id='main_bin']")
         entries = main_bin.findall("entry")
         producer_refs = {e.get("producer") for e in entries}
-        assert producer_refs == {"p0", "p1"}
+        # main_bin also contains a reference to the main sequence tractor
+        # (UUID-formatted).  We just require every user producer to be present.
+        assert {"p0", "p1"}.issubset(producer_refs)
 
     def test_main_bin_empty_project(self, tmp_path):
-        """Empty project (no producers) must still produce a valid main_bin."""
+        """Empty project (no producers) must still produce a valid main_bin.
+
+        In the v25 shape the main_bin always contains exactly one entry: the
+        UUID reference to the main sequence tractor that Kdenlive opens as
+        the timeline.  No user producers means no extra entries.
+        """
         project = KdenliveProject(
             title="Empty",
             profile=ProjectProfile(),
@@ -326,7 +351,10 @@ class TestMainBin:
         root = ET.parse(out).getroot()
         main_bin = root.find("./playlist[@id='main_bin']")
         assert main_bin is not None
-        assert len(main_bin.findall("entry")) == 0
+        entries = main_bin.findall("entry")
+        # Exactly the sequence entry; UUID-formatted producer ref.
+        assert len(entries) == 1
+        assert _UUID_RE.match(entries[0].get("producer", ""))
 
 
 # ---------------------------------------------------------------------------
@@ -403,47 +431,65 @@ class TestTrackStructure:
         assert root.find("./playlist[@id='pl0_kdpair']") is not None
         assert root.find("./playlist[@id='pl1_kdpair']") is not None
 
-    def test_tractor_black_track_first(self, tmp_path):
+    def _main_sequence(self, root: ET.Element) -> ET.Element:
+        """The v25-shape main sequence tractor (UUID id)."""
+        for tractor in root.findall("tractor"):
+            if _UUID_RE.match(tractor.get("id", "")):
+                return tractor
+        raise AssertionError("main sequence tractor not found")
+
+    def test_main_sequence_black_track_first(self, tmp_path):
         project = _make_project()
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        tractor = root.find("tractor")
-        tracks = tractor.findall("track")
+        seq = self._main_sequence(root)
+        tracks = seq.findall("track")
         assert tracks[0].get("producer") == "black_track"
 
-    def test_tractor_content_track_present(self, tmp_path):
+    def test_per_track_tractor_present(self, tmp_path):
+        """Each user track gets its own ``<tractor>``."""
         project = _make_project()
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        tractor = root.find("tractor")
-        track_producers = {t.get("producer") for t in tractor.findall("track")}
-        assert "pl0" in track_producers
+        # The per-track tractor wraps two playlist refs (content + paired empty).
+        per_track = [
+            t for t in root.findall("tractor")
+            if t.get("id", "").startswith("tractor_track_")
+        ]
+        assert any(t.get("id") == "tractor_track_pl0" for t in per_track)
 
-    def test_tractor_pair_track_present(self, tmp_path):
+    def test_per_track_tractor_references_kdpair_playlist(self, tmp_path):
+        """The per-track tractor must reference both the content and *_kdpair playlists."""
         project = _make_project()
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        tractor = root.find("tractor")
-        track_producers = {t.get("producer") for t in tractor.findall("track")}
-        assert "pl0_kdpair" in track_producers
+        per_track = next(
+            t for t in root.findall("tractor")
+            if t.get("id") == "tractor_track_pl0"
+        )
+        refs = {tr.get("producer") for tr in per_track.findall("track")}
+        assert refs == {"pl0", "pl0_kdpair"}
 
-    def _tractor_transitions(self, root: ET.Element) -> list[dict[str, str]]:
-        tractor = root.find("tractor")
-        return [_get_props(t) for t in tractor.findall("transition")]
+    def _sequence_transitions(self, root: ET.Element) -> list[dict[str, str]]:
+        for tractor in root.findall("tractor"):
+            if _UUID_RE.match(tractor.get("id", "")):
+                return [_get_props(t) for t in tractor.findall("transition")]
+        return []
 
-    def test_video_track_gets_cairoblend(self, tmp_path):
+    def test_video_track_gets_qtblend(self, tmp_path):
+        """Kdenlive 25.x uses qtblend (not frei0r.cairoblend) on video tracks."""
         project = _make_project(
             tracks=[Track(id="pl0", track_type="video")]
         )
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        transitions = self._tractor_transitions(root)
-        cairoblend = [t for t in transitions if t.get("mlt_service") == "frei0r.cairoblend"]
-        assert len(cairoblend) >= 1
+        transitions = self._sequence_transitions(root)
+        qtblend = [t for t in transitions if t.get("mlt_service") == "qtblend"]
+        assert len(qtblend) >= 1
 
     def test_audio_track_gets_mix(self, tmp_path):
         project = _make_project(
@@ -458,17 +504,17 @@ class TestTrackStructure:
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        transitions = self._tractor_transitions(root)
+        transitions = self._sequence_transitions(root)
         mix = [t for t in transitions if t.get("mlt_service") == "mix"]
         assert len(mix) >= 1
 
-    def test_cairoblend_always_active(self, tmp_path):
+    def test_qtblend_always_active(self, tmp_path):
         project = _make_project(tracks=[Track(id="pl0", track_type="video")])
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        transitions = self._tractor_transitions(root)
-        cb = next(t for t in transitions if t.get("mlt_service") == "frei0r.cairoblend")
+        transitions = self._sequence_transitions(root)
+        cb = next(t for t in transitions if t.get("mlt_service") == "qtblend")
         assert cb.get("always_active") == "1"
 
     def test_mix_always_active_and_sum(self, tmp_path):
@@ -480,7 +526,7 @@ class TestTrackStructure:
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        transitions = self._tractor_transitions(root)
+        transitions = self._sequence_transitions(root)
         mix = next(t for t in transitions if t.get("mlt_service") == "mix")
         assert mix.get("always_active") == "1"
         assert mix.get("sum") == "1"
@@ -490,7 +536,7 @@ class TestTrackStructure:
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        transitions = self._tractor_transitions(root)
+        transitions = self._sequence_transitions(root)
         for t in transitions:
             assert t.get("a_track") == "0"
 
@@ -500,7 +546,7 @@ class TestTrackStructure:
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        transitions = self._tractor_transitions(root)
+        transitions = self._sequence_transitions(root)
         # Only one track; content is at index 1 (after black_track at 0)
         assert any(t.get("b_track") == "1" for t in transitions)
 

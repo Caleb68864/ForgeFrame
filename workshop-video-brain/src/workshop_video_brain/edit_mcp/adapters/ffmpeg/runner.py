@@ -59,7 +59,22 @@ def run_ffmpeg(
 
     logger.debug("Running: %s", " ".join(cmd))
     start = time.monotonic()
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, check=False, timeout=600
+        )
+    except subprocess.TimeoutExpired as exc:
+        elapsed_ms = (time.monotonic() - start) * 1000.0
+        logger.warning("FFmpeg timed out after %.1fs: %s", elapsed_ms / 1000.0, cmd)
+        return FFmpegResult(
+            success=False,
+            input_path=str(input_path),
+            output_path=str(output_path),
+            command=cmd,
+            stdout=(exc.stdout.decode(errors="replace") if exc.stdout else ""),
+            stderr=(exc.stderr.decode(errors="replace") if exc.stderr else "TIMEOUT"),
+            duration_ms=elapsed_ms,
+        )
     elapsed_ms = (time.monotonic() - start) * 1000.0
 
     success = result.returncode == 0

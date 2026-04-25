@@ -32,19 +32,24 @@ def detect_silence(
     """
     path = Path(path)
 
-    result = subprocess.run(
-        [
-            "ffmpeg",
-            "-i", str(path),
-            "-af", f"silencedetect=noise={threshold_db}dB:d={min_duration}",
-            "-f", "null",
-            "-",
-        ],
-        capture_output=True,
-        text=True,
-        # ffmpeg returns non-zero when writing to /dev/null equivalent; ignore
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-i", str(path),
+                "-af", f"silencedetect=noise={threshold_db}dB:d={min_duration}",
+                "-f", "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+            # ffmpeg returns non-zero when writing to /dev/null equivalent; ignore
+            check=False,
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("Silence detection timed out for %s", path)
+        return []
 
     # ffmpeg writes filter output to stderr
     stderr = result.stderr

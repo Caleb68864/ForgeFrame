@@ -242,10 +242,41 @@ def _apply_add_clip(project: KdenliveProject, intent: AddClip) -> None:
     # Ensure the producer exists in the project
     existing_ids = {p.id for p in project.producers}
     if intent.producer_id and intent.producer_id not in existing_ids:
+        # Kdenlive needs at minimum ``mlt_service`` and ``length`` to load the
+        # producer; without them the bin clip is unloadable and the timeline
+        # entry shows zero duration.  Defaults assume an avformat-readable file
+        # (mp4 / mkv / mov / wav / mp3); for color/title producers the caller
+        # should pre-populate ``project.producers`` with explicit properties.
+        clip_length = max(1, intent.out_point + 1)
+        # Kdenlive/MLT XML uses forward slashes for media paths even on
+        # Windows; backslashes confuse Kdenlive's bin loader on round-trip.
+        normalized_path = (
+            str(intent.source_path).replace("\\", "/")
+            if intent.source_path
+            else ""
+        )
+        properties: dict[str, str] = {}
+        if normalized_path:
+            properties["resource"] = normalized_path
+            properties["mlt_service"] = "avformat-novalidate"
+            properties["length"] = str(clip_length)
+            properties["eof"] = "pause"
+            properties["seekable"] = "1"
+            properties["audio_index"] = "1"
+            properties["video_index"] = "0"
+            properties["vstream"] = "0"
+            properties["astream"] = "0"
+            properties["mute_on_pause"] = "0"
+            # Best-effort file_size; Kdenlive uses it for bin metadata.
+            try:
+                size = Path(normalized_path).stat().st_size
+                properties["kdenlive:file_size"] = str(size)
+            except OSError:
+                pass
         new_producer = Producer(
             id=intent.producer_id,
-            resource=intent.source_path or "",
-            properties={"resource": intent.source_path} if intent.source_path else {},
+            resource=normalized_path,
+            properties=properties,
         )
         project.producers.append(new_producer)
         logger.info(

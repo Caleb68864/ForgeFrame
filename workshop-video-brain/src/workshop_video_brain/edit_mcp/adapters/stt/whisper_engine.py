@@ -64,6 +64,7 @@ def extract_audio(video_path: Path, output_path: Path) -> Path:
         ],
         check=True,
         capture_output=True,
+        timeout=300,
     )
     return output_path
 

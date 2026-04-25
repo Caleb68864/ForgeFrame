@@ -41,6 +41,23 @@ def _props(elem: ET.Element) -> dict[str, str]:
     }
 
 
+def _main_sequence(root: ET.Element) -> ET.Element:
+    """Return the v25 main sequence tractor (the one with a UUID id)."""
+    for tractor in root.findall("tractor"):
+        if _UUID_RE.match(tractor.get("id", "")):
+            return tractor
+    raise AssertionError("main sequence tractor not found")
+
+
+def _find_producer_or_chain(root: ET.Element, producer_id: str) -> ET.Element | None:
+    """Avformat producers are emitted as <chain>; check both."""
+    for tag in ("producer", "chain"):
+        for elem in root.findall(tag):
+            if elem.get("id") == producer_id:
+                return elem
+    return None
+
+
 def _make_mixed_project() -> KdenliveProject:
     """Project with 3 video clips + 2 title clips, two timeline tracks."""
     return KdenliveProject(
@@ -116,8 +133,10 @@ class TestMainBinContainsAllProducers:
         main_bin = root.find("./playlist[@id='main_bin']")
         assert main_bin is not None
         entry_refs = {e.get("producer") for e in main_bin.findall("entry")}
-        expected = {"vid0", "vid1", "vid2", "title0", "title1"}
-        assert expected == entry_refs
+        # avformat clips are referenced via their bin twin (id + "_bin");
+        # title/color producers are referenced directly.
+        expected = {"vid0_bin", "vid1_bin", "vid2_bin", "title0", "title1"}
+        assert expected.issubset(entry_refs)
 
     def test_main_bin_count_matches_producers(self, tmp_path):
         project = _make_mixed_project()
@@ -126,7 +145,8 @@ class TestMainBinContainsAllProducers:
         root = ET.parse(out).getroot()
         main_bin = root.find("./playlist[@id='main_bin']")
         entries = main_bin.findall("entry")
-        assert len(entries) == len(project.producers)
+        # producers + 1 for the main sequence entry
+        assert len(entries) == len(project.producers) + 1
 
 
 class TestProducerKdenliveMetadata:
@@ -134,22 +154,30 @@ class TestProducerKdenliveMetadata:
         user_ids = {p.id for p in project.producers}
         return [p for p in root.findall("producer") if p.get("id") in user_ids]
 
-    def test_all_producers_have_uuid(self, tmp_path):
+    def test_all_producers_have_control_uuid(self, tmp_path):
+        # Note: bin entries must NOT carry ``kdenlive:uuid`` (that property is
+        # reserved for sequence tractors -- see projectitemmodel.cpp's
+        # ``loadBinPlaylist``).  Media chains/producers carry ``kdenlive:control_uuid``.
         project = _make_mixed_project()
         out = tmp_path / "mixed.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
         for prod in self._all_user_producers(root, project):
-            assert "kdenlive:uuid" in _props(prod), f"Missing uuid on {prod.get('id')}"
+            assert "kdenlive:control_uuid" in _props(prod), (
+                f"Missing control_uuid on {prod.get('id')}"
+            )
+            assert "kdenlive:uuid" not in _props(prod), (
+                f"Producer {prod.get('id')} must not carry kdenlive:uuid"
+            )
 
-    def test_all_uuids_valid_format(self, tmp_path):
+    def test_all_control_uuids_valid_format(self, tmp_path):
         project = _make_mixed_project()
         out = tmp_path / "mixed.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
         for prod in self._all_user_producers(root, project):
-            uid = _props(prod).get("kdenlive:uuid", "")
-            assert _UUID_RE.match(uid), f"Bad UUID on {prod.get('id')}: {uid}"
+            uid = _props(prod).get("kdenlive:control_uuid", "")
+            assert _UUID_RE.match(uid), f"Bad control_uuid on {prod.get('id')}: {uid}"
 
     def test_all_producers_have_kdenlive_id(self, tmp_path):
         project = _make_mixed_project()
@@ -184,8 +212,10 @@ class TestProducerKdenliveMetadata:
         serialize_project(project, out)
         root = ET.parse(out).getroot()
         for pid in ("vid0", "vid1", "vid2"):
-            prod = root.find(f"./producer[@id='{pid}']")
-            assert _props(prod).get("kdenlive:clip_type") == "3", f"Expected 3 (AV) for {pid}"
+            prod = _find_producer_or_chain(root, pid)
+            assert prod is not None, f"avformat producer/chain {pid} missing"
+            # Kdenlive 25.x uses 0 (auto-detect) on chains, not 3 (AV).
+            assert _props(prod).get("kdenlive:clip_type") == "0", f"Expected 0 (auto) for {pid}"
 
     def test_title_producers_clip_type_6(self, tmp_path):
         project = _make_mixed_project()
@@ -193,7 +223,8 @@ class TestProducerKdenliveMetadata:
         serialize_project(project, out)
         root = ET.parse(out).getroot()
         for pid in ("title0", "title1"):
-            prod = root.find(f"./producer[@id='{pid}']")
+            prod = _find_producer_or_chain(root, pid)
+            assert prod is not None, f"title producer {pid} missing"
             assert _props(prod).get("kdenlive:clip_type") == "6", f"Expected 6 (Text) for {pid}"
 
 
@@ -218,8 +249,8 @@ class TestInfrastructureElements:
         out = tmp_path / "mixed.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        tractor = root.find("tractor")
-        tracks = tractor.findall("track")
+        seq = _main_sequence(root)
+        tracks = seq.findall("track")
         assert tracks[0].get("producer") == "black_track"
 
     def test_tractor_transitions_present(self, tmp_path):
@@ -227,22 +258,23 @@ class TestInfrastructureElements:
         out = tmp_path / "mixed.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        tractor = root.find("tractor")
-        transitions = tractor.findall("transition")
+        seq = _main_sequence(root)
+        transitions = seq.findall("transition")
         assert len(transitions) >= 2  # one per video track
 
-    def test_cairoblend_transitions_for_video_tracks(self, tmp_path):
+    def test_qtblend_transitions_for_video_tracks(self, tmp_path):
         project = _make_mixed_project()
         out = tmp_path / "mixed.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        tractor = root.find("tractor")
-        cb = [
-            t for t in tractor.findall("transition")
-            if _props(t).get("mlt_service") == "frei0r.cairoblend"
+        seq = _main_sequence(root)
+        # Kdenlive 25.x uses qtblend, not the legacy frei0r.cairoblend.
+        qb = [
+            t for t in seq.findall("transition")
+            if _props(t).get("mlt_service") == "qtblend"
         ]
-        # 2 video tracks → 2 cairoblend transitions
-        assert len(cb) == 2
+        # 2 video tracks → 2 qtblend transitions
+        assert len(qb) == 2
 
     def test_mix_transition_for_audio_track(self, tmp_path):
         project = KdenliveProject(
@@ -260,9 +292,9 @@ class TestInfrastructureElements:
         out = tmp_path / "audio.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        tractor = root.find("tractor")
+        seq = _main_sequence(root)
         mix = [
-            t for t in tractor.findall("transition")
+            t for t in seq.findall("transition")
             if _props(t).get("mlt_service") == "mix"
         ]
         assert len(mix) == 1
@@ -284,9 +316,9 @@ class TestInfrastructureElements:
         out = tmp_path / "audio.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        tractor = root.find("tractor")
+        seq = _main_sequence(root)
         mix_props = [
-            _props(t) for t in tractor.findall("transition")
+            _props(t) for t in seq.findall("transition")
             if _props(t).get("mlt_service") == "mix"
         ]
         assert len(mix_props) == 1
