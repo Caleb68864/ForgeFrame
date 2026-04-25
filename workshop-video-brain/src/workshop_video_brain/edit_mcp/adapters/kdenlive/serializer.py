@@ -76,7 +76,10 @@ def _clip_type(properties: dict[str, str]) -> str:
     if service == "color":
         return "4"
     if service in ("qimage", "pixbuf"):
-        return "5"
+        # Kdenlive 25.x writes 2 for image producers (verified against
+        # 04-image transform.kdenlive); the legacy 5=Image enum value is
+        # rejected by the v25 bin loader.
+        return "2"
     if service.startswith("avformat"):
         return "0"
     if service in ("xml", "consumer"):
@@ -383,6 +386,11 @@ def serialize_project(
                     if child.get("name") == "mlt_service":
                         child.text = "avformat"
                         break
+        elif service in ("qimage", "pixbuf"):
+            # Image producers are single-instance (no separate bin twin) but
+            # still act as bin clips, so they carry the bin markers.
+            _set_prop(elem, "kdenlive:monitorPosition", "0")
+            _set_prop(elem, "kdenlive:kextractor", "1")
         return elem
 
     for kdenlive_id, producer in enumerate(project.producers, start=_USER_KDENLIVE_ID_START):
@@ -439,6 +447,14 @@ def serialize_project(
                     bin_id = kdenlive_id_for.get(entry.producer_id)
                     if bin_id is not None:
                         _set_prop(e_elem, "kdenlive:id", bin_id)
+                    # Per-entry filters (transforms, colour, etc.) live as
+                    # ``<filter>`` children of the ``<entry>``.
+                    for f_idx, f in enumerate(entry.filters):
+                        f_elem = ET.SubElement(e_elem, "filter")
+                        if f.id:
+                            f_elem.set("id", f.id)
+                        for name, value in f.properties.items():
+                            _set_prop(f_elem, name, value)
                 else:
                     blank = ET.SubElement(a_elem, "blank")
                     blank.set("length", str(entry.out_point + 1))

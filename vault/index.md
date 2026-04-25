@@ -9,6 +9,7 @@
 - [[kdenlive-bin-loader-source-pointers]] — exact Kdenlive source files & lines for the load checks
 - [[kdenlive-title-card-pattern]] — editable title cards (`mlt_service=kdenlivetitle` with `xmldata`)
 - [[kdenlive-cross-dissolve-pattern]] — cross-dissolves are always stacked clips + a sequence transition
+- [[kdenlive-image-and-qtblend-pattern]] — image producers + Ken Burns `qtblend` keyframe transforms
 
 ## Process
 

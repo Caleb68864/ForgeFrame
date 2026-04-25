@@ -19,12 +19,33 @@ class Producer(SerializableMixin):
     properties: dict[str, str] = Field(default_factory=dict)
 
 
+class EntryFilter(SerializableMixin):
+    """A filter (effect) attached to a playlist entry.
+
+    Emitted as a ``<filter>`` child inside the entry's ``<entry>`` element.
+    Used for transform/colour/blur effects that apply to a single clip use,
+    such as a Ken Burns ``qtblend`` parallax pan on an image.
+
+    Attributes:
+        id: Optional element id (Kdenlive auto-numbers these as
+            ``filter6``/``filter7``/...; pass empty to omit).
+        properties: All ``<property name=...>value</property>`` children,
+            keyed by property name.
+    """
+
+    id: str = ""
+    properties: dict[str, str] = Field(default_factory=dict)
+
+
 class PlaylistEntry(SerializableMixin):
     """A single entry in a playlist.  If producer_id is empty it represents a gap."""
 
     producer_id: str = ""
     in_point: int = 0
     out_point: int = 0
+    # Per-clip-use effects (transforms, colour grading, blurs, etc.).  Live
+    # inside the ``<entry>`` element in the emitted XML.
+    filters: list[EntryFilter] = Field(default_factory=list)
 
 
 class Playlist(SerializableMixin):

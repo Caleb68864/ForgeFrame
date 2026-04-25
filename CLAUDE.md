@@ -32,6 +32,8 @@ Detailed notes (one concept per page) live in `vault/wiki/`:
 - `kdenlive-twin-chain-pattern.md` — every avformat clip needs two `<chain>` elements
 - `kdenlive-per-track-tractor-pattern.md` — per-track tractor + audio filter wiring
 - `kdenlive-title-card-pattern.md` — editable titles (`kdenlivetitle` + `xmldata`)
+- `kdenlive-cross-dissolve-pattern.md` — stacked-track dissolves; `a_track < b_track` always; direction via `reverse`
+- `kdenlive-image-and-qtblend-pattern.md` — image producers + Ken Burns transform filter (entry-local keyframes)
 - `kdenlive-bin-loader-source-pointers.md` — exact Kdenlive C++ files/lines for load checks
 - `golden-fixture-testing.md` — testing strategy without launching Kdenlive
 
