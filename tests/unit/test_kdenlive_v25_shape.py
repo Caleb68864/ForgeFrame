@@ -252,9 +252,9 @@ class TestMainBinDocProperties:
     def test_main_bin_has_entry_for_each_user_producer(self, serialized_root):
         mb = self._main_bin(serialized_root)
         entry_refs = {e.get("producer") for e in mb.findall("entry")}
-        # main_bin entries reference the bin twin of each chain (id + "_bin")
+        # main_bin entries reference the bin twin of each chain (id + "_kdbin")
         # for avformat media; non-chain producers (color/title) reference id.
-        assert "prod0_bin" in entry_refs or "prod0" in entry_refs
+        assert "prod0_kdbin" in entry_refs or "prod0" in entry_refs
 
     def test_main_bin_xml_retain_set(self, serialized_root):
         mb = self._main_bin(serialized_root)

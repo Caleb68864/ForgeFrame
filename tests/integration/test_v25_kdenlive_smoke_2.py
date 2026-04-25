@@ -451,7 +451,7 @@ def test_drop_smoke2_output(tmp_path):
     main_bin = root.find("./playlist[@id='main_bin']")
     bin_refs = {e.get("producer") for e in main_bin.findall("entry")}
     assert "title_intro" in bin_refs                         # color producer ref
-    assert any(r.endswith("_bin") for r in bin_refs)         # at least one chain twin
+    assert any(r.endswith("_kdbin") for r in bin_refs)       # at least one chain twin
     assert root.find("./tractor[@id='tractor_track_playlist_video']") is not None
     assert root.find("./tractor[@id='tractor_track_playlist_video_1']") is not None
     assert root.find("./tractor[@id='tractor_track_playlist_audio']") is not None

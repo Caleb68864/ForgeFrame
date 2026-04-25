@@ -330,8 +330,13 @@ def serialize_project(
         service = producer.properties.get("mlt_service", "")
         is_chain = service.startswith("avformat") or service == "timewarp"
         tag = "chain" if is_chain else "producer"
+        # Bin twin id uses a ``_kdbin`` suffix instead of plain ``_bin`` so a
+        # producer named e.g. ``main`` doesn't collide with the reserved
+        # ``<playlist id="main_bin">`` infrastructure element.  ``_kdbin`` is
+        # extremely unlikely to be a user-chosen name; the parser uses the
+        # same suffix to filter twins on read-back.
         elem_id = (
-            f"{producer.id}_bin" if (is_bin and is_chain) else producer.id
+            f"{producer.id}_kdbin" if (is_bin and is_chain) else producer.id
         )
         elem = ET.SubElement(root, tag)
         elem.set("id", elem_id)
@@ -401,7 +406,7 @@ def serialize_project(
         # Bin element (referenced by main_bin <entry>) -- only for chains
         if is_chain:
             _emit_media_element(producer, kdenlive_id, is_bin=True)
-            bin_chain_id_for[producer.id] = f"{producer.id}_bin"
+            bin_chain_id_for[producer.id] = f"{producer.id}_kdbin"
         else:
             bin_chain_id_for[producer.id] = producer.id
         kdenlive_id_for[producer.id] = str(kdenlive_id)

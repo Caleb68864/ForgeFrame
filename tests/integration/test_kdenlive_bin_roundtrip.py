@@ -133,9 +133,9 @@ class TestMainBinContainsAllProducers:
         main_bin = root.find("./playlist[@id='main_bin']")
         assert main_bin is not None
         entry_refs = {e.get("producer") for e in main_bin.findall("entry")}
-        # avformat clips are referenced via their bin twin (id + "_bin");
+        # avformat clips are referenced via their bin twin (id + "_kdbin");
         # title/color producers are referenced directly.
-        expected = {"vid0_bin", "vid1_bin", "vid2_bin", "title0", "title1"}
+        expected = {"vid0_kdbin", "vid1_kdbin", "vid2_kdbin", "title0", "title1"}
         assert expected.issubset(entry_refs)
 
     def test_main_bin_count_matches_producers(self, tmp_path):

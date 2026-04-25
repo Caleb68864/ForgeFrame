@@ -249,7 +249,10 @@ def parse_project(path: Path) -> KdenliveProject:
                 continue
             # Skip the bin twin of a chain -- it duplicates the timeline chain
             # and would otherwise show up as a second producer in the model.
-            if producer_id.endswith("_bin"):
+            # The serializer emits twins with a ``_kdbin`` suffix; legacy
+            # ``_bin`` suffix is also recognised for round-trip compatibility
+            # with files written before that rename.
+            if producer_id.endswith("_kdbin") or producer_id.endswith("_bin"):
                 continue
             try:
                 producers.append(_parse_producer(elem))
