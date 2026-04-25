@@ -552,6 +552,22 @@ def serialize_project(
             _set_prop(trans, "internal_added", "237")
             _set_prop(trans, "always_active", "1")
 
+    # User-added sequence transitions (cross-dissolves, wipes, slides, ...).
+    # These follow the auto-internal transitions in document order.
+    for st in project.sequence_transitions:
+        trans = ET.SubElement(seq_elem, "transition")
+        trans.set("id", st.id)
+        trans.set("in", str(st.in_frame))
+        trans.set("out", str(st.out_frame))
+        _set_prop(trans, "a_track", str(st.a_track))
+        _set_prop(trans, "b_track", str(st.b_track))
+        _set_prop(trans, "mlt_service", st.mlt_service)
+        _set_prop(trans, "kdenlive_id", st.kdenlive_id)
+        for name, value in st.properties.items():
+            if name in {"a_track", "b_track", "mlt_service", "kdenlive_id"}:
+                continue
+            _set_prop(trans, name, value)
+
     # Internal volume + panner filters on the main sequence
     _add_audio_internal_filters(seq_elem, base_id="main_seq")
 

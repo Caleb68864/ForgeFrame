@@ -154,7 +154,7 @@ def test_drop_smoke_output_in_user_test_folder(tmp_path):
     parsed_after_create = project  # avoid round-trip noise here
     patched = _insert_clip(parsed_after_create, TEST_CLIP)
 
-    out_path = out_dir / "mcp_smoke_one_clip.kdenlive"
+    out_path = out_dir / "001-one-clip.kdenlive"
     serialize_project(patched, out_path)
     assert out_path.exists()
 
@@ -195,6 +195,6 @@ def test_drop_smoke_output_with_uhd_clip(tmp_path):
 
     patched = _insert_clip(project, real_clip, fps=30.0)
 
-    out_path = out_dir / "mcp_smoke_uhd_clip.kdenlive"
+    out_path = out_dir / "002-uhd-clip.kdenlive"
     serialize_project(patched, out_path)
     assert out_path.exists()

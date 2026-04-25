@@ -442,7 +442,7 @@ def test_drop_smoke2_output(tmp_path):
         source_path=str(clip_b),
     )
 
-    out_path = USER_OUTPUT_DIR / "mcp_smoke_two_clips_one_title.kdenlive"
+    out_path = USER_OUTPUT_DIR / "003-two-clips-one-title.kdenlive"
     serialize_project(project, out_path)
     assert out_path.exists()
 
