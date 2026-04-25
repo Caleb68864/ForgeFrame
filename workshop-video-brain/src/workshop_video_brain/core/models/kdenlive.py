@@ -72,6 +72,11 @@ class EntryFilter(SerializableMixin):
             itself (entry-local frame index).  Used by audio fades to
             position the ramp window inside the clip.
         out_frame: Optional ``out=`` attribute on the ``<filter>`` element.
+        zone_in_frame: Optional ``kdenlive:zone_in`` property -- scopes the
+            effect to a sub-range of the clip (entry-local frames).  Pair
+            with ``zone_out_frame`` to define the active range.  Used in
+            ``effect-zones.kdenlive`` from the KDE test suite.
+        zone_out_frame: Optional ``kdenlive:zone_out`` property.
         properties: All ``<property name=...>value</property>`` children,
             keyed by property name.
     """
@@ -79,6 +84,8 @@ class EntryFilter(SerializableMixin):
     id: str = ""
     in_frame: int | None = None
     out_frame: int | None = None
+    zone_in_frame: int | None = None
+    zone_out_frame: int | None = None
     properties: dict[str, str] = Field(default_factory=dict)
 
 

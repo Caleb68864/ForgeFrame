@@ -594,6 +594,13 @@ def serialize_project(
                             f_elem.set("out", str(f.out_frame))
                         for name, value in f.properties.items():
                             _set_prop(f_elem, name, value)
+                        # Effect zone (kdenlive:zone_in / zone_out) scopes
+                        # the filter to a sub-range of the clip.  See
+                        # effect-zones.kdenlive in the KDE test suite.
+                        if f.zone_in_frame is not None:
+                            _set_prop(f_elem, "kdenlive:zone_in", str(f.zone_in_frame))
+                        if f.zone_out_frame is not None:
+                            _set_prop(f_elem, "kdenlive:zone_out", str(f.zone_out_frame))
                 else:
                     blank = ET.SubElement(a_elem, "blank")
                     blank.set("length", str(entry.out_point + 1))
