@@ -16,6 +16,7 @@ from workshop_video_brain.edit_mcp.server import tools
 from workshop_video_brain.edit_mcp.server.tools import (
     effect_fade,
     effect_glitch_stack,
+    effect_transform,
     flash_cut_montage,
     workspace_create,
 )
@@ -316,3 +317,68 @@ def test_sr23_montage_n_cuts_exceeds_duration_errors_with_hint(tmp_path):
     )
     assert out["status"] == "error"
     assert "300" in out["message"] or "duration" in out["message"].lower()
+
+
+# ---------------------------------------------------------------------------
+# effect_transform: inserts affine/transform filter with computed rect
+# ---------------------------------------------------------------------------
+
+def test_effect_transform_inserts_transform_with_centered_rect(tmp_path):
+    ws, pf = _make_ws(tmp_path)
+    out = effect_transform(
+        workspace_path=str(ws), project_file=pf,
+        track=TRACK, clip=CLIP,
+        scale=0.5, center_x=0.5, center_y=0.5, opacity=1.0,
+    )
+    assert out["status"] == "success", out
+    filters = _list_filters(ws, pf, TRACK, CLIP)
+    last = filters[-1]
+    assert last["mlt_service"] == "affine"
+    assert last["kdenlive_id"] == "transform"
+    rect = last["properties"]["rect"]
+    # At 0.5 scale on the fixture profile (common 1920x1080 -> 960x540 centered).
+    parts = rect.split()
+    assert len(parts) == 5, rect
+    x, y, w, h, op = parts
+    assert int(w) > 0 and int(h) > 0
+    # Centered: x == (W - w) / 2; i.e. x + w/2 == W/2.
+    W, _H = out["data"]["frame_size"]
+    assert abs((int(x) + int(w) / 2) - W / 2) <= 1, rect
+    assert float(op) == 1.0
+
+
+def test_effect_transform_flip_x_prepends_mirror(tmp_path):
+    ws, pf = _make_ws(tmp_path)
+    out = effect_transform(
+        workspace_path=str(ws), project_file=pf,
+        track=TRACK, clip=CLIP,
+        scale=1.0, flip_x=True,
+    )
+    assert out["status"] == "success", out
+    filters = _list_filters(ws, pf, TRACK, CLIP)
+    # Last two filters should be mirror then transform (in that order).
+    assert filters[-2]["mlt_service"] == "mirror"
+    assert filters[-2]["properties"]["mirror"] == "horizontal"
+    assert filters[-1]["mlt_service"] == "affine"
+    assert filters[-1]["kdenlive_id"] == "transform"
+    assert out["data"]["inserted"][0]["service"] == "mirror"
+    assert out["data"]["inserted"][-1]["service"] == "transform"
+
+
+def test_effect_transform_rejects_bad_inputs(tmp_path):
+    ws, pf = _make_ws(tmp_path)
+    bad = effect_transform(
+        workspace_path=str(ws), project_file=pf,
+        track=TRACK, clip=CLIP, scale=0,
+    )
+    assert bad["status"] == "error"
+    bad = effect_transform(
+        workspace_path=str(ws), project_file=pf,
+        track=TRACK, clip=CLIP, opacity=1.5,
+    )
+    assert bad["status"] == "error"
+    bad = effect_transform(
+        workspace_path=str(ws), project_file=pf,
+        track=TRACK, clip=CLIP, center_x=2.0,
+    )
+    assert bad["status"] == "error"

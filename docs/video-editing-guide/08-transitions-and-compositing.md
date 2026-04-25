@@ -279,6 +279,107 @@ Picture-in-picture (PiP) is one of the most useful compositing tools for tutoria
 
 ---
 
+## Parallax Scenes (Layered 2.5D)
+
+**Definition:** A parallax scene is a layered still-image composition where each layer moves and scales at a *different* rate during a camera move. The closer-feeling layer moves/scales more; the farther layer moves/scales less. Done well, a flat stack of PNGs reads as depth.
+
+**Use cases:**
+- Opening bumper over a stylized illustration (forest, city, workshop bench)
+- Chapter transitions with art rather than footage
+- A "hero shot" idle before the tutorial begins, so the first 2--3 seconds feel designed instead of thrown together
+
+### Why parallax works (the formula)
+
+The eye reads depth from *relative motion*. When you move a camera in the real world, objects near you sweep across your field of view quickly, while distant objects barely shift. Reproducing that ratio in 2D is the entire trick:
+
+| Layer | Example | Relative movement per camera unit | Relative scale change |
+|---|---|---|---|
+| Sky / far background | Horizon, distant hills | ×0.2 | ×1.05 |
+| Mid background | Forest wall | ×0.5 | ×1.10 |
+| Subject / mid layer | Character, product | ×1.0 (reference) | ×1.2 |
+| Foreground | Nearby tree, rock | ×2.0 | ×1.5 |
+| Extreme foreground | Leaves, lens dirt | ×3.0 | ×1.8 |
+
+The numbers are intentionally round — tune by eye, not by calculator. The principle is all you need: *front moves more, back moves less*.
+
+### Building a parallax scene manually in Kdenlive
+
+1. **Collect assets.** 5--8 transparent PNGs (or layered Photoshop export). Background + several depth layers. Keep the subject's asset separate.
+2. **Chroma key if needed.** For a green-screen photo of a person, use `Blue Screen (Color to Alpha)` or the standard `Chroma Key` effect with a tight tolerance.
+3. **Stack the layers.** One clip per track, each spanning the full scene duration. Order tracks from farthest (bottom) to closest (top).
+4. **Apply a Transform effect to each layer.** In the Effect Stack, add `Transform` (or `Position and Zoom`). Set the initial rect (x, y, width, height) and opacity.
+5. **Add shadows.** Drop a soft black ellipse PNG on its own track below the subject. Apply a `Box Blur` (radius 20--40) and reduce opacity to 40--60%. Scale it to a flat oval on the "ground" plane.
+6. **Add depth-of-field blur** on the closest foreground layer: `Box Blur` radius 6--12. This sells the idea that the camera is focused on the mid layer.
+7. **Animate.** Select each layer's Transform effect, enable keyframing on the rect, and set two keyframes (start / end of the scene). Apply the movement/scale ratios from the table above — closest layer gets the biggest delta, farthest gets the smallest.
+8. **Color grade the stack as one** (LUT or primaries on the top track with a composite). If layers were gathered from different sources, unifying color is what finally makes the scene feel cohesive.
+
+### Building a parallax scene with the ForgeFrame MCP
+
+Every step above has an MCP analogue. The full recipe, assuming your PNGs are already in the workspace's `media/images/` folder after `media_ingest`:
+
+```
+# 1. One video track per depth layer (farthest → nearest)
+track_add(track_type="video")   # background
+track_add(track_type="video")   # mid
+track_add(track_type="video")   # subject
+track_add(track_type="video")   # foreground
+
+# 2. Place the PNG on each track for the full scene duration
+clip_insert(... producer=<path>, track=<n>, start_seconds=0, duration_seconds=10)
+
+# 3. Chroma key the subject if it was shot on green
+effect_chroma_key(track=<subject>, clip=0, color="#00ff00", tolerance=0.18)
+
+# 4. Apply a Transform effect to each layer with initial geometry
+effect_transform(track=<n>, clip=0, scale=1.0, center_x=0.5, center_y=0.5)
+
+# 5. Animate the rect over the scene (parallax)
+#    Farther layers get a smaller delta, nearer layers get more.
+effect_keyframe_set_rect(
+    track=<bg>, clip=0, effect_index=<from step 4>, property="rect",
+    keyframes='[{"frame":0,"value":[0,0,1920,1080,1]},
+                {"frame":240,"value":[-20,-10,1940,1090,1]}]'
+)
+effect_keyframe_set_rect(
+    track=<foreground>, clip=0, effect_index=<from step 4>, property="rect",
+    keyframes='[{"frame":0,"value":[0,0,1920,1080,1]},
+                {"frame":240,"value":[-120,-60,2200,1240,1]}]'
+)
+
+# 6. Shadows under subjects -- a soft black ellipse PNG + box blur
+effect_add(track=<shadow>, clip=0, effect_name="avfilter.boxblur",
+           params='{"av.luma_radius":"20","av.chroma_radius":"20"}')
+
+# 7. Depth-of-field blur on the closest foreground layer
+effect_add(track=<foreground>, clip=0, effect_name="avfilter.boxblur",
+           params='{"av.luma_radius":"8"}')
+
+# 8. LUT on the final render or a top composite for unified color
+color_apply_lut(lut_name="warm-cinematic")
+```
+
+Use `effect_transform(..., flip_x=True)` when a character asset faces the wrong way.
+
+### Shadow assets
+
+Kdenlive has no shape generator, so keep one reusable asset in your B-roll library:
+
+- `shadow-ellipse.png` — a solid black ellipse (roughly 1000×250 px) on a fully-transparent background. Apply a 20--40 px box blur in the edit, scale to fit under the subject, and drop opacity to 40--60%.
+
+Once indexed via `broll_library_index`, it's available to every parallax scene by name.
+
+### When parallax is wrong
+
+- **Any shot where real camera motion exists.** Combining parallax with a real camera move reads as broken; pick one.
+- **Interview / talking head intros.** Parallax over a static portrait looks like a stock music-video cliché — it dates instantly.
+- **More than once per video.** A parallax bumper is a signature; repeating it dilutes the effect and pads runtime.
+- **When the art doesn't support it.** If your asset is one flat photograph, no amount of keyframing creates depth. Parallax requires *separated* layers.
+
+> [!tip] The "move less than you think" rule
+> First drafts always over-animate. A parallax scene that moves subtly over 5--8 seconds looks expensive; the same scene compressed to 2 seconds looks like a stock After Effects template. If in doubt, slow it down and reduce the total movement by half.
+
+---
+
 ## When NOT to Use Transitions
 
 This is the section most tutorials skip.
@@ -330,6 +431,7 @@ This is the section most tutorials skip.
 | Layer a talking head over screen recording | PiP with Composite composition |
 | Animate text or graphics entering the frame | Slide composition or Transform + keyframes |
 | Fade to black between sections | Fade out / Fade in on single clips |
+| Give a still illustration the feel of depth | Parallax scene (stacked layers + keyframed Transform) |
 
 ### Composition Type Reference
 

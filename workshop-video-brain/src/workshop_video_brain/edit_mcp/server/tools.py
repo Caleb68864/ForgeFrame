@@ -5394,6 +5394,136 @@ def effect_fade(
     })
 
 
+_MIRROR_VALUES = {
+    # (flip_x, flip_y) -> mirror property value
+    (True, False): "horizontal",
+    (False, True): "vertical",
+    (True, True): "flip",
+}
+
+
+@mcp.tool()
+def effect_transform(
+    workspace_path: str,
+    project_file: str,
+    track: int,
+    clip: int,
+    scale: float = 1.0,
+    center_x: float = 0.5,
+    center_y: float = 0.5,
+    opacity: float = 1.0,
+    flip_x: bool = False,
+    flip_y: bool = False,
+) -> dict:
+    """Append a Transform (affine/transform) filter to a clip.
+
+    Positions and sizes the clip via a ``rect`` built from normalized
+    center coordinates (``center_x``/``center_y`` in ``[0,1]``) plus a
+    uniform ``scale`` multiplier of the project frame. After this tool
+    runs, the filter's ``rect`` property can be keyframed via
+    ``effect_keyframe_set_rect`` to animate position / scale / opacity
+    -- the primitive behind parallax, push-in, slide, and zoom moves.
+
+    If ``flip_x`` and/or ``flip_y`` are true, a ``mirror`` filter is
+    inserted *before* the transform so flipping composes cleanly with
+    downstream keyframing.
+
+    Parameters
+    ----------
+    scale: uniform scale multiplier. 1.0 fills the project frame.
+    center_x, center_y: normalized center position in ``[0,1]``.
+        ``(0.5, 0.5)`` is frame center; ``(0, 0)`` pins the center
+        at top-left.
+    opacity: 0.0 (transparent) to 1.0 (opaque).
+    flip_x: horizontal flip (e.g. face a character the other way).
+    flip_y: vertical flip.
+    """
+    from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
+    from workshop_video_brain.workspace import create_snapshot
+
+    if scale <= 0:
+        return _err(f"scale must be > 0; got {scale}")
+    if not (0.0 <= opacity <= 1.0):
+        return _err(f"opacity must be in [0.0, 1.0]; got {opacity}")
+    for label, v in (("center_x", center_x), ("center_y", center_y)):
+        if not (0.0 <= v <= 1.0):
+            return _err(f"{label} must be in [0.0, 1.0]; got {v}")
+
+    try:
+        ws_path, _ws = _require_workspace(workspace_path)
+    except (ValueError, FileNotFoundError) as exc:
+        return _err(str(exc))
+
+    project_path = ws_path / project_file
+    if not project_path.exists():
+        return _err(f"Project file not found: {project_file}")
+
+    try:
+        record = create_snapshot(
+            ws_path, project_path, description="before_effect_transform"
+        )
+        snapshot_id = record.snapshot_id
+    except Exception as exc:  # noqa: BLE001
+        return _err(f"Snapshot failed: {exc}")
+
+    project = parse_project(project_path)
+    W = project.profile.width
+    H = project.profile.height
+    w = int(round(W * scale))
+    h = int(round(H * scale))
+    x = int(round(center_x * W - w / 2))
+    y = int(round(center_y * H - h / 2))
+    rect_str = f"{x} {y} {w} {h} {opacity:.4f}"
+
+    try:
+        existing = patcher.list_effects(project, (track, clip))
+    except IndexError as exc:
+        return _err(str(exc))
+
+    inserted: list[tuple[int, str]] = []
+    position = len(existing)
+
+    if flip_x or flip_y:
+        mirror_val = _MIRROR_VALUES[(bool(flip_x), bool(flip_y))]
+        mirror_xml = _build_filter_xml(
+            mlt_service="mirror",
+            kdenlive_id="mirror",
+            track=track,
+            clip=clip,
+            props=[("mirror", mirror_val), ("reverse", "0")],
+        )
+        try:
+            patcher.insert_effect_xml(project, (track, clip), mirror_xml, position=position)
+        except (IndexError, ValueError) as exc:
+            return _err(str(exc))
+        inserted.append((position, "mirror"))
+        position += 1
+
+    transform_xml = _build_filter_xml(
+        mlt_service="affine",
+        kdenlive_id="transform",
+        track=track,
+        clip=clip,
+        props=[("rect", rect_str)],
+    )
+    try:
+        patcher.insert_effect_xml(project, (track, clip), transform_xml, position=position)
+    except (IndexError, ValueError) as exc:
+        return _err(str(exc))
+    inserted.append((position, "transform"))
+
+    serialize_project(project, project_path)
+    return _ok({
+        "effect_index": inserted[-1][0],
+        "inserted": [{"index": i, "service": s} for i, s in inserted],
+        "rect": rect_str,
+        "frame_size": [W, H],
+        "snapshot_id": snapshot_id,
+    })
+
+
 @mcp.tool()
 def flash_cut_montage(
     workspace_path: str,
