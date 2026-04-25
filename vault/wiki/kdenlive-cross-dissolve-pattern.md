@@ -32,9 +32,14 @@ A cross-dissolve in Kdenlive 25.x is **always** the stacked-clips pattern: clip 
 <track producer="tractor_track_v2"/>        index 3
 ```
 
-Convention:
-- `a_track` = the lower (outgoing) track — the one revealed by the dissolve fading.
-- `b_track` = the upper (incoming) track — the one fading in over the lower.
+**Hard rule**: `a_track < b_track`. Always. The lower-numbered track ordinal goes into `a_track`; the higher-numbered into `b_track`. This is independent of which clip is fading in vs out.
+
+Direction (which clip is the outgoing one) is encoded by the `reverse` property:
+
+- `reverse=0` — the default. The upper track (b_track) fades *in* over the lower track. Use when the outgoing clip is on the lower track and the incoming clip is on the upper.
+- `reverse=1` — flip. The upper track (b_track) fades *out*, revealing the lower track. Use when the outgoing clip is on the upper track and the incoming clip is on the lower.
+
+**Putting the outgoing track in `a_track` when it's the upper one** produces the warning *"Incorrect composition <id> found on track N at <frame>, compositing with track M was set to forced track."* at project-load. Kdenlive auto-corrects (the dissolve still plays), but the dialog appears every time.
 
 ## In/out frame semantics
 

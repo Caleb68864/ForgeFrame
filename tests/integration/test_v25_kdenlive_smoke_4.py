@@ -221,19 +221,37 @@ def _register_kdenlivetitle(
 def _add_dissolve(
     project: KdenliveProject,
     *,
-    a_track_id: str,
-    b_track_id: str,
+    outgoing_track_id: str,
+    incoming_track_id: str,
     in_frame: int,
     out_frame: int,
     transition_id: str,
     kdenlive_id: str = "dissolve",
 ) -> KdenliveProject:
+    """Append a luma cross-dissolve to the main sequence's transitions.
+
+    Kdenlive enforces ``a_track < b_track`` -- the LOWER track ordinal goes
+    into ``a_track`` regardless of dissolve direction.  Direction is encoded
+    by the ``reverse`` property: ``reverse=0`` means the upper track fades
+    in (revealing it over the lower), ``reverse=1`` means the lower track
+    fades in (revealing it under the upper, which is fading out).
+
+    Passing the tracks in the wrong order produces the "Incorrect composition
+    ... was set to forced track" warning at project-load.
+    """
     new = project.model_copy(deep=True)
+    out_ord = _track_ordinal(new, outgoing_track_id)
+    in_ord = _track_ordinal(new, incoming_track_id)
+    a_track, b_track = sorted((out_ord, in_ord))
+    # If the OUTGOING clip is on the higher-ordinal track we need ``reverse=1``
+    # so Kdenlive plays the dissolve "upper-fades-out" instead of the default
+    # "upper-fades-in".
+    reverse = "1" if out_ord > in_ord else "0"
     new.sequence_transitions.append(
         SequenceTransition(
             id=transition_id,
-            a_track=_track_ordinal(new, a_track_id),
-            b_track=_track_ordinal(new, b_track_id),
+            a_track=a_track,
+            b_track=b_track,
             in_frame=in_frame,
             out_frame=out_frame,
             mlt_service="luma",
@@ -242,7 +260,7 @@ def _add_dissolve(
                 "factory": "loader",
                 "resource": "",
                 "softness": "0",
-                "reverse": "0",
+                "reverse": reverse,
                 "alpha_over": "1",
                 "fix_background_alpha": "1",
             },
@@ -576,16 +594,16 @@ def test_010_three_clip_dissolves():
     # Dissolves
     project = _add_dissolve(
         project,
-        a_track_id="playlist_video",
-        b_track_id="playlist_video_1",
+        outgoing_track_id="playlist_video",
+        incoming_track_id="playlist_video_1",
         in_frame=b_start,
         out_frame=a_end - 1,
         transition_id="dissolve_a_to_b",
     )
     project = _add_dissolve(
         project,
-        a_track_id="playlist_video_1",
-        b_track_id="playlist_video",
+        outgoing_track_id="playlist_video_1",  # B is on V2
+        incoming_track_id="playlist_video",     # C lands back on V1
         in_frame=c_start,
         out_frame=b_end - 1,
         transition_id="dissolve_b_to_c",
@@ -645,8 +663,8 @@ def test_011_wipe_transition():
     )
     project = _add_dissolve(
         project,
-        a_track_id="playlist_video",
-        b_track_id="playlist_video_1",
+        outgoing_track_id="playlist_video",
+        incoming_track_id="playlist_video_1",
         in_frame=clip_frames - overlap,
         out_frame=clip_frames - 1,
         transition_id="wipe_v1_v2",

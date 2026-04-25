@@ -137,19 +137,27 @@ def _add_blank_then_clip(
 def _add_dissolve(
     project: KdenliveProject,
     *,
-    a_track_id: str,
-    b_track_id: str,
+    outgoing_track_id: str,
+    incoming_track_id: str,
     in_frame: int,
     out_frame: int,
     transition_id: str = "dissolve_1",
 ) -> KdenliveProject:
-    """Append a luma cross-dissolve to the main sequence's transitions."""
+    """Append a luma cross-dissolve to the main sequence's transitions.
+
+    Kdenlive requires ``a_track < b_track``.  Direction is encoded by the
+    ``reverse`` property -- not by reordering the tracks.
+    """
     new = project.model_copy(deep=True)
+    out_ord = _track_ordinal(new, outgoing_track_id)
+    in_ord = _track_ordinal(new, incoming_track_id)
+    a_track, b_track = sorted((out_ord, in_ord))
+    reverse = "1" if out_ord > in_ord else "0"
     new.sequence_transitions.append(
         SequenceTransition(
             id=transition_id,
-            a_track=_track_ordinal(new, a_track_id),
-            b_track=_track_ordinal(new, b_track_id),
+            a_track=a_track,
+            b_track=b_track,
             in_frame=in_frame,
             out_frame=out_frame,
             mlt_service="luma",
@@ -158,7 +166,7 @@ def _add_dissolve(
                 "factory": "loader",
                 "resource": "",
                 "softness": "0",
-                "reverse": "0",
+                "reverse": reverse,
                 "alpha_over": "1",
                 "fix_background_alpha": "1",
             },
@@ -209,8 +217,8 @@ class TestSmoke3Dissolve:
         # Dissolve from V1 to V2 across the overlap window
         project = _add_dissolve(
             project,
-            a_track_id="playlist_video",
-            b_track_id="playlist_video_1",
+            outgoing_track_id="playlist_video",
+            incoming_track_id="playlist_video_1",
             in_frame=dissolve_in,
             out_frame=dissolve_out,
         )
@@ -247,8 +255,8 @@ class TestSmoke3Dissolve:
         # Tracks now: V1 (idx 1), A1 (idx 2), V2 (idx 3)
         project = _add_dissolve(
             project,
-            a_track_id="playlist_video",        # V1 -> 1
-            b_track_id="playlist_video_1",      # V2 -> 3
+            outgoing_track_id="playlist_video",        # V1 -> 1
+            incoming_track_id="playlist_video_1",      # V2 -> 3
             in_frame=0,
             out_frame=10,
         )
@@ -269,8 +277,8 @@ class TestSmoke3Dissolve:
         project = _add_video_track(project, name="V2")
         project = _add_dissolve(
             project,
-            a_track_id="playlist_video",
-            b_track_id="playlist_video_1",
+            outgoing_track_id="playlist_video",
+            incoming_track_id="playlist_video_1",
             in_frame=0,
             out_frame=29,
         )
@@ -347,8 +355,8 @@ def test_drop_smoke3_output(tmp_path):
     )
     project = _add_dissolve(
         project,
-        a_track_id="playlist_video",
-        b_track_id="playlist_video_1",
+        outgoing_track_id="playlist_video",
+        incoming_track_id="playlist_video_1",
         in_frame=dissolve_in,
         out_frame=dissolve_out,
         transition_id="cross_dissolve_v1_v2",
