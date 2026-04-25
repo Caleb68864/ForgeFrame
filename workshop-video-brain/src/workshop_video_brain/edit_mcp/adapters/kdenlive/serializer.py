@@ -582,12 +582,16 @@ def serialize_project(
                     bin_id = kdenlive_id_for.get(entry.producer_id)
                     if bin_id is not None:
                         _set_prop(e_elem, "kdenlive:id", bin_id)
-                    # Per-entry filters (transforms, colour, etc.) live as
-                    # ``<filter>`` children of the ``<entry>``.
+                    # Per-entry filters (transforms, colour, audio fades,
+                    # etc.) live as ``<filter>`` children of the ``<entry>``.
                     for f_idx, f in enumerate(entry.filters):
                         f_elem = ET.SubElement(e_elem, "filter")
                         if f.id:
                             f_elem.set("id", f.id)
+                        if f.in_frame is not None:
+                            f_elem.set("in", str(f.in_frame))
+                        if f.out_frame is not None:
+                            f_elem.set("out", str(f.out_frame))
                         for name, value in f.properties.items():
                             _set_prop(f_elem, name, value)
                 else:

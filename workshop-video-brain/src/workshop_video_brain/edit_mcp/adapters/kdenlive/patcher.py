@@ -620,7 +620,18 @@ def _apply_set_clip_speed(project: KdenliveProject, intent: SetClipSpeed) -> Non
 
 
 def _apply_audio_fade(project: KdenliveProject, intent: AudioFade) -> None:
-    """Add a volume-ramp filter for audio fade in/out."""
+    """Append an audio fade-in or fade-out filter to a clip's entry.
+
+    Emits the v25 shape verified against ``audio-mix.kdenlive`` from the
+    KDE test suite: a ``<filter>`` child inside the playlist ``<entry>``
+    with ``mlt_service=volume``, ``kdenlive_id=fadein``/``fadeout``,
+    scalar ``gain``/``end`` (NOT keyframe strings), and ``in``/``out``
+    element attributes positioning the ramp window.
+
+    The previous opaque-XML implementation was rejected by Kdenlive 25.x.
+    """
+    from workshop_video_brain.core.models.kdenlive import EntryFilter
+
     playlist = _find_playlist(project, intent.track_ref)
     if playlist is None:
         logger.warning(
@@ -636,36 +647,43 @@ def _apply_audio_fade(project: KdenliveProject, intent: AudioFade) -> None:
         return
 
     entry = real_entries[intent.clip_index]
+    entry_count = entry.out_point - entry.in_point + 1
+    duration = max(1, min(intent.duration_frames, entry_count))
     fade_type = intent.fade_type
 
     if fade_type == "in":
-        # Volume ramps from 0 → 1 over duration_frames
-        from_level = "0"
-        to_level = "1"
+        gain, end = "0", "1"
+        # fadein starts at entry-local frame 0 and runs for ``duration``
+        # frames.  Reference omits the ``in`` attribute when fade starts
+        # at clip start, but emitting it explicitly is harmless.
+        in_frame = 0
+        out_frame = duration - 1
     else:
-        # Volume ramps from 1 → 0 over duration_frames
-        from_level = "1"
-        to_level = "0"
+        gain, end = "1", "0"
+        # fadeout sits at the tail: starts ``duration`` frames before the
+        # entry ends, ends at the last frame.
+        in_frame = max(0, entry_count - duration)
+        out_frame = entry_count - 1
 
-    xml = (
-        f'<filter id="audiofade_{fade_type}_{intent.track_ref}_{intent.clip_index}" '
-        f'type="volume" '
-        f'producer="{entry.producer_id}" '
-        f'track="{intent.track_ref}" '
-        f'clip_index="{intent.clip_index}">'
-        f'<property name="level">{from_level}=0;{to_level}={intent.duration_frames}</property>'
-        f'<property name="kdenlive:fade_type">{fade_type}</property>'
-        f'</filter>'
+    entry.filters.append(
+        EntryFilter(
+            id=f"audiofade_{fade_type}_{intent.track_ref}_{intent.clip_index}",
+            in_frame=in_frame,
+            out_frame=out_frame,
+            properties={
+                "window": "75",
+                "max_gain": "20dB",
+                "mlt_service": "volume",
+                "kdenlive_id": f"fade{fade_type}",
+                "gain": gain,
+                "end": end,
+                "kdenlive:collapsed": "0",
+            },
+        )
     )
-    element = OpaqueElement(
-        tag="filter",
-        xml_string=xml,
-        position_hint="after_tractor",
-    )
-    project.opaque_elements.append(element)
     logger.info(
-        "AudioFade: added audio fade-%s (%d frames) for clip %d in playlist '%s'",
-        fade_type, intent.duration_frames, intent.clip_index, intent.track_ref,
+        "AudioFade: added fade%s (%d frames) for clip %d in playlist '%s'",
+        fade_type, duration, intent.clip_index, intent.track_ref,
     )
 
 

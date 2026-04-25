@@ -50,25 +50,35 @@ class EntryFilter(SerializableMixin):
     Emitted as a ``<filter>`` child inside the entry's ``<entry>`` element.
     Used for transform / colour / blur effects that apply to a single
     clip use -- e.g. a Ken Burns ``qtblend`` parallax pan on an image, a
-    static PIP rect on a webcam overlay, or a colour grade.
+    static PIP rect on a webcam overlay, an audio fade, or a colour grade.
 
     Important contract gotchas (see
-    ``vault/wiki/kdenlive-image-and-qtblend-pattern.md``):
+    ``vault/wiki/kdenlive-image-and-qtblend-pattern.md`` and
+    ``vault/wiki/kdenlive-audio-fade-pattern.md``):
 
     * Transforms use ``mlt_service=qtblend`` -- NOT ``affine``.  Kdenlive's
       UI labels both as "Transform" but writes ``qtblend``.
     * Keyframe timestamps in ``rect`` / ``rotation`` properties are
       ENTRY-LOCAL (run from ``00:00:00.000`` to the entry's local
       duration), not absolute sequence frames.
+    * Audio volume fades are NOT keyframed; they use scalar ``gain`` +
+      ``end`` properties and rely on the filter's ``in_frame``/``out_frame``
+      attributes to define the ramp window.
 
     Attributes:
         id: Optional element id (Kdenlive auto-numbers these as
             ``filter6``/``filter7``/...; pass empty to omit).
+        in_frame: Optional ``in=`` attribute on the ``<filter>`` element
+            itself (entry-local frame index).  Used by audio fades to
+            position the ramp window inside the clip.
+        out_frame: Optional ``out=`` attribute on the ``<filter>`` element.
         properties: All ``<property name=...>value</property>`` children,
             keyed by property name.
     """
 
     id: str = ""
+    in_frame: int | None = None
+    out_frame: int | None = None
     properties: dict[str, str] = Field(default_factory=dict)
 
 

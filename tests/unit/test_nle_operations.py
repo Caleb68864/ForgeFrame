@@ -522,53 +522,61 @@ class TestCreateTrack:
 
 
 class TestAudioFade:
-    def test_fade_in_adds_opaque_element(self):
-        from workshop_video_brain.core.models.timeline import AudioFade
-        from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
+    """AudioFade now appends an EntryFilter inside the playlist entry,
+    matching the v25 shape verified against ``audio-mix.kdenlive`` from
+    the KDE test suite.  The previous opaque-element form was rejected
+    by Kdenlive 25.x's bin loader."""
 
-        project = _make_project(1)
-        intent = AudioFade(
-            track_ref="pl_video",
-            clip_index=0,
-            fade_type="in",
-            duration_frames=24,
-        )
-        patched = patch_project(project, [intent])
-
-        assert len(patched.opaque_elements) == 1
-        elem = patched.opaque_elements[0]
-        assert elem.tag == "filter"
-        assert "fade_in" in elem.xml_string or "fade_type" in elem.xml_string
-        assert "volume" in elem.xml_string
-
-    def test_fade_out_adds_opaque_element(self):
-        from workshop_video_brain.core.models.timeline import AudioFade
-        from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
-
-        project = _make_project(1)
-        intent = AudioFade(
-            track_ref="pl_video",
-            clip_index=0,
-            fade_type="out",
-            duration_frames=24,
-        )
-        patched = patch_project(project, [intent])
-
-        assert len(patched.opaque_elements) == 1
-        elem = patched.opaque_elements[0]
-        assert "out" in elem.xml_string
-
-    def test_fade_xml_contains_level_ramp(self):
+    def test_fade_in_adds_entry_filter(self):
         from workshop_video_brain.core.models.timeline import AudioFade
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
         project = _make_project(1)
         patched = patch_project(project, [
-            AudioFade(track_ref="pl_video", clip_index=0, fade_type="in", duration_frames=12)
+            AudioFade(track_ref="pl_video", clip_index=0,
+                      fade_type="in", duration_frames=24)
         ])
-        xml = patched.opaque_elements[0].xml_string
-        # fade-in: starts at 0, ends at 1
-        assert "0=0" in xml
+        assert len(patched.opaque_elements) == 0
+
+        entry = next(
+            e for pl in patched.playlists for e in pl.entries if e.producer_id
+        )
+        assert len(entry.filters) == 1
+        f = entry.filters[0]
+        assert f.properties["mlt_service"] == "volume"
+        assert f.properties["kdenlive_id"] == "fadein"
+        assert f.properties["gain"] == "0"
+        assert f.properties["end"] == "1"
+        # fade-in starts at the entry's local frame 0
+        assert f.in_frame == 0
+        assert f.out_frame == 23  # 24-frame fade
+
+    def test_fade_out_adds_entry_filter_at_tail(self):
+        from workshop_video_brain.core.models.timeline import AudioFade
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
+
+        project = _make_project(1)
+        # The default _make_project entry has out_point such that the
+        # entry covers (out_point - in_point + 1) frames.
+        entry_orig = next(
+            e for pl in project.playlists for e in pl.entries if e.producer_id
+        )
+        entry_count = entry_orig.out_point - entry_orig.in_point + 1
+
+        patched = patch_project(project, [
+            AudioFade(track_ref="pl_video", clip_index=0,
+                      fade_type="out", duration_frames=12)
+        ])
+        entry = next(
+            e for pl in patched.playlists for e in pl.entries if e.producer_id
+        )
+        f = entry.filters[0]
+        assert f.properties["kdenlive_id"] == "fadeout"
+        assert f.properties["gain"] == "1"
+        assert f.properties["end"] == "0"
+        # Tail fade: ends at the last frame, starts ``duration`` frames before.
+        assert f.out_frame == entry_count - 1
+        assert f.in_frame == entry_count - 12
 
     def test_fade_does_not_mutate_original(self):
         from workshop_video_brain.core.models.timeline import AudioFade
@@ -576,7 +584,11 @@ class TestAudioFade:
 
         project = _make_project(1)
         patch_project(project, [AudioFade(track_ref="pl_video", clip_index=0)])
-        assert len(project.opaque_elements) == 0
+        # Original project's entry filters list is untouched.
+        assert all(
+            len(e.filters) == 0
+            for pl in project.playlists for e in pl.entries
+        )
 
 
 # ---------------------------------------------------------------------------

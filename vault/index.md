@@ -11,6 +11,7 @@
 - [[kdenlive-cross-dissolve-pattern]] — cross-dissolves are always stacked clips + a sequence transition
 - [[kdenlive-image-and-qtblend-pattern]] — image producers + Ken Burns `qtblend` keyframe transforms
 - [[kdenlive-clip-speed-pattern]] — clip speed via separate `timewarp` producer; timeline entry redirects, bin chain unchanged
+- [[kdenlive-audio-fade-pattern]] — audio fade-in/out via `volume` filter inside the entry, with scalar `gain`/`end` (not keyframes)
 
 ## Process
 
