@@ -667,18 +667,34 @@ class TestSetTrackVisibility:
 
 
 class TestSetClipSpeed:
-    def test_speed_adds_opaque_element(self):
+    def test_speed_sets_entry_speed_and_rescales_duration(self):
+        # SetClipSpeed now writes the speed onto the playlist entry (so the
+        # serializer can emit a matching ``<producer mlt_service="timewarp">``)
+        # and rescales the entry's out_point to reflect the timewarped
+        # frame count.  The legacy opaque-element form was rejected by the
+        # Kdenlive 25.x bin loader as "Effect: Remove".
         from workshop_video_brain.core.models.timeline import SetClipSpeed
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
         project = _make_project(2)
+        # Find the entry's original duration before the patch.
+        original_entry = next(
+            e for pl in project.playlists for e in pl.entries if e.producer_id
+        )
+        original_count = original_entry.out_point - original_entry.in_point + 1
+
         intent = SetClipSpeed(track_ref="pl_video", clip_index=0, speed=2.0)
         patched = patch_project(project, [intent])
 
-        assert len(patched.opaque_elements) == 1
-        elem = patched.opaque_elements[0]
-        assert "speed" in elem.xml_string
-        assert "2.0" in elem.xml_string
+        # No opaque elements -- the speed lives on the entry now.
+        assert len(patched.opaque_elements) == 0
+
+        patched_entry = next(
+            e for pl in patched.playlists for e in pl.entries if e.producer_id
+        )
+        assert patched_entry.speed == 2.0
+        new_count = patched_entry.out_point - patched_entry.in_point + 1
+        assert new_count == max(1, round(original_count / 2.0))
 
     def test_speed_invalid_index_skipped(self):
         from workshop_video_brain.core.models.timeline import SetClipSpeed

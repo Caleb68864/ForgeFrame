@@ -43,6 +43,12 @@ class PlaylistEntry(SerializableMixin):
     producer_id: str = ""
     in_point: int = 0
     out_point: int = 0
+    # 1.0 = play at normal speed; other values trigger the serializer to
+    # emit a separate ``<producer mlt_service="timewarp">`` for this
+    # clip-use and rewrite the entry's producer reference to it.  The
+    # original chain stays in place as the bin clip; only the timeline
+    # entry is redirected to the timewarp variant.
+    speed: float = 1.0
     # Per-clip-use effects (transforms, colour grading, blurs, etc.).  Live
     # inside the ``<entry>`` element in the emitted XML.
     filters: list[EntryFilter] = Field(default_factory=list)

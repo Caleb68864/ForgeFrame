@@ -412,6 +412,68 @@ def serialize_project(
         kdenlive_id_for[producer.id] = str(kdenlive_id)
 
     # ------------------------------------------------------------------
+    # Timewarp variants:  for any playlist entry with speed != 1.0,
+    # emit a corresponding ``<producer mlt_service="timewarp">`` so the
+    # timeline can reference it instead of the original chain.  Reference:
+    # ``tests/fixtures/kdenlive_references/clip_speed_400_native.kdenlive``.
+    # ------------------------------------------------------------------
+    producer_by_id = {p.id: p for p in project.producers}
+    timewarp_id_for: dict[tuple[str, float], str] = {}
+
+    def _speed_token(speed: float) -> str:
+        """Filename-safe token for the speed value (e.g. 4.0 -> ``4`` or
+        0.5 -> ``0p5``)."""
+        if speed == int(speed):
+            return str(int(speed))
+        return f"{speed:.4f}".rstrip("0").rstrip(".").replace(".", "p")
+
+    seen_speeds: set[tuple[str, float]] = set()
+    for playlist in project.playlists:
+        for entry in playlist.entries:
+            if not entry.producer_id:
+                continue
+            if entry.speed == 1.0:
+                continue
+            key = (entry.producer_id, entry.speed)
+            if key in seen_speeds:
+                continue
+            seen_speeds.add(key)
+            base = producer_by_id.get(entry.producer_id)
+            if base is None:
+                continue  # entry references unknown producer; let serialization continue
+            twp_id = f"{entry.producer_id}_speed_{_speed_token(entry.speed)}"
+            timewarp_id_for[key] = twp_id
+
+            # Compute the timewarp producer's length: original length / speed.
+            try:
+                base_length = int(base.properties.get("length", "0"))
+            except (TypeError, ValueError):
+                base_length = 0
+            tw_length = max(1, int(round(base_length / entry.speed))) if base_length else 1
+
+            tw = ET.SubElement(root, "producer")
+            tw.set("id", twp_id)
+            tw.set("in", "0")
+            tw.set("out", str(max(0, tw_length - 1)))
+            base_resource = base.resource or base.properties.get("resource", "")
+            _set_prop(tw, "length", str(tw_length))
+            _set_prop(tw, "eof", "pause")
+            _set_prop(tw, "resource", f"{entry.speed:.6f}:{base_resource}")
+            _set_prop(tw, "aspect_ratio", "1")
+            _set_prop(tw, "mlt_service", "timewarp")
+            _set_prop(tw, "warp_speed", _speed_token(entry.speed))
+            _set_prop(tw, "warp_resource", base_resource)
+            _set_prop(tw, "warp_pitch", "0")
+            _set_prop(tw, "seekable", "1")
+            for prop_name in ("audio_index", "video_index", "vstream", "astream"):
+                if prop_name in base.properties:
+                    _set_prop(tw, prop_name, base.properties[prop_name])
+            # Same control_uuid + kdenlive:id so Kdenlive ties this producer
+            # back to the bin clip.
+            _set_prop(tw, "kdenlive:control_uuid", _producer_uuid("control:" + base.id))
+            _set_prop(tw, "kdenlive:id", kdenlive_id_for[base.id])
+
+    # ------------------------------------------------------------------
     # black_track background producer
     # ------------------------------------------------------------------
     bt_elem = ET.SubElement(root, "producer")
@@ -443,7 +505,14 @@ def serialize_project(
             for entry in playlist.entries:
                 if entry.producer_id:
                     e_elem = ET.SubElement(a_elem, "entry")
-                    e_elem.set("producer", entry.producer_id)
+                    # Speed-changed entries reference a timewarp variant
+                    # producer instead of the original chain; the chain
+                    # remains in place as the bin clip.
+                    if entry.speed != 1.0:
+                        tw_id = timewarp_id_for.get((entry.producer_id, entry.speed))
+                        e_elem.set("producer", tw_id or entry.producer_id)
+                    else:
+                        e_elem.set("producer", entry.producer_id)
                     e_elem.set("in", str(entry.in_point))
                     e_elem.set("out", str(entry.out_point))
                     # Kdenlive's timeline parser keys clip uses by the bin

@@ -575,7 +575,20 @@ def _apply_ripple_delete(project: KdenliveProject, intent: RippleDelete) -> None
 
 
 def _apply_set_clip_speed(project: KdenliveProject, intent: SetClipSpeed) -> None:
-    """Add a speed-change opaque element for the clip at clip_index."""
+    """Set the playback speed of the clip at clip_index.
+
+    Updates the playlist entry's ``speed`` field so the serializer emits a
+    matching ``<producer mlt_service="timewarp">`` and rewrites the entry's
+    producer reference to it.  Also rescales ``out_point`` so the entry's
+    duration reflects the new playback speed (frames are at the
+    timewarped rate).
+    """
+    if intent.speed <= 0:
+        logger.warning(
+            "SetClipSpeed: speed must be positive (got %.2f) – skipped.", intent.speed
+        )
+        return
+
     playlist = _find_playlist(project, intent.track_ref)
     if playlist is None:
         logger.warning(
@@ -591,24 +604,18 @@ def _apply_set_clip_speed(project: KdenliveProject, intent: SetClipSpeed) -> Non
         return
 
     entry = real_entries[intent.clip_index]
-    xml = (
-        f'<filter id="speed_{intent.track_ref}_{intent.clip_index}" '
-        f'type="speed" '
-        f'producer="{entry.producer_id}" '
-        f'track="{intent.track_ref}" '
-        f'clip_index="{intent.clip_index}">'
-        f'<property name="speed">{intent.speed}</property>'
-        f'</filter>'
-    )
-    element = OpaqueElement(
-        tag="filter",
-        xml_string=xml,
-        position_hint="after_tractor",
-    )
-    project.opaque_elements.append(element)
+    # Compute the timewarped duration: the entry covers fewer frames at the
+    # new speed.  ``out`` is the index of the last frame, so the displayed
+    # frame count is ``(out - in + 1) / speed``; the new last-frame index
+    # is in_point + (count - 1).
+    original_count = entry.out_point - entry.in_point + 1
+    new_count = max(1, int(round(original_count / intent.speed)))
+    entry.speed = intent.speed
+    entry.out_point = entry.in_point + new_count - 1
     logger.info(
-        "SetClipSpeed: added speed=%.2f filter for clip %d in playlist '%s'",
-        intent.speed, intent.clip_index, intent.track_ref,
+        "SetClipSpeed: clip %d in playlist '%s' set to speed=%.2f (was %d frames -> %d frames)",
+        intent.clip_index, intent.track_ref, intent.speed,
+        original_count, new_count,
     )
 
 
