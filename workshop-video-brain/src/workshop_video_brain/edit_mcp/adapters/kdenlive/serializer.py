@@ -681,10 +681,11 @@ def serialize_project(
             sub_a.set("hide", hide_value)
             sub_b.set("hide", hide_value)
 
-        # Same-track mix transitions live INSIDE the per-track tractor,
-        # between the sub-track refs and the audio internal filters.
-        # Verified order against
-        # ``tests/fixtures/kdenlive_references/audio_mix_upstream_kde.kdenlive``.
+        # Same-track mix / slide / wipe transitions live INSIDE the per-track
+        # tractor, between the sub-track refs and the audio internal filters.
+        # Verified element order against:
+        # * ``audio_mix_upstream_kde.kdenlive`` for ``kind="mix"`` (audio crossfade)
+        # * upstream KDE ``mix-slide.kdenlive`` for ``kind="affine"`` slide/wipe
         for mix in project.track_mix_transitions:
             if mix.track_ref != track.id:
                 continue
@@ -696,17 +697,36 @@ def serialize_project(
             _set_prop(mix_elem, "b_track", "1")
             _set_prop(mix_elem, "mlt_service", mix.kind)
             # kdenlive_id matches mlt_service for the plain mix case;
-            # luma / affine variants override via ``properties``.
+            # the affine slide/wipe variant uses kdenlive_id="luma".
             _set_prop(mix_elem, "kdenlive_id", mix.properties.get("kdenlive_id", mix.kind))
             _set_prop(mix_elem, "kdenlive:mixcut", str(mix.mixcut_frames))
-            # Defaults from the upstream reference -- callers override
-            # via ``properties`` if needed.
-            defaults = {"start": "-1", "accepts_blanks": "1", "reverse": "0"}
+            # Kind-specific default property sets:
+            # * ``mix`` audio crossfade uses ``start=-1``, ``accepts_blanks=1``,
+            #   ``reverse=0`` (verified against audio-mix.kdenlive).
+            # * ``affine`` slide/wipe uses ``distort=0``, ``fill=1``, ``resource=""``,
+            #   ``softness=0``, ``alpha_over=1``, ``invert=0``, ``reverse=0`` and
+            #   does NOT carry ``start`` / ``accepts_blanks`` (verified against
+            #   mix-slide.kdenlive).
+            if mix.kind == "mix":
+                defaults = {"start": "-1", "accepts_blanks": "1", "reverse": "0"}
+            elif mix.kind == "affine":
+                defaults = {
+                    "distort": "0",
+                    "fill": "1",
+                    "resource": "",
+                    "softness": "0",
+                    "alpha_over": "1",
+                    "invert": "0",
+                    "reverse": "0",
+                }
+            else:
+                defaults = {}
             for k, v in defaults.items():
                 _set_prop(mix_elem, k, mix.properties.get(k, v))
+            reserved = {"a_track", "b_track", "mlt_service", "kdenlive_id",
+                        "kdenlive:mixcut", *defaults.keys()}
             for name, value in mix.properties.items():
-                if name in {"a_track", "b_track", "mlt_service", "kdenlive_id",
-                            "kdenlive:mixcut", "start", "accepts_blanks", "reverse"}:
+                if name in reserved:
                     continue
                 _set_prop(mix_elem, name, value)
 
