@@ -23,28 +23,30 @@ the matching upstream test-suite file is in
 
 ### `025-audio-fade-in-out.kdenlive`
 * **Opens clean.**
-* Single video clip on V1 (with audio routed to A1 separately).
-* Play A1: the audio fades IN over the first 2 seconds, plays at full
-  volume in the middle, then fades OUT over the last 3 seconds.
+* Silent test clip on V1 + Mixkit cinematic music on A1.
+* Play A1: the music **fades IN audibly** over the first 2 seconds,
+  plays at full volume in the middle, then **fades OUT** over the
+  last 3 seconds.
 * The fade filters live on the A1 entry, NOT the V1 entry.
 
 ### `026-audio-fade-in-music-bed.kdenlive`
 * **Opens clean.**
-* V1 video clip + A2 music-bed clip.
-* The music bed on A2 fades up over 2 seconds.
+* V1 silent test clip + A2 Mixkit music-bed clip.
+* The music bed on A2 **audibly fades up** over 2 seconds, then
+  plays at full volume.
 
 ---
 
 ## Batch 9 (avfilter, video fades, effect zones, 3-way grade, dissolves)
 
-### `027-avfilter-gblur.kdenlive`
+### `027-avfilter-gblur.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Single clip on V1.  Starts visually sharp, ramps to **heavy
   gaussian blur** by the end (sigma 0 → 20).
 * Effect panel for the clip shows an `avfilter.gblur` filter with the
   sigma keyframes.
 
-### `028-video-fade-from-to-black.kdenlive`
+### `028-video-fade-from-to-black.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Single clip on V1.  Fades **from black** over the first ~3 seconds,
   plays clean in the middle, fades **to black** over the last ~3 seconds.
@@ -90,12 +92,15 @@ the matching upstream test-suite file is in
 
 ### `034-track-mute-and-hide.kdenlive`
 * **Opens clean.**
-* Three tracks: V2 (top, hidden), V1 (visible), A1 (muted).
+* Three tracks: V2 (top, hidden), V1 (visible), A1 (muted) carrying
+  the Mixkit cinematic music track.
 * In the timeline header: V2's **eye toggle** is OFF, A1's
   **speaker toggle** is OFF, V1 is normal.
-* Press play: NO sound from A1, NO video from V2.  Only V1 plays.
-* If the toggles look normal (visible/unmuted), the `hide="both"`
-  attribute didn't take effect.
+* Press play: **NO music plays** (mute working), and V2 doesn't
+  contribute video.  Only V1 plays visually.
+* Sanity-check: temporarily un-mute A1 in the UI and the Mixkit
+  music should become audible -- proving the mute, not a missing
+  audio track, is what silenced playback.
 
 ---
 
@@ -171,21 +176,23 @@ the matching upstream test-suite file is in
 
 ### `047-same-track-audio-mix.kdenlive`
 * **Opens clean.**  This is the FIRST verification of the
-  `TrackMixTransition` shape — important to confirm.
-* In the timeline: TWO clips on A1, adjacent, with a **1-second
-  crossfade** between them (the second clip's leading edge fades in
-  while the first clip's trailing edge fades out).
-* Listen carefully at the cut: the audio should crossfade smoothly,
-  NOT jump-cut.  If it jump-cuts, the in-tractor mix transition
-  isn't taking effect (Kdenlive likely silently dropped it).
-* In Kdenlive's UI the cut may appear as a "Mix" cut with an X-shape
-  overlay rather than a hard line.
+  `TrackMixTransition` shape with audio (smoke 048 already confirmed
+  the visual `kind="affine"` variant works structurally).
+* In the timeline: A1 has TWO music clips adjacent — clip A is the
+  Mixkit track from time 0, clip B is the SAME track starting from
+  ~10 seconds in.  The clips overlap by 1 second.
+* Listen at the cut (around 3s into playback): clip A should
+  **audibly crossfade into** clip B — you should hear the original
+  opening of the music track fading out while the ~10-second-in
+  region of the music track fades in.  Smooth segue, NOT a jump.
+* If it jump-cuts (you hear a sudden change with no fade), the
+  in-tractor mix transition isn't taking effect.
 
 ---
 
 ## Batch 15 (same-track slide/wipe — NEW PATTERN)
 
-### `048-same-track-slide-in.kdenlive`
+### `048-same-track-slide-in.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Two clips on V1 with a **1-second slide-in** transition: clip 2
   slides in from the LEFT to replace clip 1 (clip 2 starts off-screen

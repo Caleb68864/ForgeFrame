@@ -38,6 +38,7 @@ from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATED_CLIP = REPO_ROOT / "tests" / "fixtures" / "media_generated" / "test_clip_1080p2997_5s.mp4"
+MUSIC_CLIP = REPO_ROOT / "tests" / "fixtures" / "media_generated" / "music_cinematic_short.mp3"
 USER_TEST_KDENLIVE = Path("C:/Users/CalebBennett/Videos/Test KdenLive")
 USER_OUTPUT_DIR = Path("C:/Users/CalebBennett/Videos/Video Production/tests/mcp_output")
 
@@ -109,13 +110,14 @@ def _resolve_clip(*candidates: Path) -> Path | None:
 def test_034_track_mute_and_hide():
     """Two video tracks (V1 visible, V2 hidden) + one audio track (muted).
     Opening this in Kdenlive should show V2 with the eye-toggle off and
-    A1 with the speaker-toggle off, no output coming from either."""
-    clip = _resolve_clip(
-        USER_TEST_KDENLIVE / "8832126-uhd_3840_2160_30fps.mp4",
-        GENERATED_CLIP,
-    )
-    if clip is None:
-        pytest.skip("No clip available")
+    A1 with the speaker-toggle off, no output coming from either.
+
+    A1 carries the Mixkit music track so the user can audibly verify
+    that muting actually silences the track (vs only flipping the UI
+    toggle without affecting playback)."""
+    if not GENERATED_CLIP.exists() or not MUSIC_CLIP.exists():
+        pytest.skip("Required clips missing")
+    clip = GENERATED_CLIP
 
     fps = 29.97
     duration = int(4 * fps)
@@ -142,6 +144,15 @@ def test_034_track_mute_and_hide():
         in_point=0,
         out_point=duration - 1,
         source_path=str(clip),
+    )
+    # Music on A1 -- this is what the mute should silence audibly.
+    project = _add_clip(
+        project,
+        producer_id="music_a1",
+        track_id="playlist_audio",
+        in_point=0,
+        out_point=duration - 1,
+        source_path=str(MUSIC_CLIP),
     )
 
     # Mute the audio track and hide V2.

@@ -51,6 +51,7 @@ from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATED_CLIP = REPO_ROOT / "tests" / "fixtures" / "media_generated" / "test_clip_1080p2997_5s.mp4"
+MUSIC_CLIP = REPO_ROOT / "tests" / "fixtures" / "media_generated" / "music_cinematic_short.mp3"
 USER_TEST_KDENLIVE = Path("C:/Users/CalebBennett/Videos/Test KdenLive")
 USER_OUTPUT_DIR = Path("C:/Users/CalebBennett/Videos/Video Production/tests/mcp_output")
 
@@ -109,17 +110,8 @@ def test_047_same_track_audio_mix_crossfade():
     clip's audible audio bleeds 15 frames into the other side of the
     perceived cut).
     """
-    clip_a = _resolve_clip(
-        USER_TEST_KDENLIVE / "8832126-uhd_3840_2160_30fps.mp4",  # has audio
-        GENERATED_CLIP,
-    )
-    clip_b = _resolve_clip(
-        USER_TEST_KDENLIVE / "15647204_3840_2160_30fps.mp4",
-        USER_TEST_KDENLIVE / "8832126-uhd_3840_2160_30fps.mp4",
-        GENERATED_CLIP,
-    )
-    if clip_a is None or clip_b is None:
-        pytest.skip("Need two clips with audio")
+    if not GENERATED_CLIP.exists() or not MUSIC_CLIP.exists():
+        pytest.skip("Required clips missing")
 
     fps = 29.97
     seg = int(4 * fps)              # 4-second clips
@@ -129,57 +121,60 @@ def test_047_same_track_audio_mix_crossfade():
 
     project = _build_initial_project("smoke_047_audio_mix_crossfade", fps=fps)
 
-    # Clip A on V1 (video) -- normal video track entry.
+    # Silent video on V1 just for visual context (so the playhead has
+    # something to render against during the audio crossfade).
     project = patch_project(
         project,
         [
             AddClip(
-                producer_id="clip_a",
+                producer_id="vid_v1",
                 track_ref="playlist_video",
                 track_id="playlist_video",
                 in_point=0,
-                out_point=seg + (seg - overlap) - 1,  # full duration of A1 timeline
+                out_point=seg + (seg - overlap) - 1,
                 position=-1,
-                source_path=str(clip_a),
+                source_path=str(GENERATED_CLIP),
             )
         ],
     )
 
-    # Clip A on A1 sub-playlist A (the default ``playlist_audio``).
+    # Music on A1 sub-playlist A.  Use the FULL music track but trim
+    # to ``seg`` frames in the entry; the audio crossfade will mix
+    # this clip out into clip B (a different in-point of the same
+    # music track) so the user hears a smooth segue rather than a hard
+    # discontinuity.
     project = patch_project(
         project,
         [
             AddClip(
-                producer_id="clip_a",
+                producer_id="music_a",
                 track_ref="playlist_audio",
                 track_id="playlist_audio",
                 in_point=0,
                 out_point=seg - 1,
                 position=-1,
-                source_path=str(clip_a),
+                source_path=str(MUSIC_CLIP),
             )
         ],
     )
 
-    # Clip B on A1 sub-playlist B (``playlist_audio_kdpair``) with a
-    # ``<blank>`` covering everything before the overlap starts so the
-    # entries align on the absolute timeline.
+    # Music continuation on A1 sub-playlist B (``playlist_audio_kdpair``)
+    # with a leading ``<blank>`` so the entries align on the absolute
+    # timeline.  Reuses the SAME music producer with a different
+    # in-point so the user hears a clear "second clip" enter the mix.
     kdpair = Playlist(id="playlist_audio_kdpair")
     kdpair.entries.append(
         PlaylistEntry(producer_id="", in_point=0, out_point=mix_in - 1)
     )
-    # AddClip would create a fresh producer with a new id; we want to
-    # reuse the producer that already exists for clip B (or just append
-    # the entry directly if the producer doesn't exist).  Easiest: route
-    # clip B through AddClip first to a separate audio sub-track that we
-    # then move to kdpair.
-    # Simpler: assume a producer with id "clip_b" needs to exist.  Add
-    # via AddClip on the video track (then remove the entry) just to
-    # register the producer.  Or skip AddClip and append the entry
-    # directly using clip_a's producer (audio is the same anyway in
-    # smoke output).
+    # Use a later region of the same music track for clip B (in-point
+    # at ~10 seconds in so it sounds different from clip A's opening).
+    music_b_in = int(10 * fps)
     kdpair.entries.append(
-        PlaylistEntry(producer_id="clip_a", in_point=0, out_point=seg - 1)
+        PlaylistEntry(
+            producer_id="music_a",
+            in_point=music_b_in,
+            out_point=music_b_in + seg - 1,
+        )
     )
     project.playlists.append(kdpair)
 
@@ -205,4 +200,4 @@ def test_047_same_track_audio_mix_crossfade():
     assert 'mlt_service">mix' in text
     assert "kdenlive:mixcut" in text
     # The kdpair playlist has a real entry now (not just empty).
-    assert 'producer="clip_a"' in text
+    assert 'producer="music_a"' in text

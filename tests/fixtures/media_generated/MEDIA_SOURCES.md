@@ -3,6 +3,14 @@
 Provenance of any test-fixture media that was downloaded from external
 sources (vs generated locally by the `generate_test_*.sh` scripts).
 
+## `music_cinematic_short.mp3`
+
+* **Source**: [Mixkit cinematic stock music](https://mixkit.co/free-stock-music/tag/cinematic/)
+* **Direct CDN URL** (saved 2026-04-26): `https://assets.mixkit.co/music/614/614.mp3`
+* **License**: [Mixkit License](https://mixkit.co/license/) -- free for commercial and non-commercial use, no attribution required
+* **Why**: smoke tests 025 (audio fade in/out), 026 (music bed), 034 (track mute), and 047 (same-track audio crossfade) need source audio so the user can hear whether the audio operation is actually happening.  None of the locally-generated test clips have audio, and the green-screen reporter clip is silent.
+* **Properties**: 4.9 MB, ~3:30 MP3.
+
 ## `greenscreen_reporter_720.mp4`
 
 * **Source**: [Mixkit](https://mixkit.co/free-stock-video/female-reporter-reporting-with-microphone-in-hand-on-a-chroma-green-background-28293/)

@@ -26,6 +26,7 @@ from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATED_CLIP = REPO_ROOT / "tests" / "fixtures" / "media_generated" / "test_clip_1080p2997_5s.mp4"
+MUSIC_CLIP = REPO_ROOT / "tests" / "fixtures" / "media_generated" / "music_cinematic_short.mp3"
 USER_TEST_KDENLIVE = Path("C:/Users/CalebBennett/Videos/Test KdenLive")
 USER_OUTPUT_DIR = Path("C:/Users/CalebBennett/Videos/Video Production/tests/mcp_output")
 
@@ -100,17 +101,13 @@ def test_025_audio_fade_in_and_out():
     filter shape against the KDE test suite.
 
     For Kdenlive to actually apply the volume fade, the entry carrying
-    the fade filter must be on an AUDIO track (V1 video entries have
-    no audio routing on their own).  Mirrors the audio-mix.kdenlive
-    reference: the same source clip gets an entry on the video track
-    AND a separate entry on the audio track, both referencing the
-    same producer; the fade filter sits on the audio entry only."""
-    clip = _resolve_clip(
-        USER_TEST_KDENLIVE / "8832126-uhd_3840_2160_30fps.mp4",  # has audio
-        GENERATED_CLIP,
-    )
-    if clip is None:
-        pytest.skip("No clip with audio available")
+    the fade filter must be on an AUDIO track.  Uses the downloaded
+    Mixkit cinematic music track on A1 so the user can audibly verify
+    the fade ramp.  V1 carries the silent test clip for visual context."""
+    if not MUSIC_CLIP.exists():
+        pytest.skip(f"Music clip missing: {MUSIC_CLIP}")
+    if not GENERATED_CLIP.exists():
+        pytest.skip(f"Test clip missing: {GENERATED_CLIP}")
 
     fps = 29.97
     duration = int(8 * fps)
@@ -118,21 +115,24 @@ def test_025_audio_fade_in_and_out():
     fade_out_frames = int(3 * fps)
 
     project = _build_initial_project("smoke_025_audio_fades", fps=fps)
-    # Video portion on V1
+    # Silent video on V1 just for visual context (so the playhead has
+    # something to render against during the audio fade).
     project = _add_clip(
         project,
         producer_id="vid",
         track_id="playlist_video",
         in_point=0,
         out_point=duration - 1,
-        source_path=str(clip),
+        source_path=str(GENERATED_CLIP),
     )
-    # Audio portion on A1, referencing the SAME producer.  AddClip would
-    # try to create a fresh producer with a new id, so just append the
-    # entry directly to the playlist.
-    audio_pl = next(p for p in project.playlists if p.id == "playlist_audio")
-    audio_pl.entries.append(
-        PlaylistEntry(producer_id="vid", in_point=0, out_point=duration - 1)
+    # Music on A1 -- this is what will fade in/out audibly.
+    project = _add_clip(
+        project,
+        producer_id="music",
+        track_id="playlist_audio",
+        in_point=0,
+        out_point=duration - 1,
+        source_path=str(MUSIC_CLIP),
     )
     # Now the audio fade lands on the A1 entry where Kdenlive's volume
     # filter actually has audio to ramp.
@@ -183,13 +183,9 @@ def test_025_audio_fade_in_and_out():
 )
 def test_026_audio_fade_in_only():
     """V1 video clip + A2 music-bed clip with a slow 2-second fade-in on
-    the music bed.  Mirrors the most common 'fade up the music' pattern."""
-    video_clip = _resolve_clip(
-        USER_TEST_KDENLIVE / "8832126-uhd_3840_2160_30fps.mp4",
-        GENERATED_CLIP,
-    )
-    music_clip = _resolve_clip(GENERATED_CLIP)
-    if video_clip is None or music_clip is None:
+    the music bed.  Mirrors the most common 'fade up the music' pattern.
+    Uses the Mixkit cinematic music track for audible verification."""
+    if not GENERATED_CLIP.exists() or not MUSIC_CLIP.exists():
         pytest.skip("Required clips missing")
 
     fps = 29.97
@@ -203,7 +199,7 @@ def test_026_audio_fade_in_only():
         track_id="playlist_video",
         in_point=0,
         out_point=duration - 1,
-        source_path=str(video_clip),
+        source_path=str(GENERATED_CLIP),
     )
     project = _add_clip(
         project,
@@ -211,7 +207,7 @@ def test_026_audio_fade_in_only():
         track_id="playlist_audio_1",
         in_point=0,
         out_point=duration - 1,
-        source_path=str(music_clip),
+        source_path=str(MUSIC_CLIP),
     )
     project = patch_project(
         project,
