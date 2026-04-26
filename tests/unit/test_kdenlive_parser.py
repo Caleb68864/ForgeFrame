@@ -365,3 +365,222 @@ class TestParserPreservesEntryFilters:
         assert len(entry.filters) == 1
         # The keyframe string survives intact
         assert entry.filters[0].properties["rect"] == rect
+
+
+class TestParserPreservesSequenceTransitions:
+    """User-added cross-track transitions (cross-dissolves, wipes, slides)
+    inside the main sequence tractor must round-trip as
+    ``SequenceTransition`` objects.  Auto-internal per-track transitions
+    (``mix``/``qtblend`` with ``internal_added=237``) are auto-rebuilt
+    from the track list and must NOT be captured."""
+
+    def test_round_trip_dissolve_preserved(self, tmp_path):
+        from workshop_video_brain.core.models.kdenlive import (
+            KdenliveProject,
+            Playlist,
+            PlaylistEntry,
+            Producer,
+            ProjectProfile,
+            SequenceTransition,
+            Track,
+        )
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
+            serialize_project,
+        )
+
+        project = KdenliveProject(
+            version="7", title="dissolve round-trip",
+            profile=ProjectProfile(width=1920, height=1080, fps=29.97, colorspace="709"),
+            tracks=[
+                Track(id="pl_v1", track_type="video"),
+                Track(id="pl_a1", track_type="audio"),
+                Track(id="pl_v2", track_type="video"),
+            ],
+            playlists=[
+                Playlist(id="pl_v1", entries=[
+                    PlaylistEntry(producer_id="p0", in_point=0, out_point=89),
+                ]),
+                Playlist(id="pl_a1"),
+                Playlist(id="pl_v2", entries=[
+                    PlaylistEntry(producer_id="", in_point=0, out_point=59),  # blank
+                    PlaylistEntry(producer_id="p1", in_point=0, out_point=89),
+                ]),
+            ],
+            producers=[
+                Producer(id="p0", resource="/a.mp4", properties={
+                    "resource": "/a.mp4", "mlt_service": "avformat-novalidate", "length": "90",
+                }),
+                Producer(id="p1", resource="/b.mp4", properties={
+                    "resource": "/b.mp4", "mlt_service": "avformat-novalidate", "length": "90",
+                }),
+            ],
+            sequence_transitions=[
+                SequenceTransition(
+                    id="my_dissolve",
+                    a_track=1, b_track=3,  # V1 -> V2 (A1 at index 2)
+                    in_frame=60, out_frame=89,
+                    mlt_service="luma",
+                    kdenlive_id="dissolve",
+                    properties={
+                        "factory": "loader",
+                        "softness": "0",
+                        "reverse": "0",
+                        "alpha_over": "1",
+                        "kdenlive:mixcut": "12",
+                    },
+                ),
+            ],
+        )
+
+        out_path = tmp_path / "dissolve_rt.kdenlive"
+        serialize_project(project, out_path)
+        parsed = parse_project(out_path)
+
+        # Auto-internal mix/qtblend transitions are NOT captured.
+        # Only the user-added dissolve survives.
+        assert len(parsed.sequence_transitions) == 1
+        st = parsed.sequence_transitions[0]
+        assert st.id == "my_dissolve"
+        assert st.a_track == 1
+        assert st.b_track == 3
+        assert st.in_frame == 60
+        assert st.out_frame == 89
+        assert st.mlt_service == "luma"
+        assert st.kdenlive_id == "dissolve"
+        # Extra properties round-trip via the properties dict.
+        assert st.properties["softness"] == "0"
+        assert st.properties["kdenlive:mixcut"] == "12"
+
+    def test_round_trip_does_not_capture_auto_internals(self, tmp_path):
+        """A project with no user-added transitions should round-trip with
+        an empty ``sequence_transitions`` list -- the auto mix/qtblend
+        track-summer transitions must not leak into the model."""
+        from workshop_video_brain.core.models.kdenlive import (
+            KdenliveProject,
+            Playlist,
+            PlaylistEntry,
+            Producer,
+            ProjectProfile,
+            Track,
+        )
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
+            serialize_project,
+        )
+
+        project = KdenliveProject(
+            version="7", title="no transitions",
+            profile=ProjectProfile(width=1920, height=1080, fps=29.97),
+            tracks=[
+                Track(id="pl_v", track_type="video"),
+                Track(id="pl_a", track_type="audio"),
+            ],
+            playlists=[
+                Playlist(id="pl_v", entries=[
+                    PlaylistEntry(producer_id="p0", in_point=0, out_point=29),
+                ]),
+                Playlist(id="pl_a"),
+            ],
+            producers=[
+                Producer(id="p0", resource="/c.mp4", properties={
+                    "resource": "/c.mp4", "mlt_service": "avformat-novalidate", "length": "30",
+                }),
+            ],
+        )
+
+        out_path = tmp_path / "noop_rt.kdenlive"
+        serialize_project(project, out_path)
+        parsed = parse_project(out_path)
+
+        assert parsed.sequence_transitions == []
+
+
+class TestParserPreservesClipSpeed:
+    """``PlaylistEntry.speed`` round-trips through the timewarp variant
+    serialization and back: the parser detects ``mlt_service=timewarp``
+    producers, peels them off (the serializer rebuilds them on next
+    emit), and rewrites entries that referenced the variant to point
+    at the source chain instead with ``speed`` set."""
+
+    def test_round_trip_4x_speed(self, tmp_path):
+        from workshop_video_brain.core.models.kdenlive import (
+            KdenliveProject,
+            Playlist,
+            PlaylistEntry,
+            Producer,
+            ProjectProfile,
+            Track,
+        )
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
+            serialize_project,
+        )
+
+        project = KdenliveProject(
+            version="7", title="speed round-trip",
+            profile=ProjectProfile(width=1920, height=1080, fps=29.97, colorspace="709"),
+            tracks=[Track(id="pl_v", track_type="video")],
+            playlists=[Playlist(id="pl_v", entries=[
+                PlaylistEntry(
+                    producer_id="src", in_point=0, out_point=29,
+                    speed=4.0,
+                ),
+            ])],
+            producers=[
+                Producer(id="src", resource="/clip.mp4", properties={
+                    "resource": "/clip.mp4",
+                    "mlt_service": "avformat-novalidate",
+                    "length": "120",
+                }),
+            ],
+        )
+
+        out_path = tmp_path / "speed_rt.kdenlive"
+        serialize_project(project, out_path)
+        parsed = parse_project(out_path)
+
+        # The variant producer should NOT show up in the producers list;
+        # only the source chain.
+        producer_ids = {p.id for p in parsed.producers}
+        assert producer_ids == {"src"}
+
+        # The entry references the source again, with speed restored.
+        entry = next(e for pl in parsed.playlists for e in pl.entries if e.producer_id)
+        assert entry.producer_id == "src"
+        assert entry.speed == 4.0
+
+    def test_round_trip_normal_speed_unchanged(self, tmp_path):
+        """A speed=1.0 entry is emitted plainly (no timewarp variant) and
+        round-trips with speed=1.0."""
+        from workshop_video_brain.core.models.kdenlive import (
+            KdenliveProject,
+            Playlist,
+            PlaylistEntry,
+            Producer,
+            ProjectProfile,
+            Track,
+        )
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
+            serialize_project,
+        )
+
+        project = KdenliveProject(
+            version="7", title="no speed",
+            profile=ProjectProfile(width=1920, height=1080, fps=29.97),
+            tracks=[Track(id="pl_v", track_type="video")],
+            playlists=[Playlist(id="pl_v", entries=[
+                PlaylistEntry(producer_id="src", in_point=0, out_point=29),
+            ])],
+            producers=[
+                Producer(id="src", resource="/c.mp4", properties={
+                    "resource": "/c.mp4",
+                    "mlt_service": "avformat-novalidate",
+                    "length": "30",
+                }),
+            ],
+        )
+
+        out_path = tmp_path / "speed1_rt.kdenlive"
+        serialize_project(project, out_path)
+        parsed = parse_project(out_path)
+        entry = next(e for pl in parsed.playlists for e in pl.entries if e.producer_id)
+        assert entry.speed == 1.0
+        assert entry.producer_id == "src"

@@ -21,6 +21,7 @@ from workshop_video_brain.core.models.kdenlive import (
     PlaylistEntry,
     Producer,
     ProjectProfile,
+    SequenceTransition,
     Track,
 )
 
@@ -82,6 +83,56 @@ def _parse_producer(elem: ET.Element) -> Producer:
             props[name] = value
     resource = props.get("resource", "")
     return Producer(id=producer_id, resource=resource, properties=props)
+
+
+def _parse_sequence_transition(trans_elem: ET.Element) -> SequenceTransition | None:
+    """Convert a ``<transition>`` element from the main sequence tractor
+    into a :class:`SequenceTransition`, or return None for auto-internal
+    transitions (per-track ``mix``/``qtblend`` with ``internal_added=237``)
+    that the serializer rebuilds from the track list.
+    """
+    properties: dict[str, str] = {}
+    for child in trans_elem:
+        if child.tag == "property":
+            name = child.get("name", "")
+            value = child.text or ""
+            properties[name] = value
+
+    # Skip auto-internal transitions -- the serializer recreates these
+    # automatically based on ``project.tracks``.  Capturing them as
+    # SequenceTransitions would duplicate them on re-serialize.
+    if properties.get("internal_added") == "237":
+        return None
+
+    try:
+        a_track = int(properties.get("a_track", "0"))
+        b_track = int(properties.get("b_track", "0"))
+    except (TypeError, ValueError):
+        return None
+
+    in_attr = trans_elem.get("in")
+    out_attr = trans_elem.get("out")
+    try:
+        in_frame = int(in_attr) if in_attr is not None else 0
+        out_frame = int(out_attr) if out_attr is not None else 0
+    except ValueError:
+        # Timecode-format in/out -- skip for now (rare in v25 saves).
+        return None
+
+    extra_props = {
+        k: v for k, v in properties.items()
+        if k not in {"a_track", "b_track", "mlt_service", "kdenlive_id"}
+    }
+    return SequenceTransition(
+        id=trans_elem.get("id", ""),
+        a_track=a_track,
+        b_track=b_track,
+        in_frame=in_frame,
+        out_frame=out_frame,
+        mlt_service=properties.get("mlt_service", ""),
+        kdenlive_id=properties.get("kdenlive_id", ""),
+        properties=extra_props,
+    )
 
 
 def _parse_entry_filter(filter_elem: ET.Element) -> EntryFilter:
@@ -260,6 +311,12 @@ def parse_project(path: Path) -> KdenliveProject:
     tractor: dict | None = None
     guides: list[Guide] = []
     opaque_elements: list[OpaqueElement] = []
+    sequence_transitions: list[SequenceTransition] = []
+    # Map of timewarp variant producer id -> (source_id, speed) so we can
+    # round-trip ``PlaylistEntry.speed``.  The serializer emits one variant
+    # producer per (source, speed) pair and rewrites the entry's producer
+    # ref to point at it; we reverse that here.
+    timewarp_variants: dict[str, tuple[str, float]] = {}
 
     # Pre-scan tractors to know which playlist ids are "B" (paired empty) playlists
     # in the v25 shape, so we don't accidentally treat them as content tracks.
@@ -304,7 +361,29 @@ def parse_project(path: Path) -> KdenliveProject:
             # with files written before that rename.
             if producer_id.endswith("_kdbin") or producer_id.endswith("_bin"):
                 continue
+            # Detect timewarp variants: serializer emits these as separate
+            # producers with mlt_service=timewarp, ids of the form
+            # ``<source>_speed_<token>``.  Don't store them as producers --
+            # the serializer rebuilds them when needed.  Instead remember
+            # the variant->(source, speed) mapping so we can fix up
+            # playlist entries below.
             try:
+                tmp_props = {
+                    c.get("name", ""): (c.text or "")
+                    for c in elem
+                    if c.tag == "property"
+                }
+                if tmp_props.get("mlt_service") == "timewarp":
+                    try:
+                        speed = float(tmp_props.get("warp_speed", "1.0"))
+                    except (TypeError, ValueError):
+                        speed = 1.0
+                    # Source id is the variant id stripped of its
+                    # ``_speed_<token>`` suffix.
+                    if "_speed_" in producer_id:
+                        source_id = producer_id.rsplit("_speed_", 1)[0]
+                        timewarp_variants[producer_id] = (source_id, speed)
+                    continue
                 producers.append(_parse_producer(elem))
             except Exception as exc:
                 logger.warning("Skipping malformed <%s>: %s", tag, exc)
@@ -342,6 +421,17 @@ def parse_project(path: Path) -> KdenliveProject:
                     # sequence wins.
                     if tractor is None:
                         tractor = {k: v for k, v in elem.attrib.items()}
+                    # Reconstruct user-added cross-track transitions
+                    # (cross-dissolves, wipes, slides) as SequenceTransition
+                    # so they round-trip.  Auto-internal transitions per
+                    # track (mix/qtblend with internal_added=237) are
+                    # auto-rebuilt by the serializer based on the track
+                    # list and must NOT be captured here -- doing so would
+                    # double-emit them.
+                    for trans_elem in elem.findall("transition"):
+                        st = _parse_sequence_transition(trans_elem)
+                        if st is not None:
+                            sequence_transitions.append(st)
                 elif classification == "project":
                     # Wrapper -- nothing to extract; serializer will rebuild it.
                     pass
@@ -369,6 +459,18 @@ def parse_project(path: Path) -> KdenliveProject:
                 "Unknown element <%s> preserved as opaque node", tag
             )
 
+    # Re-route any playlist entries that referenced a timewarp variant
+    # back to the source chain, with ``speed`` set so the serializer
+    # rebuilds the variant on next emit.
+    if timewarp_variants:
+        for playlist in playlists:
+            for entry in playlist.entries:
+                mapping = timewarp_variants.get(entry.producer_id)
+                if mapping is not None:
+                    source_id, speed = mapping
+                    entry.producer_id = source_id
+                    entry.speed = speed
+
     return KdenliveProject(
         version=version,
         title=title,
@@ -379,4 +481,5 @@ def parse_project(path: Path) -> KdenliveProject:
         tractor=tractor,
         guides=guides,
         opaque_elements=opaque_elements,
+        sequence_transitions=sequence_transitions,
     )
