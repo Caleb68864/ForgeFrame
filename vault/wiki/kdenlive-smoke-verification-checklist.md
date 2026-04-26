@@ -211,16 +211,16 @@ the matching upstream test-suite file is in
 * Clip plays slightly brighter than source (Brightness=0.6, where 0.5
   is neutral).  Effect panel shows `frei0r.brightness`.
 
-### `050-frei0r-colorize-warm.kdenlive`
+### `050-frei0r-colorize-warm.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Clip has a **warm orange colorize**.  Different look than the
   avfilter sepia — more saturated and uniform.
 
-### `051-frei0r-contrast0r.kdenlive`
+### `051-frei0r-contrast0r.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Clip has a **contrast bump** (Contrast=0.6, neutral=0.5).
 
-### `052-frei0r-saturat0r-muted.kdenlive`
+### `052-frei0r-saturat0r-muted.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Clip plays with **reduced saturation** (Saturation=0.3, neutral=0.5)
   — a muted/desaturated look.
