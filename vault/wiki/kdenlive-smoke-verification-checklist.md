@@ -106,7 +106,7 @@ the matching upstream test-suite file is in
 
 ## Batch 12 (avfilter geometry / stylise / drawing)
 
-### `035-avfilter-hflip.kdenlive`
+### `035-avfilter-hflip.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Clip plays **mirrored horizontally** (text appears reversed).
 
@@ -115,21 +115,21 @@ the matching upstream test-suite file is in
 * Clip is cropped to a **centred 1280×720 window** of the original
   1920×1080 source.  You should see less of the periphery than normal.
 
-### `037-avfilter-sepia.kdenlive`
+### `037-avfilter-sepia.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Clip plays with a **warm sepia tone** (vintage-photo look) via the
   colour-channel-mixer matrix.
 
-### `038-avfilter-negate.kdenlive`
+### `038-avfilter-negate.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Clip plays as a **photographic negative** (colours inverted).
 
-### `039-avfilter-drawbox.kdenlive`
+### `039-avfilter-drawbox.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * A **filled red rectangle** (200×200, ~60% opacity) appears at the
   top-left of the frame for the duration of the clip.
 
-### `040-avfilter-drawgrid-thirds.kdenlive`
+### `040-avfilter-drawgrid-thirds.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * A **rule-of-thirds grid overlay** (white, ~40% opacity, 2px lines)
   is visible across the frame.  Useful framing reference.
@@ -143,8 +143,11 @@ the matching upstream test-suite file is in
 * Clip plays with a mild brightness lift, slight contrast bump, and
   slightly more saturation than the source.
 
-### `042-avfilter-huesaturation-teal-shift.kdenlive`
+### `042-avfilter-huesaturation-teal-shift.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
+* Note: original smoke values were too subtle to see; user bumped
+  strength manually to confirm.  Smoke updated to ship with
+  obvious values by default.
 * Clip has a **teal-shifted look** — hue rotated -15°, saturation
   bumped.  Not a heavy grade; should be subtle.
 

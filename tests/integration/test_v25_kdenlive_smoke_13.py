@@ -137,9 +137,9 @@ def _project_with_clip(title: str, *, fps: float = 29.97, seconds: float = 4.0):
     reason="User's Video Production tests folder not available",
 )
 def test_041_avfilter_eq_warm_contrasty():
-    """Brighten + add contrast + slight saturation bump.  ``eq`` is
-    ffmpeg's general-purpose exposure primitive (brightness/contrast/
-    saturation/gamma)."""
+    """Brighten + add contrast + saturation bump.  ``eq`` is ffmpeg's
+    general-purpose exposure primitive.  Values picked to be
+    obviously visible vs the source (mild values are easy to miss)."""
     project, entry, _ = _project_with_clip("smoke_041_eq")
     entry.filters.append(
         EntryFilter(
@@ -147,10 +147,10 @@ def test_041_avfilter_eq_warm_contrasty():
             properties={
                 "mlt_service": "avfilter.eq",
                 "kdenlive_id": "avfilter.eq",
-                "av.brightness": "0.08",   # mild brighten (-1.0..1.0)
-                "av.contrast": "1.15",     # slight contrast bump (0..2)
-                "av.saturation": "1.1",    # slight pop (0..3)
-                "av.gamma": "1.0",         # neutral gamma
+                "av.brightness": "0.25",   # clearly brighter (-1..1)
+                "av.contrast": "1.6",      # strong contrast bump (0..2)
+                "av.saturation": "1.8",    # vivid saturation (0..3)
+                "av.gamma": "1.0",
                 "kdenlive:collapsed": "0",
             },
         )
@@ -170,8 +170,11 @@ def test_041_avfilter_eq_warm_contrasty():
     reason="User's Video Production tests folder not available",
 )
 def test_042_avfilter_huesaturation_teal_shift():
-    """Hue rotation by -15 degrees + saturation bump.  The most common
-    artistic-grade primitive after exposure."""
+    """Hue rotation + saturation bump.  ffmpeg's huesaturation needs
+    ``strength`` to be > 0 for ANY of the other params to take effect
+    -- that's the trap.  At strength=0 (the silent default) the panel
+    shows hue/saturation values but the effect does nothing visually.
+    Set strength=1 explicitly to ensure the user sees the effect."""
     project, entry, _ = _project_with_clip("smoke_042_huesaturation")
     entry.filters.append(
         EntryFilter(
@@ -179,9 +182,10 @@ def test_042_avfilter_huesaturation_teal_shift():
             properties={
                 "mlt_service": "avfilter.huesaturation",
                 "kdenlive_id": "avfilter.huesaturation",
-                "av.hue": "-15",
-                "av.saturation": "0.2",
+                "av.hue": "-90",
+                "av.saturation": "0.6",
                 "av.intensity": "0",
+                "av.strength": "1",  # critical: must be > 0
                 "kdenlive:collapsed": "0",
             },
         )
@@ -200,17 +204,30 @@ def test_042_avfilter_huesaturation_teal_shift():
     not USER_OUTPUT_DIR.parent.exists(),
     reason="User's Video Production tests folder not available",
 )
-def test_043_avfilter_curves_vintage_preset():
-    """Apply ffmpeg's built-in ``vintage`` curve preset.  Demonstrates
-    the named-preset parameter form (no per-channel curves needed)."""
+def test_043_frei0r_curves():
+    """Curves grade via ``frei0r.curves``.  Kdenlive 25.x's effect
+    registry doesn't recognise ``avfilter.curves`` (it gets flagged
+    "missing" and removed on load); the registered curves filter is
+    ``frei0r.curves``.  Verified shape against upstream
+    ``avfilter-curves.kdenlive``: scalar Channel + indexed control
+    points + a serialised ``kdenlive:curve`` string.  This sets a
+    gentle S-curve that lifts midtones."""
     project, entry, _ = _project_with_clip("smoke_043_curves")
     entry.filters.append(
         EntryFilter(
-            id="avfilter_curves",
+            id="frei0r_curves",
             properties={
-                "mlt_service": "avfilter.curves",
-                "kdenlive_id": "avfilter.curves",
-                "av.preset": "vintage",
+                "version": "0.4",
+                "mlt_service": "frei0r.curves",
+                "kdenlive_id": "frei0r.curves",
+                "Channel": "0.5",   # 0.5 = luma channel (all RGB)
+                "4": "1",           # 4 control points total
+                "3": "0.4",         # curve type: spline
+                "6": "0",           # cp1 x = 0.0
+                "7": "0",           # cp1 y = 0.0
+                "8": "0.5",         # cp2 x = 0.5
+                "9": "0.7",         # cp2 y = 0.7 (midtone lift)
+                "kdenlive:curve": "0/0;0.5/0.7;1/1;",
                 "kdenlive:collapsed": "0",
             },
         )
@@ -229,18 +246,22 @@ def test_043_avfilter_curves_vintage_preset():
     not USER_OUTPUT_DIR.parent.exists(),
     reason="User's Video Production tests folder not available",
 )
-def test_044_avfilter_boxblur():
-    """Box blur with luma_radius=10.  Faster than gblur for large
-    radii; useful for background-defocus tricks."""
+def test_044_native_box_blur():
+    """Native MLT ``box_blur`` filter (Kdenlive UI label: "Planes Blur").
+    ``avfilter.boxblur`` loads but Kdenlive's UI munges its parameters
+    in confusing ways (luma_power gets stuck at 0 = no blur).  The
+    native filter takes plain hradius/vradius/iterations and is what
+    Kdenlive's "Planes Blur" effect actually wraps."""
     project, entry, _ = _project_with_clip("smoke_044_boxblur")
     entry.filters.append(
         EntryFilter(
-            id="avfilter_boxblur",
+            id="native_box_blur",
             properties={
-                "mlt_service": "avfilter.boxblur",
-                "kdenlive_id": "avfilter.boxblur",
-                "av.luma_radius": "10",
-                "av.luma_power": "1",
+                "mlt_service": "box_blur",
+                "kdenlive_id": "box_blur",
+                "hradius": "20",
+                "vradius": "20",
+                "iterations": "1",
                 "kdenlive:collapsed": "0",
             },
         )
@@ -259,10 +280,13 @@ def test_044_avfilter_boxblur():
     not USER_OUTPUT_DIR.parent.exists(),
     reason="User's Video Production tests folder not available",
 )
-def test_045_avfilter_chromahold_keep_red():
-    """Keep red, desaturate all other colours -- the "Schindler's List
-    red dress" effect.  Useful for highlighting branded colour in
-    product b-roll."""
+def test_045_avfilter_chromahold_keep_orange():
+    """Keep orange, desaturate everything else.  The test source clip
+    has an orange butterfly on green foliage with white flowers --
+    chromahold-keep-red would have nothing to highlight (no red),
+    but keeping ORANGE lights up the butterfly while desaturating
+    leaves and flowers.  Similarity bumped to 0.5 + blend 0.4 so the
+    effect is obvious; the original 0.25/0.10 was barely visible."""
     project, entry, _ = _project_with_clip("smoke_045_chromahold")
     entry.filters.append(
         EntryFilter(
@@ -270,9 +294,9 @@ def test_045_avfilter_chromahold_keep_red():
             properties={
                 "mlt_service": "avfilter.chromahold",
                 "kdenlive_id": "avfilter.chromahold",
-                "av.color": "red",
-                "av.similarity": "0.25",
-                "av.blend": "0.1",
+                "av.color": "orange",
+                "av.similarity": "0.5",
+                "av.blend": "0.4",
                 "kdenlive:collapsed": "0",
             },
         )

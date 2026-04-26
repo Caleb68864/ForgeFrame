@@ -157,7 +157,7 @@ def test_035_avfilter_hflip():
 
 
 # ---------------------------------------------------------------------------
-# 036 -- avfilter.crop (centred 1280x720 crop from 1920x1080 source)
+# 036 -- native MLT `crop` filter (NOT avfilter.crop)
 # ---------------------------------------------------------------------------
 
 
@@ -165,22 +165,31 @@ def test_035_avfilter_hflip():
     not USER_OUTPUT_DIR.parent.exists(),
     reason="User's Video Production tests folder not available",
 )
-def test_036_avfilter_crop_centered():
-    """Crop the clip to a centred 1280x720 window.  All scalar params
-    (no keyframes).  Useful for re-framing a 16:9 source for a
-    different aspect ratio without leaving qtblend territory."""
+def test_036_native_crop_filter():
+    """Crop ~400 pixels off each edge using MLT's native ``crop`` filter
+    (NOT ``avfilter.crop``, which Kdenlive 25.x's effect registry
+    doesn't recognise -- it gets flagged as a missing effect on load
+    and removed).
+
+    Verified shape against ``mlt-core-video-effects.kdenlive``:
+    ``mlt_service=crop`` with edge-distance scalars
+    (``top``/``left``/``bottom``/``right``) instead of avfilter's
+    ``av.w``/``av.h`` width/height.  Optional ``center=1`` would
+    centre the cropped output."""
     project, entry, _ = _project_with_clip("smoke_036_crop")
     entry.filters.append(
         EntryFilter(
-            id="avfilter_crop",
+            id="native_crop",
             properties={
-                "mlt_service": "avfilter.crop",
-                "kdenlive_id": "avfilter.crop",
-                "av.w": "1280",
-                "av.h": "720",
-                # x/y default to (in_w-out_w)/2 / (in_h-out_h)/2 in ffmpeg,
-                # so omitting them produces a centred crop -- exactly what
-                # we want for a smoke test.
+                "mlt_service": "crop",
+                "kdenlive_id": "crop",
+                "top": "180",
+                "bottom": "180",
+                "left": "320",
+                "right": "320",
+                "center": "0",
+                "center_bias": "0",
+                "use_profile": "1",
                 "kdenlive:collapsed": "0",
             },
         )
