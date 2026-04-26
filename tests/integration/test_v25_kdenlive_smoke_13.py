@@ -205,13 +205,19 @@ def test_042_avfilter_huesaturation_teal_shift():
     reason="User's Video Production tests folder not available",
 )
 def test_043_frei0r_curves():
-    """Curves grade via ``frei0r.curves``.  Kdenlive 25.x's effect
-    registry doesn't recognise ``avfilter.curves`` (it gets flagged
-    "missing" and removed on load); the registered curves filter is
-    ``frei0r.curves``.  Verified shape against upstream
-    ``avfilter-curves.kdenlive``: scalar Channel + indexed control
-    points + a serialised ``kdenlive:curve`` string.  This sets a
-    gentle S-curve that lifts midtones."""
+    """Curves grade via ``frei0r.curves`` (NOT ``avfilter.curves``,
+    which Kdenlive 25.x's effect registry doesn't recognise).
+
+    The frei0r.curves filter encodes its 4 control points across
+    NUMBERED properties (1-15), NOT just the simple kdenlive:curve
+    string -- if you only set the curve string the plugin reads
+    uninitialised junk from the numbered properties and produces a
+    flatline-at-white curve.  Copy ALL the numbered props from a
+    verified-working filter.
+
+    These values are taken verbatim from upstream
+    ``avfilter-curves.kdenlive`` (a gentle S-curve that lifts
+    shadows slightly + compresses highlights)."""
     project, entry, _ = _project_with_clip("smoke_043_curves")
     entry.filters.append(
         EntryFilter(
@@ -220,14 +226,25 @@ def test_043_frei0r_curves():
                 "version": "0.4",
                 "mlt_service": "frei0r.curves",
                 "kdenlive_id": "frei0r.curves",
-                "Channel": "0.5",   # 0.5 = luma channel (all RGB)
-                "4": "1",           # 4 control points total
-                "3": "0.4",         # curve type: spline
-                "6": "0",           # cp1 x = 0.0
-                "7": "0",           # cp1 y = 0.0
-                "8": "0.5",         # cp2 x = 0.5
-                "9": "0.7",         # cp2 y = 0.7 (midtone lift)
-                "kdenlive:curve": "0/0;0.5/0.7;1/1;",
+                "Channel": "0.5",    # luma channel
+                # Numbered props 1-15 are the control point + curve-type
+                # encoding the frei0r plugin actually reads at render
+                # time.  These mirror the upstream working filter.
+                "1": "1",
+                "2": "0.1",
+                "3": "0.4",
+                "4": "1",
+                "6": "0",
+                "7": "0",
+                "8": "0.136364",
+                "9": "0.248062",
+                "10": "0.909091",
+                "11": "0.844961",
+                "12": "1",
+                "13": "1",
+                "14": "0",
+                "15": "0",
+                "kdenlive:curve": "0/0;0.136364/0.248062;0.909091/0.844961;1/1;",
                 "kdenlive:collapsed": "0",
             },
         )
