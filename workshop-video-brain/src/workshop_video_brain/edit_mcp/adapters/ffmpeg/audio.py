@@ -72,7 +72,7 @@ def normalize_audio(
     """
     af = f"loudnorm=I={target_lufs}:TP={true_peak}:LRA={loudness_range}"
     return run_ffmpeg(
-        ["-af", af],
+        ["-vn", "-af", af],
         input_path=input_path,
         output_path=output_path,
         overwrite=overwrite,
@@ -114,7 +114,7 @@ def compress_audio(
         f":release={release_ms}"
     )
     return run_ffmpeg(
-        ["-af", af],
+        ["-vn", "-af", af],
         input_path=input_path,
         output_path=output_path,
         overwrite=overwrite,
@@ -145,7 +145,7 @@ def remove_background_noise(
     """
     af = f"afftdn=nf={noise_floor_db}"
     return run_ffmpeg(
-        ["-af", af],
+        ["-vn", "-af", af],
         input_path=input_path,
         output_path=output_path,
         overwrite=overwrite,
@@ -176,7 +176,7 @@ def highpass_filter(
     """
     af = f"highpass=f={cutoff_hz}"
     return run_ffmpeg(
-        ["-af", af],
+        ["-vn", "-af", af],
         input_path=input_path,
         output_path=output_path,
         overwrite=overwrite,
@@ -211,7 +211,7 @@ def de_ess(
     """
     af = f"equalizer=f={frequency_hz}:t=q:w={bandwidth}:g={gain_db}"
     return run_ffmpeg(
-        ["-af", af],
+        ["-vn", "-af", af],
         input_path=input_path,
         output_path=output_path,
         overwrite=overwrite,
@@ -248,22 +248,21 @@ def remove_silence(
     Returns:
         FFmpegResult with success status and timing.
     """
-    parts: list[str] = ["silenceremove"]
+    options: list[str] = []
     if trim_start:
-        parts.append(f"start_periods=1:start_duration={min_duration}:start_threshold={threshold_db}dB")
-    if trim_end:
-        parts.append(f"stop_periods=-1:stop_duration={min_duration}:stop_threshold={threshold_db}dB")
-    elif trim_middle:
-        # trim_middle without trim_end: still need stop config
-        parts.append(f"stop_periods=-1:stop_duration={min_duration}:stop_threshold={threshold_db}dB")
+        options.append(
+            f"start_periods=1:start_duration={min_duration}"
+            f":start_threshold={threshold_db}dB"
+        )
+    if trim_end or trim_middle:
+        options.append(
+            f"stop_periods=-1:stop_duration={min_duration}"
+            f":stop_threshold={threshold_db}dB"
+        )
 
-    if trim_middle and not trim_end:
-        # already handled above
-        pass
-
-    af = ":".join(parts)
+    af = "silenceremove=" + ":".join(options) if options else "silenceremove"
     return run_ffmpeg(
-        ["-af", af],
+        ["-vn", "-af", af],
         input_path=input_path,
         output_path=output_path,
         overwrite=overwrite,
@@ -294,7 +293,7 @@ def limit_peaks(
     """
     af = f"alimiter=limit={limit_db}dB"
     return run_ffmpeg(
-        ["-af", af],
+        ["-vn", "-af", af],
         input_path=input_path,
         output_path=output_path,
         overwrite=overwrite,
@@ -326,7 +325,7 @@ def convert_format(
         FFmpegResult with success status and timing.
     """
     return run_ffmpeg(
-        ["-ar", str(sample_rate), "-ac", str(channels)],
+        ["-vn", "-ar", str(sample_rate), "-ac", str(channels)],
         input_path=input_path,
         output_path=output_path,
         overwrite=overwrite,
@@ -356,7 +355,7 @@ def export_compressed(
         FFmpegResult with success status and timing.
     """
     return run_ffmpeg(
-        ["-b:a", bitrate],
+        ["-vn", "-b:a", bitrate],
         input_path=input_path,
         output_path=output_path,
         overwrite=overwrite,

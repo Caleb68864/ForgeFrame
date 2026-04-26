@@ -84,3 +84,18 @@ This loop is dramatically faster than guessing.
 ## ffmpeg subprocess hygiene
 
 All ffmpeg subprocess calls in `adapters/ffmpeg/*` and `adapters/stt/whisper_engine.py` must pass `timeout=` to `subprocess.run`. Without timeouts, the MCP server blocks indefinitely on UHD proxy generation or Whisper transcription, and the client RPC times out. Existing timeouts: 600s for proxy/runner, 300s for whisper extraction and silence detection. Catch `subprocess.TimeoutExpired` and clean up partial outputs.
+
+### Audio adapter rules (`adapters/ffmpeg/audio.py`)
+
+1. **Every audio function must pass `-vn`** to `run_ffmpeg`. Without it, video-input -> audio-output (mp4 -> wav) fails because ffmpeg tries to copy the video stream into a container that can't hold it.
+2. **ffmpeg filter syntax uses `=` between the filter name and its first option**, then `:` between subsequent options. `silenceremove=start_periods=1:start_duration=0.5` is correct; `silenceremove:start_periods=1:...` is a parse error.
+3. **`normalize_audio` is single-pass loudnorm** and won't hit the LUFS target accurately (typically off by 2-4 LU). For broadcast-conformant normalization, the function needs a two-pass rewrite. See `vault/wiki/ffmpeg-audio-adapter-bugs.md`.
+
+### Testing requirement
+
+Any new ffmpeg adapter function MUST have an integration test in `tests/integration/test_audio_ffmpeg_smoke.py` (or analogous) that:
+- Runs against a real fixture (audio fixtures live in `tests/fixtures/media_generated/`).
+- Asserts the output exists and is non-empty.
+- Where a parameter has a measurable target (LUFS, sample rate, duration), probes the output to confirm the target was hit -- "ffmpeg returned 0" is not sufficient.
+
+The audio fixtures available today are `music_cinematic_short.mp3` (full-band stereo music) and `test_audio_with_silence.mp4` (mono with intentional silence gaps). `greenscreen_reporter_720.mp4` is video-only -- it has NO audio stream and cannot be used as an audio fixture.
