@@ -239,44 +239,22 @@ def _apply_add_clip(project: KdenliveProject, intent: AddClip) -> None:
         )
         return
 
-    # Ensure the producer exists in the project
+    # Ensure the producer exists in the project.  Kdenlive needs at
+    # minimum ``mlt_service`` and ``length`` to load the producer;
+    # without them the bin clip is unloadable.  ``make_avformat_producer``
+    # bakes in the full v25 property set verified against the KDE test
+    # suite.  For color/title producers the caller should pre-populate
+    # ``project.producers`` directly.
     existing_ids = {p.id for p in project.producers}
     if intent.producer_id and intent.producer_id not in existing_ids:
-        # Kdenlive needs at minimum ``mlt_service`` and ``length`` to load the
-        # producer; without them the bin clip is unloadable and the timeline
-        # entry shows zero duration.  Defaults assume an avformat-readable file
-        # (mp4 / mkv / mov / wav / mp3); for color/title producers the caller
-        # should pre-populate ``project.producers`` with explicit properties.
-        clip_length = max(1, intent.out_point + 1)
-        # Kdenlive/MLT XML uses forward slashes for media paths even on
-        # Windows; backslashes confuse Kdenlive's bin loader on round-trip.
-        normalized_path = (
-            str(intent.source_path).replace("\\", "/")
-            if intent.source_path
-            else ""
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.producers import (
+            make_avformat_producer,
         )
-        properties: dict[str, str] = {}
-        if normalized_path:
-            properties["resource"] = normalized_path
-            properties["mlt_service"] = "avformat-novalidate"
-            properties["length"] = str(clip_length)
-            properties["eof"] = "pause"
-            properties["seekable"] = "1"
-            properties["audio_index"] = "1"
-            properties["video_index"] = "0"
-            properties["vstream"] = "0"
-            properties["astream"] = "0"
-            properties["mute_on_pause"] = "0"
-            # Best-effort file_size; Kdenlive uses it for bin metadata.
-            try:
-                size = Path(normalized_path).stat().st_size
-                properties["kdenlive:file_size"] = str(size)
-            except OSError:
-                pass
-        new_producer = Producer(
-            id=intent.producer_id,
-            resource=normalized_path,
-            properties=properties,
+        clip_length = max(1, intent.out_point + 1)
+        new_producer = make_avformat_producer(
+            intent.producer_id,
+            intent.source_path or "",
+            length_frames=clip_length,
         )
         project.producers.append(new_producer)
         logger.info(
@@ -748,8 +726,18 @@ def _apply_set_track_visibility(project: KdenliveProject, intent: SetTrackVisibi
 def _apply_add_effect(project: KdenliveProject, intent: AddEffect) -> None:
     """Insert an MLT filter element for a clip on a track.
 
-    Builds a <filter mlt_service="..."> XML element with <property> children
-    for each param, and appends it as an OpaqueElement.
+    NOTE: This emits the legacy opaque-XML form at document root because
+    the existing ``effect_stack_*`` and ``effect_reorder`` MCP tooling
+    operates on ``project.opaque_elements`` to manage filter ordering.
+    Kdenlive 25.x ignores this XML shape (filters need to live inside
+    the playlist ``<entry>`` element, not at root) -- see
+    ``vault/wiki/kdenlive-test-suite-coverage-audit.md`` for the
+    backlog of opaque-shaped tools that need rewiring.
+
+    For new code that needs v25-correct effect filters, append directly
+    to ``PlaylistEntry.filters`` with the right ``EntryFilter`` shape
+    (see smoke 8 / 9).  Migrating the stack-ordering tools to operate
+    on ``entry.filters`` lists is a follow-up.
     """
     # Resolve track by index
     if intent.track_index < 0 or intent.track_index >= len(project.playlists):
@@ -771,9 +759,7 @@ def _apply_add_effect(project: KdenliveProject, intent: AddEffect) -> None:
 
     entry = real_entries[intent.clip_index]
 
-    # Build filter XML
-    # Filters are OpaqueElement objects with position_hint="after_tractor",
-    # matching the existing SetClipSpeed and AudioFade patterns in the patcher.
+    # Build filter XML (legacy opaque form -- see docstring note above).
     props_xml = "".join(
         f'<property name="{k}">{v}</property>' for k, v in intent.params.items()
     )

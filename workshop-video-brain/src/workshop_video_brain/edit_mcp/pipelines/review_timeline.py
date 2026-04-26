@@ -154,22 +154,28 @@ def build_review_timeline(
         asset = asset_map.get(clip_ref)
         resource = asset.path if asset else clip_ref
 
+        in_point = int(marker.start_seconds * project.profile.fps)
+        out_point = int(marker.end_seconds * project.profile.fps)
+        if out_point < in_point:
+            out_point = in_point
+
         if clip_ref not in seen_producers:
+            from workshop_video_brain.edit_mcp.adapters.kdenlive.producers import (
+                make_avformat_producer,
+            )
             producer_id = f"producer_{len(seen_producers)}"
-            producer = Producer(
-                id=producer_id,
-                resource=resource,
-                properties={"resource": resource},
+            length_frames = (
+                int(asset.duration * project.profile.fps)
+                if (asset and asset.duration)
+                else (out_point + 1)
+            )
+            producer = make_avformat_producer(
+                producer_id, resource, length_frames=max(1, length_frames),
             )
             seen_producers[clip_ref] = producer
             project.producers.append(producer)
         else:
             producer = seen_producers[clip_ref]
-
-        in_point = int(marker.start_seconds * project.profile.fps)
-        out_point = int(marker.end_seconds * project.profile.fps)
-        if out_point < in_point:
-            out_point = in_point
 
         entry = PlaylistEntry(
             producer_id=producer.id,

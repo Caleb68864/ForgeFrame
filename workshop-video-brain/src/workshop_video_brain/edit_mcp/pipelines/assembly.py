@@ -464,11 +464,18 @@ def assemble_timeline(
 
     def _get_or_create_producer(clip_ref: str, source_path: str) -> Producer:
         if clip_ref not in seen_producers:
+            from workshop_video_brain.edit_mcp.adapters.kdenlive.producers import (
+                make_avformat_producer,
+            )
             pid = f"producer_{len(seen_producers)}"
-            producer = Producer(
-                id=pid,
-                resource=source_path or clip_ref,
-                properties={"resource": source_path or clip_ref},
+            # We don't know the source duration here; use a generous
+            # default (10 minutes at fps) so trims have headroom.  The
+            # entry's out_point still bounds the visible portion.
+            default_length_frames = int(600 * fps)
+            producer = make_avformat_producer(
+                pid,
+                source_path or clip_ref,
+                length_frames=default_length_frames,
             )
             seen_producers[clip_ref] = producer
             project.producers.append(producer)
