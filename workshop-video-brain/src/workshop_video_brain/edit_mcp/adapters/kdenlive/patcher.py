@@ -666,8 +666,9 @@ def _apply_audio_fade(project: KdenliveProject, intent: AudioFade) -> None:
 
 
 def _apply_set_track_mute(project: KdenliveProject, intent: SetTrackMute) -> None:
-    """Add a mute property element for the track."""
-    # Verify track exists
+    """Set ``Track.muted`` so the serializer emits ``hide="both"`` on the
+    per-track tractor's sub-tracks (the v25 mute shape, verified against
+    ``audio-mix.kdenlive`` from the KDE test suite)."""
     track = next((t for t in project.tracks if t.id == intent.track_ref), None)
     if track is None:
         logger.warning(
@@ -675,18 +676,7 @@ def _apply_set_track_mute(project: KdenliveProject, intent: SetTrackMute) -> Non
         )
         return
 
-    mute_value = "1" if intent.muted else "0"
-    xml = (
-        f'<property name="kdenlive:audio_mute" track="{intent.track_ref}">'
-        f'{mute_value}'
-        f'</property>'
-    )
-    element = OpaqueElement(
-        tag="property",
-        xml_string=xml,
-        position_hint="after_tractor",
-    )
-    project.opaque_elements.append(element)
+    track.muted = bool(intent.muted)
     logger.info(
         "SetTrackMute: track '%s' muted=%s",
         intent.track_ref, intent.muted,
@@ -694,7 +684,8 @@ def _apply_set_track_mute(project: KdenliveProject, intent: SetTrackMute) -> Non
 
 
 def _apply_set_track_visibility(project: KdenliveProject, intent: SetTrackVisibility) -> None:
-    """Add a visibility property element for the track."""
+    """Set ``Track.hidden`` so the serializer emits ``hide="both"`` on the
+    per-track tractor's sub-tracks for video tracks (mute equivalent)."""
     track = next((t for t in project.tracks if t.id == intent.track_ref), None)
     if track is None:
         logger.warning(
@@ -702,21 +693,7 @@ def _apply_set_track_visibility(project: KdenliveProject, intent: SetTrackVisibi
         )
         return
 
-    if intent.visible:
-        # Remove the hide=video property (store as empty value to signal removal)
-        xml = (
-            f'<property name="hide" track="{intent.track_ref}"></property>'
-        )
-    else:
-        xml = (
-            f'<property name="hide" track="{intent.track_ref}">video</property>'
-        )
-    element = OpaqueElement(
-        tag="property",
-        xml_string=xml,
-        position_hint="after_tractor",
-    )
-    project.opaque_elements.append(element)
+    track.hidden = not bool(intent.visible)
     logger.info(
         "SetTrackVisibility: track '%s' visible=%s",
         intent.track_ref, intent.visible,

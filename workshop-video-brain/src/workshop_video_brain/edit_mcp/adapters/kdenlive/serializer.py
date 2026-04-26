@@ -629,13 +629,21 @@ def serialize_project(
         sub_a.set("producer", a_id)
         sub_b = ET.SubElement(tt_elem, "track")
         sub_b.set("producer", b_id)
+        # Compute the ``hide`` attribute.  Default suppresses the OPPOSITE
+        # stream type (audio tracks hide video, video tracks hide audio).
+        # ``muted`` (audio track) and ``hidden`` (video track) extend the
+        # suppression to the track's own stream type as well -- producing
+        # ``hide="both"``, which is how Kdenlive 25.x records mute/hide
+        # (verified against ``audio-mix.kdenlive``).
         if track.track_type == "audio":
-            sub_a.set("hide", "video")
-            sub_b.set("hide", "video")
+            hide_value = "both" if track.muted else "video"
+            sub_a.set("hide", hide_value)
+            sub_b.set("hide", hide_value)
             _add_audio_internal_filters(tt_elem, base_id=tt_id)
         else:
-            sub_a.set("hide", "audio")
-            sub_b.set("hide", "audio")
+            hide_value = "both" if track.hidden else "audio"
+            sub_a.set("hide", hide_value)
+            sub_b.set("hide", hide_value)
 
     # ------------------------------------------------------------------
     # Main sequence tractor (UUID id) -- the timeline Kdenlive opens.

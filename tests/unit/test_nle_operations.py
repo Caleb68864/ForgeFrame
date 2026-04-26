@@ -597,31 +597,31 @@ class TestAudioFade:
 
 
 class TestSetTrackMute:
-    def test_mute_track_adds_opaque_element(self):
+    def test_mute_track_sets_muted_flag(self):
         from workshop_video_brain.core.models.timeline import SetTrackMute
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
         project = _make_project(0)
-        intent = SetTrackMute(track_ref="pl_video", muted=True)
+        intent = SetTrackMute(track_ref="pl_audio", muted=True)
         patched = patch_project(project, [intent])
 
-        assert len(patched.opaque_elements) == 1
-        elem = patched.opaque_elements[0]
-        assert "kdenlive:audio_mute" in elem.xml_string
-        assert ">1<" in elem.xml_string
+        track = next(t for t in patched.tracks if t.id == "pl_audio")
+        assert track.muted is True
+        assert patched.opaque_elements == []
 
-    def test_unmute_track_adds_opaque_element_with_zero(self):
+    def test_unmute_track_clears_muted_flag(self):
         from workshop_video_brain.core.models.timeline import SetTrackMute
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
         project = _make_project(0)
-        intent = SetTrackMute(track_ref="pl_video", muted=False)
+        # Pre-mute, then unmute
+        project.tracks[1].muted = True
+        intent = SetTrackMute(track_ref="pl_audio", muted=False)
         patched = patch_project(project, [intent])
 
-        assert len(patched.opaque_elements) == 1
-        elem = patched.opaque_elements[0]
-        assert "kdenlive:audio_mute" in elem.xml_string
-        assert ">0<" in elem.xml_string
+        track = next(t for t in patched.tracks if t.id == "pl_audio")
+        assert track.muted is False
+        assert patched.opaque_elements == []
 
     def test_mute_unknown_track_is_skipped(self):
         from workshop_video_brain.core.models.timeline import SetTrackMute
@@ -631,11 +631,12 @@ class TestSetTrackMute:
         intent = SetTrackMute(track_ref="nonexistent", muted=True)
         patched = patch_project(project, [intent])
 
-        assert len(patched.opaque_elements) == 0
+        assert all(t.muted is False for t in patched.tracks)
+        assert patched.opaque_elements == []
 
 
 class TestSetTrackVisibility:
-    def test_hide_track_adds_hide_property(self):
+    def test_hide_track_sets_hidden_flag(self):
         from workshop_video_brain.core.models.timeline import SetTrackVisibility
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
@@ -643,24 +644,22 @@ class TestSetTrackVisibility:
         intent = SetTrackVisibility(track_ref="pl_video", visible=False)
         patched = patch_project(project, [intent])
 
-        assert len(patched.opaque_elements) == 1
-        elem = patched.opaque_elements[0]
-        assert "hide" in elem.xml_string
-        assert "video" in elem.xml_string
+        track = next(t for t in patched.tracks if t.id == "pl_video")
+        assert track.hidden is True
+        assert patched.opaque_elements == []
 
-    def test_show_track_adds_empty_hide_property(self):
+    def test_show_track_clears_hidden_flag(self):
         from workshop_video_brain.core.models.timeline import SetTrackVisibility
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
         project = _make_project(0)
+        project.tracks[0].hidden = True
         intent = SetTrackVisibility(track_ref="pl_video", visible=True)
         patched = patch_project(project, [intent])
 
-        assert len(patched.opaque_elements) == 1
-        elem = patched.opaque_elements[0]
-        assert "hide" in elem.xml_string
-        # visible=True means the value is empty (removing the hide)
-        assert ">video<" not in elem.xml_string
+        track = next(t for t in patched.tracks if t.id == "pl_video")
+        assert track.hidden is False
+        assert patched.opaque_elements == []
 
     def test_visibility_unknown_track_is_skipped(self):
         from workshop_video_brain.core.models.timeline import SetTrackVisibility
@@ -670,7 +669,8 @@ class TestSetTrackVisibility:
         intent = SetTrackVisibility(track_ref="nonexistent", visible=False)
         patched = patch_project(project, [intent])
 
-        assert len(patched.opaque_elements) == 0
+        assert all(t.hidden is False for t in patched.tracks)
+        assert patched.opaque_elements == []
 
 
 # ---------------------------------------------------------------------------

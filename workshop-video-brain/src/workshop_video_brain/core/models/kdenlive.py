@@ -112,9 +112,28 @@ class Playlist(SerializableMixin):
 
 
 class Track(SerializableMixin):
+    """A timeline track in the project.
+
+    The serializer emits each Track as a per-track ``<tractor>`` wrapping
+    two ``<playlist>`` children.  By default each ``<track>`` ref inside
+    the per-track tractor carries a ``hide`` attribute that suppresses
+    the wrong stream type (audio tracks ``hide="video"``, video tracks
+    ``hide="audio"``).  Setting ``muted`` or ``hidden`` extends that
+    suppression to the track's own stream type as well, producing
+    ``hide="both"`` or the equivalent toggled value -- which is how
+    Kdenlive 25.x records track mute/hide (verified against
+    ``audio-mix.kdenlive`` from the KDE test suite).
+    """
+
     id: str
     track_type: str = "video"  # "video" | "audio"
     name: str | None = None
+    # When True, the track contributes nothing to the master output even
+    # though its clips are still in the model.  For audio tracks this is
+    # a "mute"; for video tracks this is "hide".  The serializer maps
+    # both to ``hide="both"`` on the per-track tractor's sub-tracks.
+    muted: bool = False
+    hidden: bool = False
 
 
 class Guide(SerializableMixin):
