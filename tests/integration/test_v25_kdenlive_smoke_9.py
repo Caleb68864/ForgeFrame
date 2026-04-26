@@ -325,10 +325,24 @@ def test_030_lift_gamma_gain_three_way_grade():
     not USER_OUTPUT_DIR.parent.exists(),
     reason="User's Video Production tests folder not available",
 )
-def test_031_dissolve_with_mixcut_property():
-    """Cross-dissolve carrying the ``kdenlive:mixcut=12`` property the
-    KDE test suite uses on every user-placed luma transition.  Same
-    SequenceTransition shape as smoke 004 but with the extra property."""
+def test_031_long_cross_dissolve():
+    """A 3-second cross-dissolve (vs smoke 004's 1.5s).  Demonstrates
+    the same-shape ``SequenceTransition`` works at any duration --
+    useful for slow montage transitions.
+
+    NOTE: smoke 031 originally tried to carry the ``kdenlive:mixcut=12``
+    property on a cross-track dissolve in the main sequence.  That was
+    wrong: ``kdenlive:mixcut`` belongs on a SAME-TRACK mix transition
+    that lives INSIDE a per-track tractor (Kdenlive's UI calls these
+    "Mix" cuts vs cross-track "Dissolve" compositions).  Putting
+    mixcut on a main-sequence cross-track transition makes Kdenlive's
+    renderer treat the geometry as a same-track mix and silently
+    skip the visual blend, producing a jump cut.
+
+    Proper same-track-mix support (transition inside per-track tractor)
+    is a serializer extension captured in
+    ``vault/wiki/kdenlive-test-suite-coverage-audit.md``.
+    """
     from workshop_video_brain.core.models.kdenlive import SequenceTransition
     from workshop_video_brain.core.models.timeline import CreateTrack
 
@@ -344,9 +358,9 @@ def test_031_dissolve_with_mixcut_property():
         pytest.skip("Need two clips")
 
     fps = 29.97
-    seg = int(3 * fps)
-    overlap = int(1 * fps)
-    project = _build_initial_project("smoke_031_dissolve_mixcut", fps=fps)
+    seg = int(5 * fps)        # 5-second clips so the long dissolve has room
+    overlap = int(3 * fps)    # 3-second cross-dissolve
+    project = _build_initial_project("smoke_031_long_cross_dissolve", fps=fps)
     project = patch_project(project, [CreateTrack(track_type="video", name="V2")])
 
     project = _add_clip(
@@ -370,7 +384,7 @@ def test_031_dissolve_with_mixcut_property():
 
     project.sequence_transitions.append(
         SequenceTransition(
-            id="dissolve_with_mixcut",
+            id="long_dissolve",
             a_track=1,        # V1 ordinal
             b_track=3,        # V2 ordinal (after A1 at 2)
             in_frame=seg - overlap,
@@ -384,12 +398,12 @@ def test_031_dissolve_with_mixcut_property():
                 "reverse": "0",
                 "alpha_over": "1",
                 "fix_background_alpha": "1",
-                "kdenlive:mixcut": "12",  # the property the test suite always carries
+                # NO kdenlive:mixcut -- that's only for same-track mix cuts.
             },
         )
     )
 
-    out_path = _output_dir() / "031-dissolve-with-mixcut.kdenlive"
+    out_path = _output_dir() / "031-long-cross-dissolve.kdenlive"
     serialize_project(project, out_path)
     assert out_path.exists()
 
