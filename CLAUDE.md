@@ -36,6 +36,13 @@ Detailed notes (one concept per page) live in `vault/wiki/`:
 - `kdenlive-image-and-qtblend-pattern.md` — image producers + Ken Burns transform filter (entry-local keyframes)
 - `kdenlive-clip-speed-pattern.md` — clip speed via timewarp producer (`PlaylistEntry.speed`)
 - `kdenlive-bin-loader-source-pointers.md` — exact Kdenlive C++ files/lines for load checks
+- `kdenlive-not-all-avfilter-shapes-registered.md` — `avfilter.crop`, `avfilter.curves`, `avfilter.boxblur` are NOT in Kdenlive's effect registry; substitute native MLT or frei0r equivalents
+- `kdenlive-frei0r-curves-all-numbered-props.md` — `frei0r.curves` reads numbered props 1-15 at render time; setting only the ones referenced by `kdenlive:curve` flatlines the curve to white
+- `kdenlive-color-producer-pattern.md` — MLT `color` producer needs `resource=0xRRGGBBAA` hex; named colours render as black
+- `kdenlive-producer-length-must-cover-all-uses.md` — when one media producer is reused at multiple in-points (audio crossfade, multi-region selects), `length` must cover the largest out-point or Kdenlive silently drops the over-range entry
+- `kdenlive-lumakey-threshold-tuning.md` — lumakey threshold must straddle a luma boundary actually present in the source clip
+- `kdenlive-smoke-test-visible-values.md` — smoke parameter values must produce an unambiguously visible effect, not just a technically-correct subtle one
+- `kdenlive-smoke-verification-checklist.md` — manual-review checklist for every smoke output (what to look for in Kdenlive 25.08.3)
 - `golden-fixture-testing.md` — testing strategy without launching Kdenlive
 
 ### Hard rules (read before editing the serializer)
@@ -50,6 +57,10 @@ Detailed notes (one concept per page) live in `vault/wiki/`:
 8. **The sequence's `<track producer="black_track">` has NO `hide` attribute.** Adding `hide="video"` makes Kdenlive consider the sequence unrecoverable.
 9. **User clip `kdenlive:id` integers start at 4.** 2 is reserved for the "Sequences" bin folder, 3 for the project's main sequence; collisions corrupt the project.
 10. **Title cards use `mlt_service=kdenlivetitle`** with an `xmldata` property holding a `<kdenlivetitle>` document; `kdenlive:clip_type=2` (not 6); `font=` must name a font installed on the host (Windows: `Segoe UI`, Linux: `DejaVu Sans`).
+11. **Effect-prefix dispatch is not uniform.** Kdenlive's effect registry recognises *most* `avfilter.X` services but not all — `avfilter.crop`, `avfilter.curves`, and `avfilter.boxblur` are flagged as missing on load and removed. Substitute native MLT (`crop`, `box_blur`) or frei0r (`frei0r.curves`) equivalents. When in doubt, find the upstream `*.kdenlive` test fixture and copy the service id and full property set verbatim — do not assume an `avfilter.X` will work just because adjacent ones do.
+12. **`avfilter.huesaturation` has a silent gate**: `av.strength` defaults to 0 and gates ALL hue/saturation/intensity output. Set `av.strength=1` explicitly or the filter loads, the panel displays your values, and playback shows zero effect.
+13. **`frei0r.curves` reads numbered props 1-15 at render**, not the `kdenlive:curve` string. Setting only the props your curve string references (e.g. 8/9/10/11) flatlines the curve to white because the unset higher-numbered props are read as zeros. Copy ALL 15 numbered props verbatim from a working upstream reference.
+14. **When a media producer is reused at multiple in-points** (audio crossfade, speed ramps, multi-region selects), override `producer.properties["length"]` to cover the maximum out-point of any referencing entry. Otherwise Kdenlive silently drops the over-range entry on load.
 
 ### Files
 

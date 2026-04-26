@@ -54,13 +54,13 @@ the matching upstream test-suite file is in
   are **ticked** (this is what `start=1` controls).
 * If the fade animates but the checkbox is unticked, `start=1` is missing.
 
-### `029-effect-zone-scoped-brightness.kdenlive`
+### `029-effect-zone-scoped-brightness.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Brightness boost applied only to a sub-range (frames 30-89) of the
   clip.  Outside that zone the clip plays untouched.
 * The timeline header should show the effect-zone bracket on the clip.
 
-### `030-lift-gamma-gain-3way-grade.kdenlive`
+### `030-lift-gamma-gain-3way-grade.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Clip has a 3-way colour grade: lifted shadows, slightly warm
   midtones, cooled highlights.  The look is subtle, not dramatic.
@@ -78,19 +78,25 @@ the matching upstream test-suite file is in
 
 ## Batch 10 (build pipeline producer shape)
 
-### `032-selects-timeline.kdenlive`
-* **Opens clean.**
-* Multiple clips on V1 representing the "selects" cut.
+### `032-selects-timeline.kdenlive` ✅ VERIFIED 2026-04-26
+* **Opens clean** with no "Clip Problems" dialog.
+* What this verifies: the **build-pipeline producer factory**.
+  Earlier the `selects_timeline` builder emitted producers without
+  `mlt_service` or `length` and Kdenlive rejected the clips with
+  "Clip not found in project bin" errors.  Success criterion is
+  just "no rejection dialog" + thumbnails + audio waveforms.
 
-### `033-review-timeline.kdenlive`
-* **Opens clean.**
-* Review-cut layout opens without producer-shape errors.
+### `033-review-timeline.kdenlive` ✅ VERIFIED 2026-04-26
+* **Opens clean** with no "Clip Problems" dialog.
+* Same builder-pipeline coverage as 032 but for the
+  `review_timeline` path.  Different source clip, same producer
+  factory.
 
 ---
 
 ## Batch 11 (track mute / hide)
 
-### `034-track-mute-and-hide.kdenlive`
+### `034-track-mute-and-hide.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Three tracks: V2 (top, hidden), V1 (visible), A1 (muted) carrying
   the Mixkit cinematic music track.
@@ -110,10 +116,14 @@ the matching upstream test-suite file is in
 * **Opens clean.**
 * Clip plays **mirrored horizontally** (text appears reversed).
 
-### `036-avfilter-crop-centered.kdenlive`
-* **Opens clean.**
-* Clip is cropped to a **centred 1280×720 window** of the original
-  1920×1080 source.  You should see less of the periphery than normal.
+### `036-avfilter-crop-centered.kdenlive` ✅ VERIFIED 2026-04-26
+* **Opens clean.** (Uses native MLT `crop` filter, NOT `avfilter.crop`
+  which Kdenlive's effect registry doesn't recognise -- see
+  [[kdenlive-not-all-avfilter-shapes-registered]].)
+* Effects panel shows "Edge Crop" with Top=180, Left=320,
+  Bottom=180, Right=320 -- producing a centred 1280×720 visible
+  region of the original 1920×1080 source (the butterfly fills
+  more of the frame than in the uncropped source).
 
 ### `037-avfilter-sepia.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
@@ -138,7 +148,7 @@ the matching upstream test-suite file is in
 
 ## Batch 13 (avfilter colour-grade / artistic)
 
-### `041-avfilter-eq-warm-contrasty.kdenlive`
+### `041-avfilter-eq-warm-contrasty.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Clip plays with a mild brightness lift, slight contrast bump, and
   slightly more saturation than the source.
@@ -151,24 +161,32 @@ the matching upstream test-suite file is in
 * Clip has a **teal-shifted look** — hue rotated -15°, saturation
   bumped.  Not a heavy grade; should be subtle.
 
-### `043-avfilter-curves-vintage.kdenlive`
-* **Opens clean.**
+### `043-avfilter-curves-vintage.kdenlive` ✅ VERIFIED 2026-04-26
+* **Opens clean.** (Uses `frei0r.curves`, NOT `avfilter.curves` —
+  Kdenlive's effect registry doesn't recognise the avfilter shape.
+  See [[kdenlive-not-all-avfilter-shapes-registered]].  All 15
+  numbered control-point properties (1-15) must be set verbatim
+  from the upstream reference, otherwise the curve flatlines to
+  white.)
 * Clip has the ffmpeg "vintage" preset look — crushed shadows, lifted
   blacks, slight desaturation.
 
-### `044-avfilter-boxblur.kdenlive`
-* **Opens clean.**
+### `044-avfilter-boxblur.kdenlive` ✅ VERIFIED 2026-04-26
+* **Opens clean.** (Uses native MLT `box_blur` (UI label "Planes
+  Blur"), NOT `avfilter.boxblur` — the avfilter wrapper's
+  `luma_power` param mapping is broken in Kdenlive 25.x.)
 * Clip is heavily **box-blurred** (luma_radius=10).  Different blur
   character than gblur (027) — boxier, less smooth.
 
-### `045-avfilter-chromahold-red.kdenlive`
-* **Opens clean.**
+### `045-avfilter-chromahold-red.kdenlive` ✅ VERIFIED 2026-04-26
+* **Opens clean.** (Target colour was changed from red to orange to
+  match the butterfly source; similarity bumped to 0.5, blend 0.4.)
 * Clip plays with **only red preserved** — everything not red is
   desaturated to greyscale.  The "Schindler's List red dress"
   effect.  If the source has very little red, the effect will look
   almost monochrome (still correct — just nothing to highlight).
 
-### `046-avfilter-edgedetect-canny.kdenlive`
+### `046-avfilter-edgedetect-canny.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Clip plays as a **Canny edge-detected line drawing** (graphic-novel
   / comic-book look).
@@ -209,7 +227,7 @@ the matching upstream test-suite file is in
 
 ## Batch 16 (frei0r colour effects — NEW PREFIX SHAPE)
 
-### `049-frei0r-brightness.kdenlive`
+### `049-frei0r-brightness.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Clip plays slightly brighter than source (Brightness=0.6, where 0.5
   is neutral).  Effect panel shows `frei0r.brightness`.
@@ -281,7 +299,7 @@ the matching upstream test-suite file is in
   per-frame as playback advances.  If they're frozen at frame 0, the
   `#tag#` substitution isn't working.
 
-### `057-timer-count-up.kdenlive`
+### `057-timer-count-up.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Clip plays with a **large count-up clock** centered in the frame
   ("00:00.000" climbing up to ~00:01.667 for the 4-second clip).
