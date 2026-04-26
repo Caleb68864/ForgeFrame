@@ -21,7 +21,7 @@ the matching upstream test-suite file is in
 
 ## Batch 8 (audio fades)
 
-### `025-audio-fade-in-out.kdenlive`
+### `025-audio-fade-in-out.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Silent test clip on V1 + Mixkit cinematic music on A1.
 * Play A1: the music **fades IN audibly** over the first 2 seconds,
@@ -29,7 +29,7 @@ the matching upstream test-suite file is in
   last 3 seconds.
 * The fade filters live on the A1 entry, NOT the V1 entry.
 
-### `026-audio-fade-in-music-bed.kdenlive`
+### `026-audio-fade-in-music-bed.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * V1 silent test clip + A2 Mixkit music-bed clip.
 * The music bed on A2 **audibly fades up** over 2 seconds, then

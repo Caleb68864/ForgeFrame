@@ -157,6 +157,14 @@ def test_047_same_track_audio_mix_crossfade():
             )
         ],
     )
+    # AddClip sets the producer's ``length`` property from the first
+    # entry's range (here, 119 frames).  But we want to address frames
+    # ~300+ on the kdpair sub-playlist, so override the producer length
+    # to cover the full music file (~3:30 = ~6300 frames).  Without this
+    # Kdenlive's loader sees the kdpair entry's in-point exceed the
+    # producer length and silently removes the entry, breaking the mix.
+    music_producer = next(p for p in project.producers if p.id == "music_a")
+    music_producer.properties["length"] = "6300"
 
     # Music continuation on A1 sub-playlist B (``playlist_audio_kdpair``)
     # with a leading ``<blank>`` so the entries align on the absolute
