@@ -605,11 +605,48 @@ def serialize_project(
                     blank = ET.SubElement(a_elem, "blank")
                     blank.set("length", str(entry.out_point + 1))
 
-        # Playlist B (empty pair for mix transitions)
+        # Playlist B (kdpair).  Empty by default, but if the project
+        # carries a Playlist with id ``<track.id>_kdpair`` we emit its
+        # entries here -- this is what the same-track mix pattern needs
+        # (one clip per sub-playlist with the mix transition spanning
+        # the overlap).  Verified against
+        # ``tests/fixtures/kdenlive_references/audio_mix_upstream_kde.kdenlive``.
         b_elem = ET.SubElement(root, "playlist")
         b_elem.set("id", b_id)
         if track.track_type == "audio":
             _set_prop(b_elem, "kdenlive:audio_track", "1")
+        b_playlist = pl_by_id.get(b_id)
+        if b_playlist is not None:
+            for entry in b_playlist.entries:
+                if entry.producer_id:
+                    e_elem = ET.SubElement(b_elem, "entry")
+                    if entry.speed != 1.0:
+                        tw_id = timewarp_id_for.get((entry.producer_id, entry.speed))
+                        e_elem.set("producer", tw_id or entry.producer_id)
+                    else:
+                        e_elem.set("producer", entry.producer_id)
+                    e_elem.set("in", str(entry.in_point))
+                    e_elem.set("out", str(entry.out_point))
+                    bin_id = kdenlive_id_for.get(entry.producer_id)
+                    if bin_id is not None:
+                        _set_prop(e_elem, "kdenlive:id", bin_id)
+                    for f in entry.filters:
+                        f_elem = ET.SubElement(e_elem, "filter")
+                        if f.id:
+                            f_elem.set("id", f.id)
+                        if f.in_frame is not None:
+                            f_elem.set("in", str(f.in_frame))
+                        if f.out_frame is not None:
+                            f_elem.set("out", str(f.out_frame))
+                        for name, value in f.properties.items():
+                            _set_prop(f_elem, name, value)
+                        if f.zone_in_frame is not None:
+                            _set_prop(f_elem, "kdenlive:zone_in", str(f.zone_in_frame))
+                        if f.zone_out_frame is not None:
+                            _set_prop(f_elem, "kdenlive:zone_out", str(f.zone_out_frame))
+                else:
+                    blank = ET.SubElement(b_elem, "blank")
+                    blank.set("length", str(entry.out_point + 1))
 
         # Per-track tractor wrapping the two playlists
         tt_elem = ET.SubElement(root, "tractor")
@@ -639,11 +676,42 @@ def serialize_project(
             hide_value = "both" if track.muted else "video"
             sub_a.set("hide", hide_value)
             sub_b.set("hide", hide_value)
-            _add_audio_internal_filters(tt_elem, base_id=tt_id)
         else:
             hide_value = "both" if track.hidden else "audio"
             sub_a.set("hide", hide_value)
             sub_b.set("hide", hide_value)
+
+        # Same-track mix transitions live INSIDE the per-track tractor,
+        # between the sub-track refs and the audio internal filters.
+        # Verified order against
+        # ``tests/fixtures/kdenlive_references/audio_mix_upstream_kde.kdenlive``.
+        for mix in project.track_mix_transitions:
+            if mix.track_ref != track.id:
+                continue
+            mix_elem = ET.SubElement(tt_elem, "transition")
+            mix_elem.set("id", mix.id)
+            mix_elem.set("in", str(mix.in_frame))
+            mix_elem.set("out", str(mix.out_frame))
+            _set_prop(mix_elem, "a_track", "0")
+            _set_prop(mix_elem, "b_track", "1")
+            _set_prop(mix_elem, "mlt_service", mix.kind)
+            # kdenlive_id matches mlt_service for the plain mix case;
+            # luma / affine variants override via ``properties``.
+            _set_prop(mix_elem, "kdenlive_id", mix.properties.get("kdenlive_id", mix.kind))
+            _set_prop(mix_elem, "kdenlive:mixcut", str(mix.mixcut_frames))
+            # Defaults from the upstream reference -- callers override
+            # via ``properties`` if needed.
+            defaults = {"start": "-1", "accepts_blanks": "1", "reverse": "0"}
+            for k, v in defaults.items():
+                _set_prop(mix_elem, k, mix.properties.get(k, v))
+            for name, value in mix.properties.items():
+                if name in {"a_track", "b_track", "mlt_service", "kdenlive_id",
+                            "kdenlive:mixcut", "start", "accepts_blanks", "reverse"}:
+                    continue
+                _set_prop(mix_elem, name, value)
+
+        if track.track_type == "audio":
+            _add_audio_internal_filters(tt_elem, base_id=tt_id)
 
     # ------------------------------------------------------------------
     # Main sequence tractor (UUID id) -- the timeline Kdenlive opens.

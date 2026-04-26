@@ -12,7 +12,7 @@ Coverage status legend: ✅ correct shape we already emit / ⚠️ implemented b
 
 | Family | Specific kdenlive_id values seen | Test files | Status | What we'd need |
 |---|---|---|---|---|
-| **Audio crossfade (clip mix)** | `mix` transition with `kdenlive:mixcut` between adjacent audio clips | [audio-mix](https://github.com/KDE/kdenlive-test-suite/blob/master/projects/audio-mix.kdenlive), [mix-luma](https://github.com/KDE/kdenlive-test-suite/blob/master/projects/mix-luma.kdenlive), [mix-slide](https://github.com/KDE/kdenlive-test-suite/blob/master/projects/mix-slide.kdenlive) | ❌ BLOCKED | Need user-saved reference for the same-track-mix shape — see note below table |
+| **Audio crossfade (clip mix)** | `mix` transition with `kdenlive:mixcut` between adjacent audio clips | [audio-mix](https://github.com/KDE/kdenlive-test-suite/blob/master/projects/audio-mix.kdenlive), [mix-luma](https://github.com/KDE/kdenlive-test-suite/blob/master/projects/mix-luma.kdenlive), [mix-slide](https://github.com/KDE/kdenlive-test-suite/blob/master/projects/mix-slide.kdenlive) | ✅ shape implemented (smoke 047, awaiting Kdenlive verification) | `TrackMixTransition` model + per-track-tractor in-tractor transition emission; reference saved at `tests/fixtures/kdenlive_references/audio_mix_upstream_kde.kdenlive` |
 | **Color/exposure grading (avfilter family)** | `avfilter.eq`, `avfilter.colorbalance`, `avfilter.huesaturation`, `avfilter.exposure`, `avfilter.colorlevels`, `avfilter.colorcontrast`, `avfilter.colortemperature`, `avfilter.colorcorrect`, `avfilter.colorize`, `avfilter.curves`, `avfilter.histeq` | [avfilter-eq](https://github.com/KDE/kdenlive-test-suite/blob/master/projects/avfilter-eq.kdenlive), [avfilter-colorbalance](https://github.com/KDE/kdenlive-test-suite/blob/master/projects/avfilter-colorbalance.kdenlive), [avfilter-huesaturation](https://github.com/KDE/kdenlive-test-suite/blob/master/projects/avfilter-huesaturation.kdenlive) | ✅ shape verified (027) | Long-tail values extend by parameter only; ship MCP wrappers when needed |
 | **3-way colour (lift/gamma/gain)** | `lift_gamma_gain` | [mlt-plus-video-effects](https://github.com/KDE/kdenlive-test-suite/blob/master/projects/mlt-plus-video-effects.kdenlive) | ✅ verified (smoke 030) | EntryFilter w/ 9 scalars; works in Kdenlive 25.08.3 |
 | **Blur (avfilter)** | `avfilter.gblur`, `avfilter.boxblur`, `avfilter.bilateral`, `avfilter.dblur`, `avfilter.fftfilt`, `avfilter.fftdnoiz`, `box_blur` | [avfilter-gblur](https://github.com/KDE/kdenlive-test-suite/blob/master/projects/avfilter-gblur.kdenlive), [avfilter-boxblur](https://github.com/KDE/kdenlive-test-suite/blob/master/projects/avfilter-boxblur.kdenlive), [avfilter-fftdnoiz](https://github.com/KDE/kdenlive-test-suite/blob/master/projects/avfilter-fftdnoiz.kdenlive) | ✅ shape verified (027 gblur) | Long-tail by parameter only |
@@ -69,13 +69,41 @@ Coverage status legend: ✅ correct shape we already emit / ⚠️ implemented b
 
 ---
 
-## Same-track audio crossfade -- blocked on reference shape
+## Same-track audio crossfade — verified shape
 
-The audit row above marks the audio crossfade pattern as BLOCKED. Reason: same-track mix (`<transition mlt_service="mix">` with `kdenlive:mixcut=<frames>`) lives **inside** a per-track tractor between two adjacent entries on the same playlist, NOT in the main sequence's transition list. That's a structurally different emission path from `SequenceTransition`, and the audit notes the mixcut frame semantics are subtle (the cut happens at the boundary between the two playlists in the per-track tractor, with mixcut measuring the half-overlap that bleeds into each side).
+Reference: upstream KDE test-suite [audio-mix.kdenlive](https://github.com/KDE/kdenlive-test-suite/blob/master/projects/audio-mix.kdenlive), saved locally at `tests/fixtures/kdenlive_references/audio_mix_upstream_kde.kdenlive`.
 
-We do NOT have a working hand-saved reference for this shape locally (`audio-mix.kdenlive` from the upstream KDE test suite isn't checked out). Smoke 031's earlier mistake — putting `kdenlive:mixcut` on a cross-track main-sequence transition and getting a silent jump cut — is the warning sign for what happens when we guess the shape without verification.
+**Structural contract (verified):**
 
-To unblock: user saves a 2-clip same-track audio crossfade in Kdenlive 25.x → drop into `tests/fixtures/kdenlive_references/audio_mix_native.kdenlive` → diff against our SequenceTransition emitter to see whether to extend the existing path or add a new per-track-tractor transition emission point.
+1. The track has TWO real playlists, not one + an empty `*_kdpair`:
+   - Sub-playlist A (id `<track.id>`) carries the first clip
+   - Sub-playlist B (id `<track.id>_kdpair`) carries the second clip with a `<blank>` element covering the duration before the overlap so absolute timing aligns
+2. Both playlists carry `<property name="kdenlive:audio_track">1</property>`
+3. The transition lives **INSIDE** the per-track `<tractor>`, between the sub-track refs and the audio internal filters (`volume`/`panner`/`audiolevel`). Verified element order:
+   ```xml
+   <tractor id="...">
+     <property ...>...</property>
+     <track hide="video" producer="<track.id>"/>
+     <track hide="video" producer="<track.id>_kdpair"/>
+     <transition id="..." in="..." out="...">
+       <property name="a_track">0</property>
+       <property name="b_track">1</property>
+       <property name="mlt_service">mix</property>
+       <property name="kdenlive_id">mix</property>
+       <property name="kdenlive:mixcut">5</property>
+       <property name="start">-1</property>
+       <property name="accepts_blanks">1</property>
+       <property name="reverse">0</property>
+     </transition>
+     <filter id="..."> <!-- audio internal: volume, panner, audiolevel -->
+   </tractor>
+   ```
+4. `a_track=0` / `b_track=1` reference the per-track tractor's two sub-playlists (NOT main-sequence track ordinals)
+5. `kdenlive:mixcut` is the half-overlap that bleeds into each side of the cut; in the upstream reference an 8-frame overlap (in/out spans 0.4s → 0.8s @ 25fps) carries `mixcut=5`, suggesting `mixcut ≈ overlap_frames / 2` rounded.
+
+Implementation: `core/models/kdenlive.py::TrackMixTransition` + `serializer.py` per-track tractor emission honors both populated kdpair playlist content AND the in-tractor transition list. Smoke 047 demonstrates the full pattern.
+
+**HARD RULE:** `kdenlive:mixcut` belongs ONLY on `TrackMixTransition` (same-track), NEVER on `SequenceTransition` (cross-track). Smoke 031's earlier failure put mixcut on a cross-track dissolve and got a silent jump cut.
 
 ## Top-5 leverage picks
 

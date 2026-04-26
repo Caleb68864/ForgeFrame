@@ -190,6 +190,58 @@ class SequenceTransition(SerializableMixin):
     properties: dict[str, str] = Field(default_factory=dict)
 
 
+class TrackMixTransition(SerializableMixin):
+    """A same-track mix transition between two adjacent clips on the SAME
+    track (vs ``SequenceTransition`` which spans two stacked clips on
+    DIFFERENT tracks).  Verified against the upstream KDE test-suite
+    reference at ``tests/fixtures/kdenlive_references/
+    audio_mix_upstream_kde.kdenlive``.
+
+    The serializer emits this as a ``<transition>`` element INSIDE the
+    matching per-track ``<tractor>`` element (NOT in the main sequence's
+    transition list).  ``a_track`` / ``b_track`` reference the per-track
+    tractor's two sub-playlists (always 0 and 1), NOT main-sequence track
+    ordinals.
+
+    For mix transitions to actually overlap visually, the two clip uses
+    must live on DIFFERENT sub-playlists of the same track:
+
+    * Sub-playlist A (id ``<track.id>``) carries clip 1
+    * Sub-playlist B (id ``<track.id>_kdpair``) carries clip 2 (with a
+      ``<blank>`` covering the duration before clip 2 starts)
+
+    The transition's ``in``/``out`` covers the overlap window.  Outside
+    the overlap, only one playlist's content is active per the entry
+    timing.
+
+    Putting ``kdenlive:mixcut`` on a CROSS-track main-sequence transition
+    (vs same-track) makes Kdenlive's renderer treat it as a same-track
+    mix and silently drop the visual blend (smoke 031's earlier
+    failure).  HARD RULE: ``kdenlive:mixcut`` belongs ONLY here, never
+    on a ``SequenceTransition``.
+
+    Attributes:
+        track_ref: The ``Track.id`` this mix lives inside.
+        in_frame: Absolute sequence frame where the mix transition starts.
+        out_frame: Absolute sequence frame where the mix transition ends.
+        mixcut_frames: ``kdenlive:mixcut`` value -- the half-overlap that
+            bleeds into each side of the cut.
+        kind: ``"mix"`` for plain audio crossfade, ``"luma"`` for a
+            luma-mask wipe variant, ``"affine"`` for slide transitions.
+        properties: Extra ``<property>`` children (e.g. ``softness``,
+            ``reverse``).  ``start``/``accepts_blanks``/``reverse``
+            defaults are applied by the serializer if omitted.
+    """
+
+    id: str
+    track_ref: str
+    in_frame: int
+    out_frame: int
+    mixcut_frames: int
+    kind: str = "mix"  # "mix" | "luma" | "affine"
+    properties: dict[str, str] = Field(default_factory=dict)
+
+
 class KdenliveProject(SerializableMixin):
     version: str = "7"
     title: str = ""
@@ -205,3 +257,6 @@ class KdenliveProject(SerializableMixin):
     # (mix / qtblend) are NOT stored here -- they're emitted by the
     # serializer based on the track list.  See ``SequenceTransition``.
     sequence_transitions: list[SequenceTransition] = Field(default_factory=list)
+    # Same-track audio crossfades / luma mixes / slide transitions.  Live
+    # INSIDE the per-track tractor.  See ``TrackMixTransition``.
+    track_mix_transitions: list[TrackMixTransition] = Field(default_factory=list)
