@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from workshop_video_brain.core.models.kdenlive import (
+    EntryFilter,
     Guide,
     KdenliveProject,
     OpaqueElement,
@@ -83,17 +84,66 @@ def _parse_producer(elem: ET.Element) -> Producer:
     return Producer(id=producer_id, resource=resource, properties=props)
 
 
+def _parse_entry_filter(filter_elem: ET.Element) -> EntryFilter:
+    """Parse a ``<filter>`` child of a playlist ``<entry>`` into an
+    :class:`EntryFilter` so it round-trips through the model."""
+    properties: dict[str, str] = {}
+    zone_in = None
+    zone_out = None
+    for child in filter_elem:
+        if child.tag != "property":
+            continue
+        name = child.get("name", "")
+        value = child.text or ""
+        if name == "kdenlive:zone_in":
+            try:
+                zone_in = int(value)
+            except (TypeError, ValueError):
+                pass
+            continue
+        if name == "kdenlive:zone_out":
+            try:
+                zone_out = int(value)
+            except (TypeError, ValueError):
+                pass
+            continue
+        properties[name] = value
+    in_attr = filter_elem.get("in")
+    out_attr = filter_elem.get("out")
+    in_frame = None
+    out_frame = None
+    try:
+        if in_attr is not None:
+            in_frame = int(in_attr)
+        if out_attr is not None:
+            out_frame = int(out_attr)
+    except ValueError:
+        pass  # leave None if the attribute is a timecode rather than int
+    return EntryFilter(
+        id=filter_elem.get("id", ""),
+        in_frame=in_frame,
+        out_frame=out_frame,
+        zone_in_frame=zone_in,
+        zone_out_frame=zone_out,
+        properties=properties,
+    )
+
+
 def _parse_playlist(elem: ET.Element) -> tuple[Playlist, list[OpaqueElement]]:
     playlist_id = elem.get("id", "")
     entries: list[PlaylistEntry] = []
     opaques: list[OpaqueElement] = []
     for child in elem:
         if child.tag == "entry":
+            entry_filters: list[EntryFilter] = [
+                _parse_entry_filter(c) for c in child if c.tag == "filter"
+            ]
             entries.append(
                 PlaylistEntry(
                     producer_id=child.get("producer", ""),
                     in_point=int(child.get("in", "0")),
                     out_point=int(child.get("out", "0")),
+                    filters=entry_filters,
                 )
             )
         elif child.tag == "blank":

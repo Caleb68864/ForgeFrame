@@ -184,3 +184,184 @@ class TestParserGracefulFailure:
         p.write_text("", encoding="utf-8")
         project = parse_project(p)
         assert isinstance(project, KdenliveProject)
+
+
+class TestParserPreservesEntryFilters:
+    """The parser must round-trip per-entry ``<filter>`` children into
+    ``EntryFilter`` model instances so subsequent ``clip_insert`` calls
+    don't strip user-added effects.  Patterns covered: audio fade
+    (in/out attrs + scalar gain/end), qtblend transform (keyframe rect
+    string), effect zones (kdenlive:zone_in/out)."""
+
+    def test_round_trip_audio_fade_in(self, tmp_path):
+        from workshop_video_brain.core.models.kdenlive import (
+            EntryFilter,
+            KdenliveProject,
+            Playlist,
+            PlaylistEntry,
+            Producer,
+            ProjectProfile,
+            Track,
+        )
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
+            serialize_project,
+        )
+
+        # Build a project with one clip carrying a fadein filter.
+        project = KdenliveProject(
+            version="7", title="round-trip test",
+            profile=ProjectProfile(width=1920, height=1080, fps=29.97, colorspace="709"),
+            tracks=[Track(id="pl_v", track_type="video")],
+            playlists=[Playlist(id="pl_v", entries=[
+                PlaylistEntry(
+                    producer_id="prod0", in_point=0, out_point=149,
+                    filters=[
+                        EntryFilter(
+                            id="fade_in", in_frame=0, out_frame=14,
+                            properties={
+                                "mlt_service": "volume",
+                                "kdenlive_id": "fadein",
+                                "gain": "0",
+                                "end": "1",
+                            },
+                        ),
+                    ],
+                ),
+            ])],
+            producers=[
+                Producer(
+                    id="prod0", resource="/clip.mp4",
+                    properties={
+                        "resource": "/clip.mp4",
+                        "mlt_service": "avformat-novalidate",
+                        "length": "150",
+                    },
+                ),
+            ],
+            tractor={"id": "t", "in": "0", "out": "149"},
+        )
+
+        out_path = tmp_path / "rt.kdenlive"
+        serialize_project(project, out_path)
+
+        # Parse it back and verify the filter survived.
+        parsed = parse_project(out_path)
+        entry = next(e for pl in parsed.playlists for e in pl.entries if e.producer_id)
+        assert len(entry.filters) == 1
+        f = entry.filters[0]
+        assert f.id == "fade_in"
+        assert f.in_frame == 0
+        assert f.out_frame == 14
+        assert f.properties["mlt_service"] == "volume"
+        assert f.properties["kdenlive_id"] == "fadein"
+        assert f.properties["gain"] == "0"
+        assert f.properties["end"] == "1"
+
+    def test_round_trip_effect_zone(self, tmp_path):
+        from workshop_video_brain.core.models.kdenlive import (
+            EntryFilter,
+            KdenliveProject,
+            Playlist,
+            PlaylistEntry,
+            Producer,
+            ProjectProfile,
+            Track,
+        )
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
+            serialize_project,
+        )
+
+        project = KdenliveProject(
+            version="7", title="zone test",
+            profile=ProjectProfile(width=1920, height=1080, fps=29.97, colorspace="709"),
+            tracks=[Track(id="pl_v", track_type="video")],
+            playlists=[Playlist(id="pl_v", entries=[
+                PlaylistEntry(
+                    producer_id="p0", in_point=0, out_point=149,
+                    filters=[
+                        EntryFilter(
+                            id="zone_brightness",
+                            zone_in_frame=30,
+                            zone_out_frame=89,
+                            properties={
+                                "mlt_service": "brightness",
+                                "kdenlive_id": "brightness",
+                                "level": "1.4",
+                            },
+                        ),
+                    ],
+                ),
+            ])],
+            producers=[
+                Producer(id="p0", resource="/clip.mp4", properties={
+                    "resource": "/clip.mp4",
+                    "mlt_service": "avformat-novalidate",
+                    "length": "150",
+                }),
+            ],
+        )
+
+        out_path = tmp_path / "zone.kdenlive"
+        serialize_project(project, out_path)
+        parsed = parse_project(out_path)
+        entry = next(e for pl in parsed.playlists for e in pl.entries if e.producer_id)
+        assert len(entry.filters) == 1
+        f = entry.filters[0]
+        assert f.zone_in_frame == 30
+        assert f.zone_out_frame == 89
+        assert f.properties["mlt_service"] == "brightness"
+
+    def test_round_trip_qtblend_transform(self, tmp_path):
+        from workshop_video_brain.core.models.kdenlive import (
+            EntryFilter,
+            KdenliveProject,
+            Playlist,
+            PlaylistEntry,
+            Producer,
+            ProjectProfile,
+            Track,
+        )
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
+            serialize_project,
+        )
+
+        rect = "00:00:00.000=0 0 1920 1080 1.000000;00:00:01.000=-100 0 2020 1080 1.000000"
+        project = KdenliveProject(
+            version="7", title="qtblend test",
+            profile=ProjectProfile(width=1920, height=1080, fps=29.97, colorspace="709"),
+            tracks=[Track(id="pl_v", track_type="video")],
+            playlists=[Playlist(id="pl_v", entries=[
+                PlaylistEntry(
+                    producer_id="p0", in_point=0, out_point=149,
+                    filters=[
+                        EntryFilter(
+                            id="qtblend",
+                            properties={
+                                "mlt_service": "qtblend",
+                                "kdenlive_id": "qtblend",
+                                "rect": rect,
+                                "rotation": "00:00:00.000=0;00:00:01.000=0",
+                                "compositing": "0",
+                                "distort": "0",
+                                "rotate_center": "1",
+                            },
+                        ),
+                    ],
+                ),
+            ])],
+            producers=[
+                Producer(id="p0", resource="/img.png", properties={
+                    "resource": "/img.png",
+                    "mlt_service": "qimage",
+                    "length": "150",
+                }),
+            ],
+        )
+
+        out_path = tmp_path / "qt.kdenlive"
+        serialize_project(project, out_path)
+        parsed = parse_project(out_path)
+        entry = next(e for pl in parsed.playlists for e in pl.entries if e.producer_id)
+        assert len(entry.filters) == 1
+        # The keyframe string survives intact
+        assert entry.filters[0].properties["rect"] == rect
