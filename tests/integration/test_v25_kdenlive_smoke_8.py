@@ -95,9 +95,16 @@ def _resolve_clip(*candidates: Path) -> Path | None:
     reason="User's Video Production tests folder not available",
 )
 def test_025_audio_fade_in_and_out():
-    """One clip with a 0.5s audio fade-in at the head and 1s fade-out at
+    """One clip with a 2s audio fade-in at the head and 3s fade-out at
     the tail.  Verifies the v25 ``volume`` + ``kdenlive_id=fadein|fadeout``
-    filter shape against the KDE test suite."""
+    filter shape against the KDE test suite.
+
+    For Kdenlive to actually apply the volume fade, the entry carrying
+    the fade filter must be on an AUDIO track (V1 video entries have
+    no audio routing on their own).  Mirrors the audio-mix.kdenlive
+    reference: the same source clip gets an entry on the video track
+    AND a separate entry on the audio track, both referencing the
+    same producer; the fade filter sits on the audio entry only."""
     clip = _resolve_clip(
         USER_TEST_KDENLIVE / "8832126-uhd_3840_2160_30fps.mp4",  # has audio
         GENERATED_CLIP,
@@ -106,8 +113,12 @@ def test_025_audio_fade_in_and_out():
         pytest.skip("No clip with audio available")
 
     fps = 29.97
-    duration = int(5 * fps)
+    duration = int(8 * fps)
+    fade_in_frames = int(2 * fps)
+    fade_out_frames = int(3 * fps)
+
     project = _build_initial_project("smoke_025_audio_fades", fps=fps)
+    # Video portion on V1
     project = _add_clip(
         project,
         producer_id="vid",
@@ -116,21 +127,29 @@ def test_025_audio_fade_in_and_out():
         out_point=duration - 1,
         source_path=str(clip),
     )
-    # Fade-in at the head (15-frame, ~0.5s) and fade-out at the tail (30-frame, ~1s).
+    # Audio portion on A1, referencing the SAME producer.  AddClip would
+    # try to create a fresh producer with a new id, so just append the
+    # entry directly to the playlist.
+    audio_pl = next(p for p in project.playlists if p.id == "playlist_audio")
+    audio_pl.entries.append(
+        PlaylistEntry(producer_id="vid", in_point=0, out_point=duration - 1)
+    )
+    # Now the audio fade lands on the A1 entry where Kdenlive's volume
+    # filter actually has audio to ramp.
     project = patch_project(
         project,
         [
             AudioFade(
-                track_ref="playlist_video",
+                track_ref="playlist_audio",
                 clip_index=0,
                 fade_type="in",
-                duration_frames=15,
+                duration_frames=fade_in_frames,
             ),
             AudioFade(
-                track_ref="playlist_video",
+                track_ref="playlist_audio",
                 clip_index=0,
                 fade_type="out",
-                duration_frames=30,
+                duration_frames=fade_out_frames,
             ),
         ],
     )
@@ -139,12 +158,18 @@ def test_025_audio_fade_in_and_out():
     serialize_project(project, out_path)
     assert out_path.exists()
 
-    # Sanity: the entry has two filters with the right kdenlive_ids
-    entry = next(
-        e for pl in project.playlists for e in pl.entries if e.producer_id
+    # Sanity: the AUDIO entry carries the fade filters, not the video entry.
+    audio_entry = next(
+        e for pl in project.playlists if pl.id == "playlist_audio"
+        for e in pl.entries if e.producer_id
     )
-    kdenlive_ids = {f.properties.get("kdenlive_id") for f in entry.filters}
-    assert kdenlive_ids == {"fadein", "fadeout"}
+    video_entry = next(
+        e for pl in project.playlists if pl.id == "playlist_video"
+        for e in pl.entries if e.producer_id
+    )
+    audio_kdenlive_ids = {f.properties.get("kdenlive_id") for f in audio_entry.filters}
+    assert audio_kdenlive_ids == {"fadein", "fadeout"}
+    assert video_entry.filters == []
 
 
 # ---------------------------------------------------------------------------
