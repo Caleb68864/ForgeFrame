@@ -11,10 +11,11 @@ as the rest of the per-clip filter family.
 * **054 chroma** -- ``mlt_service=chroma``, native green/blue-screen
   keying.  ``key`` carries hex-colour keyframes (e.g.
   ``00:00:00.000=0x00ff00ff`` for opaque green); ``variance`` is the
-  scalar tolerance.
+  scalar tolerance.  Layered over a magenta colour generator on V1
+  so transparent regions show as bright magenta.
 * **055 lumakey** -- ``mlt_service=lumakey``, key by luminance.  Scalar
-  ``threshold``/``slope``/``prelevel``/``postlevel``.  Useful for
-  black/white masking.
+  ``threshold``/``slope``/``prelevel``/``postlevel``.  Layered over
+  a cyan colour generator on V1 so transparent regions show as cyan.
 * **056 dynamictext** -- ``mlt_service=dynamictext``, MLT's tag-replaced
   text overlay.  The ``argument`` property carries the template (e.g.
   ``"#timecode# - #frame#"``), and ``geometry`` positions the text box.
@@ -37,10 +38,12 @@ from workshop_video_brain.core.models.kdenlive import (
     EntryFilter,
     KdenliveProject,
     Playlist,
+    PlaylistEntry,
+    Producer,
     ProjectProfile,
     Track,
 )
-from workshop_video_brain.core.models.timeline import AddClip
+from workshop_video_brain.core.models.timeline import AddClip, CreateTrack
 from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
 
@@ -120,28 +123,117 @@ def _project_with_clip(title, *, fps=29.97, seconds=4.0):
     return project, pl.entries[0]
 
 
+def _build_keying_project(
+    title: str,
+    *,
+    fps: float,
+    duration: int,
+    bg_color_resource: str,
+    foreground_clip: Path,
+    foreground_producer_id: str = "fg_clip",
+) -> tuple[KdenliveProject, PlaylistEntry]:
+    """Build a project with a colour-generator background on V1 and a
+    real video clip on V2 (with the foreground entry returned so the
+    caller can attach a chroma/luma key filter to it).
+
+    The colour generator uses ``mlt_service=color`` with a named or
+    hex resource (e.g. ``"magenta"``, ``"#ff00ff"``).  The clip on V2
+    composites OVER V1, so when keying makes pixels transparent the
+    background colour bleeds through -- making the keying effect
+    visible even on source clips that don't naturally have green/blue
+    backgrounds."""
+    project = _build_initial_project(title, fps=fps)
+
+    # ---- V1: colour-generator background --------------------------
+    bg_producer_id = "bg_color"
+    project.producers.append(
+        Producer(
+            id=bg_producer_id,
+            resource=bg_color_resource,
+            properties={
+                "length": str(duration),
+                "eof": "pause",
+                "resource": bg_color_resource,
+                "aspect_ratio": "1",
+                "mlt_service": "color",
+                "mlt_image_format": "rgba",
+            },
+        )
+    )
+    pl_v1 = next(p for p in project.playlists if p.id == "playlist_video")
+    pl_v1.entries.append(
+        PlaylistEntry(
+            producer_id=bg_producer_id,
+            in_point=0,
+            out_point=duration - 1,
+        )
+    )
+
+    # ---- V2: foreground clip (where the key filter goes) ----------
+    project = patch_project(project, [CreateTrack(track_type="video", name="V2")])
+    # CreateTrack appended the new track; its playlist id is
+    # ``playlist_video_1`` (the first auto-generated suffix).
+    project = _add_clip(
+        project,
+        producer_id=foreground_producer_id,
+        track_id="playlist_video_1",
+        in_point=0,
+        out_point=duration - 1,
+        source_path=str(foreground_clip),
+    )
+    pl_v2 = next(p for p in project.playlists if p.id == "playlist_video_1")
+    return project, pl_v2.entries[0]
+
+
 # ---------------------------------------------------------------------------
 # 054 -- native chroma key (green-screen)
 # ---------------------------------------------------------------------------
+
+
+GREENSCREEN_CLIP = REPO_ROOT / "tests" / "fixtures" / "media_generated" / "greenscreen_reporter_720.mp4"
 
 
 @pytest.mark.skipif(
     not USER_OUTPUT_DIR.parent.exists(),
     reason="User's Video Production tests folder not available",
 )
-def test_054_chroma_key_green():
-    """Chroma key out pure green (0x00ff00).  Used for green-screen
-    compositing.  ``key`` is a keyframe string of hex colours
-    (RGBA in 0xRRGGBBAA form); ``variance`` is the tolerance."""
-    project, entry = _project_with_clip("smoke_054_chroma_green")
-    entry.filters.append(
+def test_054_chroma_key_green_over_magenta():
+    """Chroma key out pure green from the downloaded green-screen
+    reporter clip; layered over a bright magenta colour generator on
+    V1 so the keyed-out regions show as magenta.
+
+    The Mixkit clip is a reporter standing in front of a green
+    chroma-key background -- exactly what this filter is designed
+    for.  After keying:
+
+    * The reporter (subject) plays normally on V2
+    * The green background becomes transparent
+    * Magenta from V1 shows through where the green used to be
+
+    If the entire frame is magenta, the key took out everything
+    (variance too high).  If the green background still shows through
+    the reporter unchanged, the key didn't take effect."""
+    if not GREENSCREEN_CLIP.exists():
+        pytest.skip(f"Green-screen clip missing: {GREENSCREEN_CLIP}")
+
+    fps = 29.97
+    duration = int(5 * fps)  # use first 5 seconds of the 20s clip
+
+    project, fg_entry = _build_keying_project(
+        "smoke_054_chroma_green_over_magenta",
+        fps=fps,
+        duration=duration,
+        bg_color_resource="magenta",
+        foreground_clip=GREENSCREEN_CLIP,
+    )
+    fg_entry.filters.append(
         EntryFilter(
             id="chroma_key",
             properties={
                 "mlt_service": "chroma",
                 "kdenlive_id": "chroma",
                 "key": "00:00:00.000=0x00ff00ff",
-                "variance": "0.4",
+                "variance": "0.25",  # tighter tolerance for cleaner key
                 "kdenlive:collapsed": "0",
             },
         )
@@ -160,21 +252,43 @@ def test_054_chroma_key_green():
     not USER_OUTPUT_DIR.parent.exists(),
     reason="User's Video Production tests folder not available",
 )
-def test_055_lumakey_white_isolation():
-    """Key out luminance below threshold to isolate bright areas
-    (e.g. white text on a darker background).  Scalar params --
-    no keyframes."""
-    project, entry = _project_with_clip("smoke_055_lumakey")
-    entry.filters.append(
+def test_055_lumakey_dark_areas_over_cyan():
+    """Key out DARK pixels to keep only bright regions; layer over
+    a cyan colour generator on V1 so transparent regions show as
+    cyan.
+
+    Threshold=80 means pixels with luminance below 80 (dark areas
+    like shadows, dark fabrics, dark backgrounds) become transparent.
+    The lumakey is more useful for "isolate the bright subject from
+    a dark background" workflows than for general keying.
+
+    Verify by playing back: cyan should bleed through the dark areas
+    of the source clip.  If no cyan is visible, threshold is too low
+    and the key is a no-op.  If everything is cyan, threshold is too
+    high."""
+    if not GREENSCREEN_CLIP.exists():
+        pytest.skip(f"Test clip missing: {GREENSCREEN_CLIP}")
+
+    fps = 29.97
+    duration = int(5 * fps)
+
+    project, fg_entry = _build_keying_project(
+        "smoke_055_lumakey_dark_over_cyan",
+        fps=fps,
+        duration=duration,
+        bg_color_resource="cyan",
+        foreground_clip=GREENSCREEN_CLIP,
+    )
+    fg_entry.filters.append(
         EntryFilter(
             id="lumakey",
             properties={
                 "mlt_service": "lumakey",
                 "kdenlive_id": "lumakey",
-                "threshold": "180",
-                "slope": "60",
-                "prelevel": "60",
-                "postlevel": "215",
+                "threshold": "80",       # keep pixels brighter than 80
+                "slope": "40",           # softer transition over 40 levels
+                "prelevel": "0",
+                "postlevel": "255",
                 "kdenlive:collapsed": "0",
             },
         )

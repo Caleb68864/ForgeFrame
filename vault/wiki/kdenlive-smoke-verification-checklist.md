@@ -64,7 +64,7 @@ the matching upstream test-suite file is in
   midtones, cooled highlights.  The look is subtle, not dramatic.
 * Effect panel shows a `lift_gamma_gain` filter with 9 scalars.
 
-### `031-long-cross-dissolve.kdenlive`
+### `031-long-cross-dissolve.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Two clips on V1 + V2 with a **3-second cross-dissolve** between them.
 * The dissolve must visually crossfade — clip A becoming gradually
@@ -222,7 +222,7 @@ the matching upstream test-suite file is in
 
 ## Batch 17 (typewriter title)
 
-### `053-typewriter-title-animation.kdenlive`
+### `053-typewriter-title-animation.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * A 5-second editable title card on V1 with the text "Hello, world!".
 * On playback: the text **types itself out character-by-character**
@@ -237,18 +237,29 @@ the matching upstream test-suite file is in
 
 ### `054-chroma-key-green.kdenlive`
 * **Opens clean.**
-* Clip has a **green-screen chroma key** applied.  If the source has
-  no green, the effect won't visibly do anything (still correct — just
-  nothing to key out).
-* Effect panel shows `chroma` filter with `key=0x00ff00ff`,
-  `variance=0.4`.
+* Two video tracks: V1 = solid **magenta** colour generator, V2 =
+  Mixkit reporter clip on a green background (downloaded to
+  `tests/fixtures/media_generated/greenscreen_reporter_720.mp4`)
+  with the chroma key applied.
+* Play back: the **reporter is preserved**, the green background
+  becomes transparent, and **magenta from V1 bleeds through** where
+  the green used to be.
+* If the entire frame stays green (with no magenta showing), the key
+  isn't taking effect.  If everything is magenta, `variance` is too
+  high and the key is matching too much.
 
 ### `055-lumakey-white-isolation.kdenlive`
 * **Opens clean.**
-* Clip has a luma-key applied — bright pixels are kept, dark pixels
-  become transparent.  The effect depends on source luminance.
+* Two video tracks: V1 = solid **cyan** colour generator, V2 = the
+  same Mixkit reporter clip with the lumakey applied (threshold=80,
+  keep bright pixels).
+* Play back: dark areas of the reporter clip (shadows, dark fabric,
+  dark background pixels) become transparent and **cyan from V1
+  bleeds through**.  Bright areas (skin, white shirt) stay opaque.
+* If no cyan is visible, threshold is too low.  If everything is
+  cyan, threshold is too high.
 
-### `056-dynamictext-timecode-overlay.kdenlive`
+### `056-dynamictext-timecode-overlay.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Clip plays with a **live-updating "TC HH:MM:SS  •  Frame N"
   overlay** in the bottom-right corner.  The numbers must change
