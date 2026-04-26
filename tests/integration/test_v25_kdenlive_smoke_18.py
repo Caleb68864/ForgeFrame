@@ -136,13 +136,26 @@ def _build_keying_project(
     real video clip on V2 (with the foreground entry returned so the
     caller can attach a chroma/luma key filter to it).
 
-    The colour generator uses ``mlt_service=color`` with a named or
-    hex resource (e.g. ``"magenta"``, ``"#ff00ff"``).  The clip on V2
-    composites OVER V1, so when keying makes pixels transparent the
-    background colour bleeds through -- making the keying effect
-    visible even on source clips that don't naturally have green/blue
-    backgrounds."""
+    The colour generator uses ``mlt_service=color`` with a HEX resource
+    in the form ``0xRRGGBBAA`` -- verified against
+    ``qtblend-freeze.kdenlive`` from the KDE test suite.  Named colour
+    strings like ``"magenta"`` render as black in Kdenlive 25.x even
+    though they're nominally accepted by MLT's color producer.
+
+    The clip on V2 composites OVER V1, so when keying makes pixels
+    transparent the background colour bleeds through -- making the
+    keying effect visible even on source clips that don't naturally
+    have green/blue backgrounds."""
     project = _build_initial_project(title, fps=fps)
+
+    # Compute a TC-format duration for kdenlive:duration (matches the
+    # reference qtblend-freeze.kdenlive shape).
+    total_seconds = duration / fps
+    h = int(total_seconds // 3600)
+    m = int((total_seconds % 3600) // 60)
+    s = int(total_seconds % 60)
+    f = duration - int(int(total_seconds) * fps)
+    duration_tc = f"{h:02d}:{m:02d}:{s:02d};{max(0, f):02d}"
 
     # ---- V1: colour-generator background --------------------------
     bg_producer_id = "bg_color"
@@ -156,7 +169,14 @@ def _build_keying_project(
                 "resource": bg_color_resource,
                 "aspect_ratio": "1",
                 "mlt_service": "color",
-                "mlt_image_format": "rgba",
+                # Verified against qtblend-freeze.kdenlive: color
+                # producers use ``mlt_image_format=rgb`` (NOT rgba) and
+                # carry ``seekable=1`` + ``kdenlive:clipname`` +
+                # ``kdenlive:duration`` for the bin display to populate.
+                "mlt_image_format": "rgb",
+                "seekable": "1",
+                "kdenlive:clipname": "Colour Clip",
+                "kdenlive:duration": duration_tc,
             },
         )
     )
@@ -223,7 +243,9 @@ def test_054_chroma_key_green_over_magenta():
         "smoke_054_chroma_green_over_magenta",
         fps=fps,
         duration=duration,
-        bg_color_resource="magenta",
+        # MLT's color producer needs a HEX RGBA resource (0xRRGGBBAA);
+        # named colour strings render as black in Kdenlive 25.x.
+        bg_color_resource="0xff00ffff",  # opaque magenta
         foreground_clip=GREENSCREEN_CLIP,
     )
     fg_entry.filters.append(
@@ -276,17 +298,27 @@ def test_055_lumakey_dark_areas_over_cyan():
         "smoke_055_lumakey_dark_over_cyan",
         fps=fps,
         duration=duration,
-        bg_color_resource="cyan",
+        # Hex RGBA -- named colour strings render as black in 25.x.
+        bg_color_resource="0x00ffffff",  # opaque cyan
         foreground_clip=GREENSCREEN_CLIP,
     )
+    # Threshold tuned for THIS clip: pure green at RGB(0,255,0) has BT.709
+    # luma ~182, so threshold=200/slope=20 places the green background
+    # below threshold-slope/2 (=190), making it mostly transparent.
+    # Reporter's bright white shirt (luma ~250) stays opaque.  Mid-tones
+    # in face/skin become partly transparent.  The result: cyan visibly
+    # bleeds through where the green used to be, plus through dark
+    # areas of clothing.  If threshold=80 (the original value), the
+    # green BG stays opaque since 80 << 182, and the demo silently does
+    # nothing visible.
     fg_entry.filters.append(
         EntryFilter(
             id="lumakey",
             properties={
                 "mlt_service": "lumakey",
                 "kdenlive_id": "lumakey",
-                "threshold": "80",       # keep pixels brighter than 80
-                "slope": "40",           # softer transition over 40 levels
+                "threshold": "200",
+                "slope": "20",
                 "prelevel": "0",
                 "postlevel": "255",
                 "kdenlive:collapsed": "0",

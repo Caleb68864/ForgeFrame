@@ -251,13 +251,18 @@ the matching upstream test-suite file is in
 ### `055-lumakey-white-isolation.kdenlive`
 * **Opens clean.**
 * Two video tracks: V1 = solid **cyan** colour generator, V2 = the
-  same Mixkit reporter clip with the lumakey applied (threshold=80,
-  keep bright pixels).
-* Play back: dark areas of the reporter clip (shadows, dark fabric,
-  dark background pixels) become transparent and **cyan from V1
-  bleeds through**.  Bright areas (skin, white shirt) stay opaque.
-* If no cyan is visible, threshold is too low.  If everything is
-  cyan, threshold is too high.
+  same Mixkit reporter clip with the lumakey applied
+  (threshold=200, slope=20, keep bright pixels above ~210 luma).
+* Play back: the **green background** (luma ~182) becomes
+  transparent and **cyan bleeds through** where the green used to
+  be.  Dark suit and shadow areas may also tint cyan.  Bright
+  whites (the shirt, edge highlights) stay opaque.
+* If everything stays green/black, threshold is too low and the
+  green BG isn't crossing the transparency boundary.  If the
+  reporter vanishes entirely, threshold is too high.
+* Note on 80→200 threshold change: the original threshold=80 silently
+  did nothing because no part of the green-screen clip has luma
+  below 80 except deep shadows in the suit.
 
 ### `056-dynamictext-timecode-overlay.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
