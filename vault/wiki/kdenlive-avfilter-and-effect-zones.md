@@ -63,20 +63,36 @@ A filter can be scoped to a sub-range of its clip via `<property name="kdenlive:
 
 `EntryFilter.zone_in_frame` / `zone_out_frame` (added with this pattern) map directly to those properties.
 
-## Native video fades — same shape
+## Native video fades — `brightness` filter, four critical contract bits
 
-Video fade-from-black / fade-to-black uses the same EntryFilter structure as audio fades but with `mlt_service=brightness` instead of `volume`:
+Video fade-from-black / fade-to-black uses an EntryFilter with `mlt_service=brightness`. Verified against the user's hand-saved `tests/fixtures/kdenlive_references/video_fade_black_native.kdenlive`. Four contract details that aren't obvious from the audio-fade pattern:
 
 ```xml
-<filter id="fade_from_black" in="0" out="14">
+<filter id="fade_from_black" out="00:00:02.970">
+  <property name="start">1</property>
+  <property name="level">00:00:00.000=0;00:00:02.970=1</property>
   <property name="mlt_service">brightness</property>
   <property name="kdenlive_id">fade_from_black</property>
-  <property name="level">0</property>
-  <property name="alpha">00:00:00.000=0;00:00:00.500=1</property>
+  <property name="alpha">1</property>
+  <property name="kdenlive:collapsed">0</property>
 </filter>
 ```
 
-The filter's element-level `in`/`out` attributes position the fade window. The `alpha` property carries the keyframed ramp (0 → 1 for fade-from-black, 1 → 0 for fade-to-black). The `level` property pre-darkens the clip during the fade (set to 0 for fade-from-black so the source is initially black).
+```xml
+<filter id="fade_to_black" in="00:00:04.705" out="00:00:07.941">
+  <property name="start">1</property>
+  <property name="level">00:00:00.000=1;00:00:03.237=0</property>
+  <property name="mlt_service">brightness</property>
+  <property name="kdenlive_id">fade_to_black</property>
+  <property name="alpha">1</property>
+  <property name="kdenlive:collapsed">0</property>
+</filter>
+```
+
+1. **`level` carries the keyframe string** (NOT `alpha`). The keyframe value ramps `0 → 1` for fade-from-black, `1 → 0` for fade-to-black.
+2. **`alpha` is the scalar `"1"`**, not a keyframe ramp. Constant full-opacity throughout.
+3. **`start=1`** is the property the UI's "Fade from Black" / "Fade to Black" toggle reads. Without it the checkbox shows unchecked even though the level keyframes still ramp brightness — the fade visually works but the UI tab is misleading.
+4. **`level` keyframe times are FILTER-LOCAL**, not entry-local: they always start at `00:00:00.000` regardless of where the filter window sits inside the entry. The filter's `in`/`out` attributes position the window inside the entry; the keyframes describe what happens *within* that window.
 
 ## Implementation in this repo
 

@@ -180,13 +180,25 @@ def test_027_avfilter_gblur_keyframed():
     reason="User's Video Production tests folder not available",
 )
 def test_028_video_fade_from_to_black():
-    """The video equivalent of an audio fade-in/out: a ``brightness``
-    filter with ``kdenlive_id=fade_from_black`` (or ``fade_to_black``),
-    scalar ``level`` ramp, ``in``/``out`` filter-element attributes.
+    """Video fade-from-black + fade-to-black via the v25 ``brightness``
+    filter shape verified against the user's hand-saved
+    ``06-fade to and from black.kdenlive`` (now under
+    ``tests/fixtures/kdenlive_references/video_fade_black_native.kdenlive``).
 
-    Pattern matches ``audio-mix.kdenlive`` from the KDE test suite, just
-    with ``brightness`` instead of ``volume`` and ``level`` instead of
-    ``gain``/``end``."""
+    Critical contract details that differ from the obvious-from-the-audio-
+    fade-pattern shape:
+
+    1. ``level`` is the keyframe-string ``"00:00:00.000=0;<dur>=1"``
+       (NOT ``alpha`` like a transparency ramp).
+    2. ``alpha`` is the scalar ``"1"`` -- a constant, not a keyframe.
+    3. ``start=1`` -- the property the UI's "Fade from Black" /
+       "Fade to Black" toggle reads.  Without it the checkbox shows
+       unchecked even though the filter would still ramp brightness.
+    4. ``level`` keyframe times are FILTER-LOCAL (start at
+       ``00:00:00.000`` regardless of where the filter window sits in
+       the entry), NOT entry-local.  The filter's ``in``/``out``
+       attributes position the window inside the entry.
+    """
     clip = _resolve_clip(
         USER_TEST_KDENLIVE / "15647204_3840_2160_30fps.mp4",
         GENERATED_CLIP,
@@ -195,9 +207,9 @@ def test_028_video_fade_from_to_black():
         pytest.skip("No clip available")
 
     fps = 29.97
-    duration = int(5 * fps)
-    fade_in_frames = int(0.5 * fps)   # 0.5s fade-up from black
-    fade_out_frames = int(1.0 * fps)  # 1.0s fade-down to black
+    duration = int(8 * fps)              # 8-second clip so the fades have room
+    fade_in_frames = int(2.0 * fps)      # 2-second fade-up from black
+    fade_out_frames = int(3.0 * fps)     # 3-second fade-down to black
 
     project = _build_initial_project("smoke_028_video_fades", fps=fps)
     project = _add_clip(
@@ -211,35 +223,41 @@ def test_028_video_fade_from_to_black():
     pl = next(p for p in project.playlists if p.id == "playlist_video")
     entry = pl.entries[0]
 
-    # Fade-from-black at the head: brightness ramps 0 -> 1
+    # Fade-from-black at the head.  Filter window: [0, fade_in_frames-1].
+    # Keyframe times are FILTER-LOCAL: start at 00:00:00.000 + ramp 0->1.
     entry.filters.append(
         EntryFilter(
             id="fade_from_black",
             in_frame=0,
             out_frame=fade_in_frames - 1,
             properties={
+                "start": "1",
+                "level":
+                    f"{_frames_to_timecode(0, fps)}=0;"
+                    f"{_frames_to_timecode(fade_in_frames - 1, fps)}=1",
                 "mlt_service": "brightness",
                 "kdenlive_id": "fade_from_black",
-                "level": "0",
-                "alpha": "00:00:00.000=0;"
-                         + _frames_to_timecode(fade_in_frames - 1, fps) + "=1",
+                "alpha": "1",
                 "kdenlive:collapsed": "0",
             },
         )
     )
-    # Fade-to-black at the tail: brightness ramps 1 -> 0
+    # Fade-to-black at the tail.  Filter window:
+    # [duration - fade_out_frames, duration - 1].  Keyframes again
+    # filter-local: 00:00:00.000=1 -> <window-end-relative>=0.
     entry.filters.append(
         EntryFilter(
             id="fade_to_black",
             in_frame=duration - fade_out_frames,
             out_frame=duration - 1,
             properties={
+                "start": "1",
+                "level":
+                    f"{_frames_to_timecode(0, fps)}=1;"
+                    f"{_frames_to_timecode(fade_out_frames - 1, fps)}=0",
                 "mlt_service": "brightness",
                 "kdenlive_id": "fade_to_black",
-                "level": "1",
-                "alpha":
-                    _frames_to_timecode(duration - fade_out_frames, fps) + "=1;"
-                    + _frames_to_timecode(duration - 1, fps) + "=0",
+                "alpha": "1",
                 "kdenlive:collapsed": "0",
             },
         )
