@@ -174,7 +174,7 @@ the matching upstream test-suite file is in
 
 ## Batch 14 (same-track audio mix — NEW PATTERN)
 
-### `047-same-track-audio-mix.kdenlive`
+### `047-same-track-audio-mix.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**  This is the FIRST verification of the
   `TrackMixTransition` shape with audio (smoke 048 already confirmed
   the visual `kind="affine"` variant works structurally).
