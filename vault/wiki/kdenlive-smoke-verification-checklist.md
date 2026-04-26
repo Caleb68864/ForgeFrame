@@ -235,7 +235,7 @@ the matching upstream test-suite file is in
 
 ## Batch 18 (native MLT effects)
 
-### `054-chroma-key-green.kdenlive`
+### `054-chroma-key-green.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Two video tracks: V1 = solid **magenta** colour generator, V2 =
   Mixkit reporter clip on a green background (downloaded to
@@ -248,7 +248,7 @@ the matching upstream test-suite file is in
   isn't taking effect.  If everything is magenta, `variance` is too
   high and the key is matching too much.
 
-### `055-lumakey-white-isolation.kdenlive`
+### `055-lumakey-white-isolation.kdenlive` ✅ VERIFIED 2026-04-26
 * **Opens clean.**
 * Two video tracks: V1 = solid **cyan** colour generator, V2 = the
   same Mixkit reporter clip with the lumakey applied
