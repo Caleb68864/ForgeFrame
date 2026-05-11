@@ -383,6 +383,20 @@ See Ch.09 (Color Correction & Grading) for how to interpret `color_analyze` outp
 
 See Ch.08 (Transitions & Compositing) and Ch.12 (Effects, Titles & Graphics) for usage context.
 
+### Editorial Cut Tools
+| Effect or edit | ForgeFrame tools | Kdenlive/manual step |
+|---|---|---|
+| Hard cut | `clip_split`, `clip_trim`, `clip_ripple_delete` | Place clips adjacent with no overlap |
+| Cut on action | `clip_split`, `clip_trim`, `clip_move`, `clip_insert` | Trim the outgoing and incoming shots until the motion carries across the cut |
+| Cutaway | `/ff-broll-whisperer`, `clip_insert`, `clip_trim` | Keep narration as the audio spine; lay the cutaway over the relevant words |
+| Insert shot | `/ff-shot-plan`, `/ff-broll-whisperer`, `clip_insert`, `clip_trim`, `effect_transform` | Use a real close-up when possible; use Transform only for digital punch-ins |
+| Match cut | `clips_search`, `broll_library_search`, `clip_trim`, `effect_transform` | Align the shared visual element by eye |
+| No-cut hold | `/ff-pacing-meter` | Keep the hold only when it builds tension, comprehension, or payoff |
+| J-cut | `clip_insert`, `clip_trim`, `audio_fade` | In Kdenlive, hold `Shift` and trim the next clip's audio earlier than its video |
+| L-cut | `clip_insert`, `clip_trim`, `audio_fade` | In Kdenlive, hold `Shift` and extend the previous clip's audio past its video cut |
+
+These techniques are primarily editorial decisions. ForgeFrame can find candidate footage, build the rough timeline, insert and trim clips, apply fades, and flag pacing problems; final J/L slip timing and match-cut alignment should still be checked in Kdenlive by eye and ear.
+
 ### Audio Tools (individual — for targeted fixes)
 | Tool | What it does |
 |------|--------------|

@@ -49,6 +49,114 @@ Most narrative cuts use the same-track mix approach. Compositing and PiP always 
 
 ---
 
+### Cut on Action
+
+**Definition:** A cut made while movement is already happening. The viewer's eye follows the action across the edit, so the cut feels motivated rather than abrupt.
+
+**Use cases:**
+- Cutting from a wide shot to a close-up while a hand reaches for a tool
+- Changing angles during a saw cut, stitch, brush stroke, mouse movement, or camera pan
+- Hiding a jump cut by placing the edit inside motion
+- Punching in on a precise moment without making the edit feel like a mistake
+
+**How-to (Kdenlive):**
+
+1. Find the action that continues across both shots.
+2. Cut the outgoing shot after the movement has clearly started.
+3. Cut the incoming shot at the matching part of the movement.
+4. Play the cut at full speed and nudge either side until the motion feels continuous.
+
+**ForgeFrame tools:** Use `clip_split` to cut at the action point, `clip_trim` to nudge the in/out frames, and `clip_move` or `clip_insert` to place the close-up or alternate angle. Use `/ff-rough-cut-review` to flag long static passages that need an action cut or insert.
+
+**Pitfalls:**
+- Cutting before the motion starts makes the edit visible.
+- Matching the exact frame is less important than matching the direction and energy of the motion.
+- Do not cut to a close-up that changes screen direction unless the confusion is intentional.
+
+**Performance:** Zero cost. This is a timing choice.
+
+---
+
+### Cutaway
+
+**Definition:** A cut to something outside the previous shot's frame, usually something the speaker sees, hears, references, or reacts to.
+
+**Use cases:**
+- Showing the viewer what the subject is looking at
+- Covering a jump cut in talking-head footage
+- Resetting pacing during a long explanation
+- Adding context before returning to the main action
+
+**How-to (Kdenlive):**
+
+1. Keep the original narration or dialogue as the audio spine.
+2. Place the cutaway visual over the relevant section.
+3. Trim it short enough to make the point, often 1--3 seconds.
+4. Return to the main shot when the idea resolves.
+
+**ForgeFrame tools:** Use `/ff-broll-whisperer` to find cutaway opportunities from the transcript, `clip_insert` to place the cutaway, `clip_trim` to fit it to the narration, and `audio_fade` if the cutaway has useful ambient audio that should ease in or out.
+
+**Pitfalls:**
+- A cutaway should answer a visual question. If it merely decorates the sentence, it may slow the video down.
+- Avoid using the same generic cutaway repeatedly. Repetition makes the edit feel padded.
+
+**Performance:** Zero cost unless the cutaway adds effects or scaling.
+
+---
+
+### Insert Shot
+
+**Definition:** A close-up of something already present in the scene. Unlike a cutaway, an insert does not leave the scene's space; it isolates a detail the viewer needs to inspect.
+
+**Use cases:**
+- Close-up of a tool setting, measurement, joint, button, stitch, connector, or material texture
+- Showing a label, gauge, part number, or screen detail
+- Covering a jump cut while keeping the viewer in the same physical moment
+
+**How-to (Kdenlive):**
+
+1. Place the wide or medium shot as the base shot.
+2. Cut to the close-up at the moment the detail matters.
+3. Hold long enough for the viewer to understand the detail.
+4. Cut back to the wider view before the close-up outlives its purpose.
+
+**ForgeFrame tools:** `/ff-shot-plan` and `/ff-broll-whisperer` both generate insert candidates. In the edit, use `clip_insert`, `clip_trim`, and `clip_split`; use `effect_transform` only when you need to punch in on existing footage instead of using a separately filmed close-up.
+
+**Pitfalls:**
+- Do not confuse a digital zoom with a real insert. A zoomed crop can work, but it loses resolution and often feels less intentional.
+- Hold the insert long enough for text, measurements, or small mechanical details to be readable.
+
+**Performance:** Usually zero. Cropped punch-ins add light scaling cost.
+
+---
+
+### Match Cut
+
+**Definition:** A cut that links two shots through a shared visual element: shape, movement, color, composition, object position, or action rhythm. The shots may be from different scenes, but the similarity makes the edit feel designed.
+
+**Use cases:**
+- Cutting from a circular object to another circular object
+- Matching a hand movement across two different tools or steps
+- Moving from concept to result by aligning similar frame composition
+- Creating a polished chapter transition without a decorative wipe
+
+**How-to (Kdenlive):**
+
+1. Identify the shared element between the two shots.
+2. Trim both shots so the shared element lands in nearly the same screen position.
+3. Use a hard cut first.
+4. Add a short J/L audio overlap only if the sound helps the transition.
+
+**ForgeFrame tools:** Use `clips_search` or your labeled B-roll library to find shots with similar subjects, then use `clip_trim`, `clip_move`, and `effect_transform` to align timing and framing. Match cuts are mostly editorial judgment; ForgeFrame helps you find and place the candidate clips.
+
+**Pitfalls:**
+- The match should be legible without explanation. If the viewer cannot feel the relationship, use a simpler cut.
+- Avoid overusing match cuts in tutorials; they are strongest when reserved for topic shifts, reveals, or major step transitions.
+
+**Performance:** Zero unless you add scaling or effects.
+
+---
+
 ### J-Cut and L-Cut
 
 **Definition:** J-cuts and L-cuts are the two most powerful editing techniques for smooth, invisible transitions. They work by offsetting the audio and video edit points so they do not land at the same time.
@@ -67,9 +175,18 @@ Most narrative cuts use the same-track mix approach. Compositing and PiP always 
 **How-to (Kdenlive):**
 
 1. Place clip A and clip B adjacent on the same timeline track.
-2. **Unlock the audio/video link** on the clip you want to offset: right-click the clip → `Ungroup Audio/Video`.
-3. Ripple-trim the audio portion independently. Drag the audio in or out point to offset it from the video cut.
-4. Regroup if needed, or leave ungrouped for fine-tuning.
+2. To trim the audio separately without fully ungrouping, hold `Shift` and drag the edge of the audio portion. You can also right-click the clip and choose `Ungroup Audio/Video` if you need more control.
+3. For an **L-cut**, extend clip A's audio past the video cut so the previous sound lingers under clip B.
+4. For a **J-cut**, extend clip B's audio backward so the next sound appears before clip B's video.
+5. Keep most overlaps short: 0.5--2 seconds is enough for tutorials and conversations. Longer overlaps can work for atmosphere, but they need a reason.
+6. Add a short audio fade or crossfade when the overlap introduces a new ambience, machine noise, music cue, or room tone.
+
+**Practical examples:**
+- A speaker says the first word of a line under the previous helicopter or tool sound before the cut completes. That is an L-cut softened by an audio mix.
+- Train-track warning sounds begin before the viewer sees the tracks. That is a J-cut that pulls attention toward the next shot.
+- A narrator keeps talking while the edit cuts to the process footage. That is the standard tutorial L-cut.
+
+**ForgeFrame tools:** Use `/ff-tutorial-script` to plan where narration should carry visuals, `/ff-broll-whisperer` to suggest visuals that can sit under continuing narration, `clip_insert` and `clip_trim` to place those visuals, and `audio_fade` to soften ambient audio entrances/exits. Fine J/L slip edits still belong in Kdenlive because they require independent audio/video edge adjustment by ear.
 
 > [!tip] J/L cuts are invisible edits
 > Use J and L cuts by default for talking-head content. Reserve hard cuts for moments where you want the edit to feel deliberate — high energy, comedy beats, or when visual rhythm is the point.
@@ -79,6 +196,28 @@ Most narrative cuts use the same-track mix approach. Compositing and PiP always 
 - Very long audio overlaps (more than 3--5 seconds) can disorient the viewer. Keep the offset short enough that the viewer does not lose track of which scene they are in.
 
 **Performance:** Zero. J/L cuts are editing decisions, not rendered effects.
+
+---
+
+### The No-Cut Hold
+
+**Definition:** A deliberate decision to stay on one shot longer than the edit rhythm suggests. The absence of a cut becomes the effect.
+
+**Use cases:**
+- Building tension before a reveal, failure, or result
+- Letting a precise action complete without interruption
+- Giving the viewer time to inspect an object, interface, or finished detail
+- Creating contrast after a fast-cut sequence
+
+**How-to (Kdenlive):** Do nothing first. Watch the shot in context, then trim only if the hold starts to feel accidental. If the viewer needs to study a detail, support the hold with clean audio, a subtle music bed, or an ambient sound that makes the silence feel intentional.
+
+**ForgeFrame tools:** Use `/ff-pacing-meter` to catch accidental long holds. Keep intentional holds when they serve tension, comprehension, or payoff.
+
+**Pitfalls:**
+- A hold without tension reads as dead air.
+- Do not hold a talking head just because there is no available B-roll. Use a cutaway or insert instead.
+
+**Performance:** Zero cost.
 
 ---
 
@@ -426,6 +565,12 @@ This is the section most tutorials skip.
 | You want to... | Use this |
 |---|---|
 | Connect two clips invisibly | Hard cut + J/L cut for audio |
+| Hide a jump cut in the same setup | Cutaway, insert shot, or cut on action |
+| Move from wide shot to close-up smoothly | Cut on action |
+| Show something outside the current frame | Cutaway |
+| Show a detail already inside the scene | Insert shot |
+| Make two different scenes feel connected | Match cut |
+| Build tension or let a detail land | No-cut hold |
 | Show passage of time | Short dissolve (0.5--1 sec) |
 | Wipe to reveal new content | Wipe composition (bar or iris) |
 | Layer a talking head over screen recording | PiP with Composite composition |

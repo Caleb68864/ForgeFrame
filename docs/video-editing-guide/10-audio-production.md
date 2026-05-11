@@ -172,6 +172,44 @@ The five-step chain produces excellent results, but setting it up manually for e
 
 ---
 
+## Sound Design as an Editing Tool
+
+Clean voice is the baseline. Sound design is what makes cuts feel intentional.
+
+For tutorial videos, sound design usually means small, practical choices rather than cinematic excess: room tone under a cut, tool sounds fading in before the viewer sees the tool, music tucked low under a montage, and a short fade so ambience does not pop on abruptly.
+
+### Audio leads and lingers
+
+J-cuts and L-cuts are covered in [Chapter 8](08-transitions-and-compositing.md), but the audio principle belongs here too: the ear accepts a new scene before the eye does. If the next shot has distinctive sound, let that sound arrive early. If the previous shot has narration or useful ambience, let it carry over briefly.
+
+Common tutorial uses:
+
+- Start machine, traffic, keyboard, train, or workshop ambience 0.5--2 seconds before the visual cut.
+- Continue narration over a cutaway, insert shot, or process close-up.
+- Let the last word of a sentence carry into the next shot so the visual cut does not chop the thought.
+- Add a 0.5--1 second fade-in when introducing loud ambience under speech.
+
+### Music placement
+
+Music should support pace, not compete with comprehension. Use it for openings, montages, reveals, and chapter changes. Pull it down or remove it during dense instruction.
+
+Practical levels:
+
+| Situation | Music level |
+|---|---|
+| Under speech | 20--30 dB below the voice |
+| Wordless montage | Loud enough to carry energy, but below tool sounds if those sounds teach the action |
+| Reveal/payoff | Briefly higher, then fade under narration |
+| Detailed instruction | Usually off, or extremely low ambience only |
+
+### Ambient fades
+
+Hard visual cuts can be clean while audio still needs smoothing. If a new location, machine, music bed, or warning sound enters on the cut, add a short audio fade. In Kdenlive, use the audio fade handle or the `Fade in` / `Fade out` audio effects. In ForgeFrame, use `audio_fade` for targeted clip fades and `/ff-audio-cleanup` for the full voice-processing chain.
+
+The goal is not to hide every edit. The goal is to make the audio change feel chosen.
+
+---
+
 ## Room Treatment: Free and Cheap Solutions
 
 The single biggest variable in voice recording quality is the room. A mid-range microphone in a treated room will outperform a high-end microphone in an untreated room every time.
