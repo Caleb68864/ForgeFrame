@@ -155,12 +155,15 @@ def broll_library_search(
         List of matching BRollEntry objects sorted by relevance.
     """
     try:
+        if not query or not query.strip():
+            return invalid_input("query must be a non-empty string", "Pass a non-empty search term to match against B-roll tags, topics, and descriptions.", param="query")
         from workshop_video_brain.edit_mcp.pipelines.broll_library import search_library
 
         vault = _resolve_broll_vault()
         if vault is None:
-            return _err(
-                "Vault path not configured. Set WVB_VAULT_PATH env var or run 'wvb init'."
+            return invalid_input(
+                "Vault path not configured. Set WVB_VAULT_PATH env var or run 'wvb init'.",
+                "Set the WVB_VAULT_PATH environment variable to your Obsidian vault, or run 'wvb init' to configure it.",
             )
 
         filters: dict = {}

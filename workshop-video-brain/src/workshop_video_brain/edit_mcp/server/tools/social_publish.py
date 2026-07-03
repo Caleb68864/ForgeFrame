@@ -381,8 +381,9 @@ def publish_note(workspace_path: str, video_url: str = "") -> dict:
         config = load_config()
         vault_path = getattr(config, "vault_path", None) or ""
         if not vault_path:
-            return _err(
-                "Vault path not configured. Set WVB_VAULT_PATH env var or run 'wvb init'."
+            return invalid_input(
+                "Vault path not configured. Set WVB_VAULT_PATH env var or run 'wvb init'.",
+                "Set the WVB_VAULT_PATH environment variable to your Obsidian vault, or run 'wvb init' to configure it.",
             )
 
         bundle = package_publish_bundle(ws_path)
@@ -493,8 +494,9 @@ def youtube_save_to_vault(channel_url: str, max_videos: int = 50) -> dict:
         config = load_config()
         vault_path = getattr(config, "vault_path", None) or ""
         if not vault_path:
-            return _err(
-                "Vault path not configured. Set WVB_VAULT_PATH env var or run 'wvb init'."
+            return invalid_input(
+                "Vault path not configured. Set WVB_VAULT_PATH env var or run 'wvb init'.",
+                "Set the WVB_VAULT_PATH environment variable to your Obsidian vault, or run 'wvb init' to configure it.",
             )
 
         stats = analyze_channel(channel_url, max_videos=max_videos)

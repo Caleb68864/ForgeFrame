@@ -21,7 +21,9 @@ from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
     media_unreadable,
     not_found,
     invalid_input,
+    operation_failed,
     from_exception,
+    nonfinite_guard,
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
@@ -44,9 +46,13 @@ def color_analyze(file_path: str) -> dict:
     """
     from workshop_video_brain.edit_mcp.pipelines.color_tools import analyze_color
 
+    if not file_path or not file_path.strip():
+        return invalid_input("file_path must be a non-empty string", "Pass the path to a media file to analyze.", param="file_path")
     p = Path(file_path)
     if not p.exists():
         return err(f"File not found: {file_path}", error_type="missing_file", suggestion="Check the file path is correct and the file exists.", path=str(file_path))
+    if p.is_dir():
+        return invalid_input(f"file_path is a directory, not a file: {file_path}", "Pass the path to a single media file, not a folder.", path=str(file_path))
 
     analysis = analyze_color(p)
     return _ok(analysis.model_dump())
@@ -174,6 +180,10 @@ def effect_color_wash(
     if not project_path.exists():
         return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
+    nf = nonfinite_guard(intensity=intensity, opacity=opacity)
+    if nf is not None:
+        return nf
+
     try:
         stack = color_wash_params(color=color, intensity=intensity, opacity=opacity)
     except ValueError as exc:
@@ -218,7 +228,7 @@ def effect_color_wash(
                 project, (track, clip), xml, position=first_effect_index + inserted
             )
         except (IndexError, ValueError) as exc:
-            return _err(f"partial failure after {inserted} filters: {exc}")
+            return operation_failed(f"partial failure after {inserted} filters", cause=exc, suggestion="A filter could not be inserted mid-chain. Restore a snapshot and retry with a valid track/clip.")
         inserted += 1
 
     serialize_project(project, project_path)
@@ -291,10 +301,18 @@ def effect_color_grade(
     if not project_path.exists():
         return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
+    nf = nonfinite_guard(
+        temperature=temperature, exposure=exposure, black_level=black_level,
+        contrast=contrast, brightness=brightness, saturation=saturation,
+        lift=lift, gamma=gamma, gain=gain, tint_amount=tint_amount,
+    )
+    if nf is not None:
+        return nf
+
     if lut_path:
         lut_p = Path(lut_path)
         if not lut_p.is_absolute() or not lut_p.exists():
-            return _err(f"lut_path not found (absolute path required): {lut_path}")
+            return missing_file(lut_path, "lut_path (absolute path required)")
 
     try:
         chain = build_color_grade_chain(
@@ -471,7 +489,7 @@ def transition_paper_cutout(
                 project, (track, clip), xml, position=first_effect_index + inserted
             )
         except (IndexError, ValueError) as exc:
-            return _err(f"partial failure after {inserted} filters: {exc}")
+            return operation_failed(f"partial failure after {inserted} filters", cause=exc, suggestion="A filter could not be inserted mid-chain. Restore a snapshot and retry with a valid track/clip.")
         inserted += 1
 
     serialize_project(project, project_path)
@@ -668,7 +686,7 @@ def effect_scifi_greenscreen(
                 position=first_effect_index + inserted,
             )
         except (IndexError, ValueError) as exc:
-            return _err(f"partial failure after {inserted} filters: {exc}")
+            return operation_failed(f"partial failure after {inserted} filters", cause=exc, suggestion="A filter could not be inserted mid-chain. Restore a snapshot and retry with a valid track/clip.")
         inserted += 1
 
     serialize_project(project, project_path)

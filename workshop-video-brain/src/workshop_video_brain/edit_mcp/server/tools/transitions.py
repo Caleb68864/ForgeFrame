@@ -21,6 +21,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
     not_found,
     invalid_input,
     from_exception,
+    nonfinite_guard,
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
@@ -158,20 +159,27 @@ def transitions_apply_at(
             return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
             return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
+        nf = nonfinite_guard(timestamp_seconds=timestamp_seconds)
+        if nf is not None:
+            return nf
         if timestamp_seconds < 0:
-            return _err("timestamp_seconds must be >= 0")
+            return invalid_input("timestamp_seconds must be >= 0", "Pass a non-negative time in seconds where the transition should go.", param="timestamp_seconds", given=timestamp_seconds)
 
         _KNOWN_TRANSITION_TYPES = {"crossfade", "dissolve", "fade_in", "fade_out"}
         if transition_type not in _KNOWN_TRANSITION_TYPES:
-            return _err(
+            return invalid_input(
                 f"Unknown transition_type '{transition_type}'. "
-                f"Must be one of: {', '.join(sorted(_KNOWN_TRANSITION_TYPES))}"
+                f"Must be one of: {', '.join(sorted(_KNOWN_TRANSITION_TYPES))}",
+                "Pass one of: crossfade, dissolve, fade_in, fade_out.",
+                param="transition_type", given=transition_type,
             )
         _KNOWN_PRESETS = {"short", "medium", "long"}
         if preset not in _KNOWN_PRESETS:
-            return _err(
+            return invalid_input(
                 f"Unknown preset '{preset}'. "
-                f"Must be one of: {', '.join(sorted(_KNOWN_PRESETS))}"
+                f"Must be one of: {', '.join(sorted(_KNOWN_PRESETS))}",
+                "Pass preset='short', 'medium', or 'long'.",
+                param="preset", given=preset,
             )
 
         from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
@@ -222,7 +230,12 @@ def transitions_apply_at(
                 current_frame += duration
 
         if best_distance is None or best_distance > tolerance_frames:
-            return _err(f"No cut point found near {timestamp_seconds}s")
+            return err(
+                f"No cut point found near {timestamp_seconds}s",
+                error_type="not_found",
+                suggestion="Pick a timestamp within 2s of a clip boundary; use project_summary to see clip cut points.",
+                given=f"{timestamp_seconds}s",
+            )
 
         t_preset = TransitionPreset(preset)
         intents = [
@@ -285,19 +298,23 @@ def transitions_apply_between(
         if not ws_path.is_dir():
             return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         if clip_index < 0:
-            return _err("clip_index must be >= 0")
+            return invalid_index("clip_index", clip_index, "0 or greater")
 
         _KNOWN_TRANSITION_TYPES = {"crossfade", "dissolve", "fade_in", "fade_out"}
         if transition_type not in _KNOWN_TRANSITION_TYPES:
-            return _err(
+            return invalid_input(
                 f"Unknown transition_type '{transition_type}'. "
-                f"Must be one of: {', '.join(sorted(_KNOWN_TRANSITION_TYPES))}"
+                f"Must be one of: {', '.join(sorted(_KNOWN_TRANSITION_TYPES))}",
+                "Pass one of: crossfade, dissolve, fade_in, fade_out.",
+                param="transition_type", given=transition_type,
             )
         _KNOWN_PRESETS = {"short", "medium", "long"}
         if preset not in _KNOWN_PRESETS:
-            return _err(
+            return invalid_input(
                 f"Unknown preset '{preset}'. "
-                f"Must be one of: {', '.join(sorted(_KNOWN_PRESETS))}"
+                f"Must be one of: {', '.join(sorted(_KNOWN_PRESETS))}",
+                "Pass preset='short', 'medium', or 'long'.",
+                param="preset", given=preset,
             )
 
         from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
@@ -324,17 +341,14 @@ def transitions_apply_between(
                 break
 
         if video_playlist is None:
-            return _err("No video playlist found in project")
+            return invalid_input("No video playlist found in project", "This project has no video track. Add a working copy with clips before applying transitions.")
 
         entries = [e for e in video_playlist.entries if e.producer_id]
         if len(entries) < 2:
-            return _err("Video playlist has fewer than 2 clips; no transition possible")
+            return invalid_input("Video playlist has fewer than 2 clips; no transition possible", "A transition needs at least two adjacent clips. Add more clips to the timeline first.", clip_count=len(entries))
 
         if clip_index >= len(entries) - 1:
-            return _err(
-                f"clip_index {clip_index} is out of range. "
-                f"Valid range is 0 to {len(entries) - 2} (playlist has {len(entries)} clips)."
-            )
+            return invalid_index("clip_index", clip_index, f"0-{len(entries) - 2}")
 
         left = entries[clip_index]
         right = entries[clip_index + 1]

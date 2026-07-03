@@ -21,6 +21,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
     not_found,
     invalid_input,
     from_exception,
+    nonfinite_guard,
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
@@ -60,10 +61,12 @@ def clip_insert(
         if not ws_path.is_dir():
             return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         if not media_path or not media_path.strip():
-            return _err("media_path must be a non-empty string")
+            return invalid_input("media_path must be a non-empty string", "Pass the path to a media file (video/audio/image) to insert.", param="media_path")
         media_file = Path(media_path)
         if not media_file.exists():
-            return _err(f"media_path does not exist: {media_path}")
+            return missing_file(media_path, "media_path")
+        if media_file.is_dir():
+            return invalid_input(f"media_path is a directory, not a file: {media_path}", "Pass the path to a single media file, not a folder.", path=media_path)
 
         from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
@@ -249,7 +252,7 @@ def clips_search(workspace_path: str, query: str) -> dict:
         if not workspace_path or not workspace_path.strip():
             return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         if not query or not query.strip():
-            return _err("query must be a non-empty string")
+            return invalid_input("query must be a non-empty string", "Pass a non-empty search term to match against clip content.", param="query")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
             return missing_file(workspace_path, "Workspace path")
@@ -341,9 +344,7 @@ def clip_move(workspace_path: str, from_index: int, to_index: int, track: int = 
         playlist = _resolve_playlist(project, track)
         real = _validate_clip_index(playlist, from_index)
         if to_index < 0 or to_index >= len(real):
-            return _err(
-                f"to_index {to_index} out of range (playlist has {len(real)} clip(s))"
-            )
+            return invalid_index("to_index", to_index, f"0-{len(real) - 1}")
 
         from workshop_video_brain.core.models.timeline import MoveClip
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
@@ -527,8 +528,11 @@ def clip_speed(
     try:
         if not workspace_path or not workspace_path.strip():
             return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
+        nf = nonfinite_guard(speed=speed)
+        if nf is not None:
+            return nf
         if speed <= 0:
-            return _err(f"speed must be greater than 0, got: {speed}")
+            return invalid_input(f"speed must be greater than 0, got: {speed}", "Pass a positive multiplier: 0.5 = half speed, 2.0 = double speed.", param="speed", given=speed)
         ws_path, project, latest = _load_latest_project(workspace_path)
         playlist = _resolve_playlist(project, track)
         _validate_clip_index(playlist, clip_index)
@@ -578,7 +582,7 @@ def audio_fade(
         if not workspace_path or not workspace_path.strip():
             return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         if fade_type not in ("in", "out"):
-            return _err(f"fade_type must be 'in' or 'out', got: {fade_type!r}")
+            return invalid_input(f"fade_type must be 'in' or 'out', got: {fade_type!r}", "Pass fade_type='in' or fade_type='out'.", param="fade_type", given=fade_type)
         ws_path, project, latest = _load_latest_project(workspace_path)
         playlist = _resolve_playlist(project, track)
         _validate_clip_index(playlist, clip_index)
@@ -630,7 +634,7 @@ def track_add(workspace_path: str, track_type: str = "video", name: str = "") ->
         if not workspace_path or not workspace_path.strip():
             return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         if track_type not in ("video", "audio"):
-            return _err(f"track_type must be 'video' or 'audio', got: {track_type!r}")
+            return invalid_input(f"track_type must be 'video' or 'audio', got: {track_type!r}", "Pass track_type='video' or track_type='audio'.", param="track_type", given=track_type)
         ws_path, project, latest = _load_latest_project(workspace_path)
 
         from workshop_video_brain.core.models.timeline import CreateTrack
@@ -669,10 +673,7 @@ def track_mute(workspace_path: str, track_index: int, muted: bool = True) -> dic
         ws_path, project, latest = _load_latest_project(workspace_path)
 
         if track_index < 0 or track_index >= len(project.tracks):
-            return _err(
-                f"track_index {track_index} out of range "
-                f"(project has {len(project.tracks)} track(s))"
-            )
+            return invalid_index("track_index", track_index, f"0-{len(project.tracks) - 1}")
 
         track = project.tracks[track_index]
 
@@ -715,10 +716,7 @@ def track_visibility(workspace_path: str, track_index: int, visible: bool = True
         ws_path, project, latest = _load_latest_project(workspace_path)
 
         if track_index < 0 or track_index >= len(project.tracks):
-            return _err(
-                f"track_index {track_index} out of range "
-                f"(project has {len(project.tracks)} track(s))"
-            )
+            return invalid_index("track_index", track_index, f"0-{len(project.tracks) - 1}")
 
         track = project.tracks[track_index]
 
@@ -764,8 +762,11 @@ def gap_insert(
     try:
         if not workspace_path or not workspace_path.strip():
             return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
+        nf = nonfinite_guard(duration_seconds=duration_seconds)
+        if nf is not None:
+            return nf
         if duration_seconds <= 0:
-            return _err(f"duration_seconds must be positive, got: {duration_seconds}")
+            return invalid_input(f"duration_seconds must be positive, got: {duration_seconds}", "Pass a positive gap duration in seconds (e.g. 1.5).", param="duration_seconds", given=duration_seconds)
         ws_path, project, latest = _load_latest_project(workspace_path)
         playlist = _resolve_playlist(project, track)
 

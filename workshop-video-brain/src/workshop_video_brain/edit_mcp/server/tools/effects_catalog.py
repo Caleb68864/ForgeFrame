@@ -21,7 +21,9 @@ from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
     media_unreadable,
     not_found,
     invalid_input,
+    operation_failed,
     from_exception,
+    nonneg_index,
 )
 from workshop_video_brain.edit_mcp.server import tools as _tools_pkg
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
@@ -65,7 +67,14 @@ def effect_add(
         return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     if not effect_name or not effect_name.strip():
-        return _err("effect_name must be a non-empty string")
+        return invalid_input("effect_name must be a non-empty string", "Pass an MLT service id, e.g. 'avfilter.gblur' or 'lift_gamma_gain'.", param="effect_name")
+
+    # Reject negative indexes up front: apply_effect indexes Python lists, so a
+    # negative track/clip would silently wrap to the wrong element (false
+    # success) rather than erroring.
+    idx_err = nonneg_index("index", track=track, clip=clip)
+    if idx_err is not None:
+        return idx_err
 
     # Parse params JSON
     param_dict: dict[str, str] = {}
@@ -74,16 +83,24 @@ def effect_add(
             param_dict = _json.loads(params)
         except _json.JSONDecodeError as exc:
             return err(f"Invalid params JSON: {exc}", error_type="bad_json_param", suggestion='Provide a valid JSON object, e.g. {"opacity": 0.5}.', cause=str(exc))
+    if not isinstance(param_dict, dict):
+        return invalid_input("params must decode to a JSON object", 'Provide a JSON object of name->value pairs, e.g. {"opacity": 0.5}.', param="params")
 
-    # Snapshot before modify
-    create_snapshot(ws_path, project_path, description=f"before_effect_{effect_name}")
+    # Parse + apply in memory BEFORE snapshotting: a corrupt project or a bad
+    # track/clip index then fails cleanly without leaving a leaked snapshot of
+    # the (unchanged) file behind. The snapshot is taken only once we are about
+    # to actually write.
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001
+        return from_exception(exc)
 
-    project = parse_project(project_path)
     try:
         patched = apply_effect(project, track, clip, effect_name, param_dict)
     except (IndexError, ValueError) as exc:
-        return _err(f"Failed to apply effect: {exc}")
+        return from_exception(exc)
 
+    create_snapshot(ws_path, project_path, description=f"before_effect_{effect_name}")
     serialize_project(patched, project_path)
     return _ok({
         "project_file": project_file,
@@ -256,9 +273,23 @@ def effects_paste(
     try:
         stack_dict = json.loads(stack)
     except json.JSONDecodeError as exc:
-        return _err(
-            f"Invalid stack JSON (expected output of effects_copy): {exc}"
+        return err(
+            f"Invalid stack JSON (expected output of effects_copy): {exc}",
+            error_type="bad_json_param",
+            suggestion="Pass the JSON from effects_copy data.stack unchanged.",
+            param="stack", cause=str(exc),
         )
+
+    # Parse + apply in memory before snapshotting so a corrupt project or bad
+    # index fails cleanly with no leaked snapshot.
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001
+        return from_exception(exc)
+    try:
+        count = stack_ops.apply_paste(project, (track, clip), stack_dict, mode)
+    except (ValueError, IndexError) as exc:
+        return from_exception(exc)
 
     try:
         record = create_snapshot(
@@ -266,13 +297,7 @@ def effects_paste(
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:
-        return _err(f"Snapshot failed: {exc}")
-
-    project = parse_project(project_path)
-    try:
-        count = stack_ops.apply_paste(project, (track, clip), stack_dict, mode)
-    except (ValueError, IndexError) as exc:
-        return from_exception(exc)
+        return operation_failed("Snapshot failed", cause=exc, suggestion="Check the workspace projects/snapshots directory is writable.")
 
     serialize_project(project, project_path)
     return _ok({
@@ -315,26 +340,40 @@ def effect_reorder(
     if not project_path.exists():
         return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
+    # Parse + validate indexes BEFORE snapshotting so a bad index never leaves a
+    # leaked snapshot behind.
+    try:
+        project = parse_project(project_path)
+        available = patcher.list_effects(project, (track, clip))
+    except (ValueError, IndexError, KeyError) as exc:
+        return from_exception(exc)
+    except Exception as exc:  # noqa: BLE001
+        return from_exception(exc)
+    stack_len = len(available)
+    for label, idx in (("from_index", from_index), ("to_index", to_index)):
+        if idx < 0 or idx >= stack_len:
+            # Preserve the legacy "Current stack" wording (tests substring-match)
+            # and add the structured keys.
+            return err(
+                f"{label} {idx} out of range (clip has {stack_len} filters). "
+                f"Current stack: {stack_len} filters: {available}",
+                error_type="invalid_index",
+                suggestion="Pass from_index/to_index within the filter stack; use effect_stack_list to see indices.",
+                given=idx,
+                valid_range=f"0-{stack_len - 1}" if stack_len else "none (clip has no filters)",
+            )
+
     try:
         record = create_snapshot(
             ws_path, project_path, description="before_effect_reorder"
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:
-        return _err(f"Snapshot failed: {exc}")
+        return operation_failed("Snapshot failed", cause=exc, suggestion="Check the workspace projects/snapshots directory is writable.")
 
-    project = parse_project(project_path)
     try:
         stack_ops.reorder_stack(project, (track, clip), from_index, to_index)
-    except IndexError as exc:
-        try:
-            available = patcher.list_effects(project, (track, clip))
-        except Exception:
-            available = []
-        return _err(
-            f"{exc}. Current stack: {len(available)} filters: {available}"
-        )
-    except ValueError as exc:
+    except (IndexError, ValueError) as exc:
         return from_exception(exc)
 
     serialize_project(project, project_path)

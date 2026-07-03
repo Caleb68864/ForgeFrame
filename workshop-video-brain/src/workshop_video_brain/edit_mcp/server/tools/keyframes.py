@@ -20,6 +20,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
     media_unreadable,
     not_found,
     invalid_input,
+    operation_failed,
     from_exception,
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
@@ -112,24 +113,47 @@ def _keyframe_tool_impl(
         return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     if mode not in ("replace", "merge"):
-        return _err(f"mode must be 'replace' or 'merge'; got {mode!r}")
+        return invalid_input(f"mode must be 'replace' or 'merge'; got {mode!r}", "Pass mode='replace' or mode='merge'.", param="mode", given=mode)
 
     try:
         items = _keyframes_from_json(keyframes)
     except json.JSONDecodeError as exc:
-        return _err(f"Invalid keyframes JSON: {exc}")
+        return err(f"Invalid keyframes JSON: {exc}", error_type="bad_json_param", suggestion='Provide a JSON array of keyframe objects, e.g. [{"frame": 0, "value": 1.0}].', param="keyframes", cause=str(exc))
     except ValueError as exc:
         return from_exception(exc)
 
-    project = parse_project(project_path)
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/truncated/binary project
+        return from_exception(exc)
     fps = project.profile.fps
+
+    clip_ref = (track, clip)
+
+    # Validate the effect_index against the clip's real stack BEFORE taking a
+    # snapshot, so a bad track/clip/effect_index never leaves a leaked snapshot.
+    try:
+        _stack = patcher.list_effects(project, clip_ref)
+    except (IndexError, ValueError, LookupError, KeyError) as exc:
+        return from_exception(exc)
+    if effect_index < 0 or effect_index >= len(_stack):
+        # Preserve the legacy message wording (tests substring-match the
+        # available-effects list) and only add the structured keys.
+        return err(
+            f"Invalid effect_index {effect_index}: effect_index {effect_index} "
+            f"out of range (clip has {len(_stack)} filters). "
+            f"Available effects: {_stack}",
+            error_type="invalid_index",
+            suggestion="Use effect_find to resolve the correct effect_index for this clip.",
+            given=effect_index,
+            valid_range=f"0-{len(_stack) - 1}" if _stack else "none (clip has no filters)",
+        )
 
     try:
         new_kfs = _build_keyframe_objects(items, fps)
     except (ValueError, TypeError) as exc:
         return from_exception(exc)
 
-    clip_ref = (track, clip)
     ease_family = workspace.keyframe_defaults.ease_family
 
     try:
@@ -150,37 +174,29 @@ def _keyframe_tool_impl(
             combined = new_kfs
 
         out_str = build_keyframe_string(kind, combined, fps, ease_family)
-    except IndexError as exc:
-        try:
-            available = patcher.list_effects(project, clip_ref)
-        except Exception:
-            available = []
-        return _err(
-            f"Invalid effect_index {effect_index}: {exc}. "
-            f"Available effects: {available}"
+    except IndexError:
+        return invalid_index(
+            "effect_index", effect_index,
+            f"0-{len(_stack) - 1}" if _stack else "none (clip has no filters)",
         )
     except (ValueError, LookupError) as exc:
         return from_exception(exc)
 
-    # Snapshot before write
+    # Snapshot before write (effect_index already validated above).
     try:
         record = create_snapshot(
             ws_path, project_path, description=f"before_keyframe_{property}"
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:
-        return _err(f"Snapshot failed: {exc}")
+        return operation_failed("Snapshot failed", cause=exc, suggestion="Check the workspace projects/snapshots directory is writable.")
 
     try:
         patcher.set_effect_property(project, clip_ref, effect_index, property, out_str)
-    except IndexError as exc:
-        try:
-            available = patcher.list_effects(project, clip_ref)
-        except Exception:
-            available = []
-        return _err(
-            f"Invalid effect_index {effect_index}: {exc}. "
-            f"Available effects: {available}"
+    except IndexError:
+        return invalid_index(
+            "effect_index", effect_index,
+            f"0-{len(_stack) - 1}" if _stack else "none (clip has no filters)",
         )
     except (ValueError, LookupError) as exc:
         return from_exception(exc)

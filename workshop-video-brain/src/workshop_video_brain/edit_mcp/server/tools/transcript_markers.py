@@ -110,7 +110,7 @@ def transcript_export(workspace_path: str, format: str = "srt") -> dict:
             txt_files = list(transcripts_dir.glob("*_transcript.txt"))
             exported = [str(f) for f in txt_files]
         else:
-            return _err(f"Unsupported export format: {format}")
+            return invalid_input(f"Unsupported export format: {format}", "Pass format='srt', 'json', or 'txt'.", param="format", given=format)
         return _ok({"exported": exported, "count": len(exported), "format": format})
     except Exception as exc:
         return from_exception(exc)
@@ -309,7 +309,7 @@ def subtitles_export(workspace_path: str, format: str = "srt") -> dict:
         if format == "srt":
             files = [str(f) for f in sorted(reports_dir.glob("*.srt"))]
         else:
-            return _err(f"Unsupported subtitle export format: {format}")
+            return invalid_input(f"Unsupported subtitle export format: {format}", "Only format='srt' is supported for subtitle export.", param="format", given=format)
         return _ok({"files": files, "count": len(files), "format": format})
     except Exception as exc:
         return from_exception(exc)

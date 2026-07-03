@@ -18,6 +18,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
     media_unreadable,
     not_found,
     invalid_input,
+    operation_failed,
     from_exception,
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
@@ -309,9 +310,9 @@ def effect_fade(
     from workshop_video_brain.workspace import create_snapshot
 
     if fade_in_frames == 0 and fade_out_frames == 0:
-        return _err("at least one fade must be non-zero")
+        return invalid_input("at least one fade must be non-zero", "Pass fade_in_frames or fade_out_frames greater than 0.", fade_in_frames=fade_in_frames, fade_out_frames=fade_out_frames)
     if fade_in_frames < 0 or fade_out_frames < 0:
-        return _err("fade frames must be >= 0")
+        return invalid_input("fade frames must be >= 0", "Pass non-negative frame counts for fade_in_frames and fade_out_frames.", fade_in_frames=fade_in_frames, fade_out_frames=fade_out_frames)
 
     # Validate easing early (matches resolve_easing errors)
     try:
@@ -328,16 +329,12 @@ def effect_fade(
     if not project_path.exists():
         return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
-    # Snapshot first (single)
+    # Parse + validate the target clip BEFORE taking a snapshot so a bad
+    # index / corrupt project never leaves a leaked snapshot behind.
     try:
-        record = create_snapshot(
-            ws_path, project_path, description="before_effect_fade"
-        )
-        snapshot_id = record.snapshot_id
+        project = parse_project(project_path)
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
-
-    project = parse_project(project_path)
+        return from_exception(exc)
     fps = project.profile.fps or 25.0
     width = project.profile.width
     height = project.profile.height
@@ -387,6 +384,16 @@ def effect_fade(
         patcher.insert_effect_xml(project, (track, clip), xml, position=position)
     except (IndexError, ValueError) as exc:
         return from_exception(exc)
+
+    # Snapshot only after every validation + the in-memory edit succeeded, so a
+    # failed op (e.g. huge fade > clip length) never leaves a leaked snapshot.
+    try:
+        record = create_snapshot(
+            ws_path, project_path, description="before_effect_fade"
+        )
+        snapshot_id = record.snapshot_id
+    except Exception as exc:  # noqa: BLE001
+        return operation_failed("Snapshot failed", cause=exc, suggestion="Check the workspace projects/snapshots directory is writable.")
 
     serialize_project(project, project_path)
     return _ok({
@@ -583,9 +590,12 @@ def _reorder_impl(
         return from_exception(exc)
 
     if effect_index < 0 or effect_index >= stack_len:
-        return _err(
-            f"effect_index {effect_index} out of range "
-            f"(stack has {stack_len} filters)"
+        return err(
+            f"effect_index {effect_index} out of range (stack has {stack_len} filters)",
+            error_type="invalid_index",
+            suggestion="Pass an effect_index within the clip's filter stack; use effect_stack_list to see indices.",
+            given=effect_index,
+            valid_range=f"0-{stack_len - 1}" if stack_len else "none (clip has no filters)",
         )
 
     new_index = compute_to(effect_index, stack_len)

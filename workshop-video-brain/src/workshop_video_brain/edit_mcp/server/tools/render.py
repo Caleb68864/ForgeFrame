@@ -288,9 +288,13 @@ def qc_check(file_path: str, checks: str = "") -> dict:
     """
     from workshop_video_brain.edit_mcp.pipelines.qc_check import run_qc
 
+    if not file_path or not file_path.strip():
+        return invalid_input("file_path must be a non-empty string", "Pass the path to a rendered media file to check.", param="file_path")
     p = Path(file_path)
     if not p.exists():
         return err(f"File not found: {file_path}", error_type="missing_file", suggestion="Check the file path is correct and the file exists.", path=str(file_path))
+    if p.is_dir():
+        return invalid_input(f"file_path is a directory, not a file: {file_path}", "Pass the path to a single rendered media file, not a folder.", path=str(file_path))
 
     check_list: list[str] | None = None
     if checks.strip():

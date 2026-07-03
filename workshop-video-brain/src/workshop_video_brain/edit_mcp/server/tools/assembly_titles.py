@@ -22,6 +22,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
     not_found,
     invalid_input,
     from_exception,
+    nonfinite_guard,
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
@@ -63,9 +64,12 @@ def replay_generate(workspace_path: str, target_duration: float = 60.0) -> dict:
         try:
             target_duration = float(target_duration)
         except (TypeError, ValueError):
-            return _err(f"target_duration must be a number, got: {target_duration!r}")
+            return invalid_input(f"target_duration must be a number, got: {target_duration!r}", "Pass a positive number of seconds for target_duration.", param="target_duration")
+        nf = nonfinite_guard(target_duration=target_duration)
+        if nf is not None:
+            return nf
         if target_duration <= 0:
-            return _err(f"target_duration must be positive, got: {target_duration}")
+            return invalid_input(f"target_duration must be positive, got: {target_duration}", "Pass a positive target duration in seconds (e.g. 60).", param="target_duration", given=target_duration)
         from workshop_video_brain.edit_mcp.pipelines.replay_generator import generate_replay
 
         output_path = generate_replay(

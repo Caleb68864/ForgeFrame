@@ -20,6 +20,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
     media_unreadable,
     not_found,
     invalid_input,
+    operation_failed,
     from_exception,
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
@@ -41,7 +42,10 @@ def _find_audio_file(workspace_path: Path, file_path: str) -> Path | None:
         p = Path(file_path)
         if not p.is_absolute():
             p = workspace_path / file_path
-        return p
+        # Only accept a real file: a missing path or a directory must not be
+        # handed to ffmpeg (which fails with a noisy banner). Returning None
+        # routes to the loud "No audio file found" error instead.
+        return p if p.is_file() else None
 
     raw_dir = workspace_path / "media" / "raw"
     if not raw_dir.exists():
@@ -80,7 +84,7 @@ def audio_normalize(
         ws_path = _validate_workspace_path(workspace_path)
         source = _find_audio_file(ws_path, file_path)
         if source is None:
-            return _err("No audio file found. Provide file_path or add files to media/raw/.")
+            return invalid_input("No audio file found. Provide file_path or add files to media/raw/.", "Pass file_path to an existing audio/video file, or add a media file to media/raw/.", param="file_path")
         if not source.exists():
             return err(f"File not found: {source}", error_type="missing_file", suggestion="Check the media path is correct and the file exists.", path=str(source))
 
@@ -90,7 +94,7 @@ def audio_normalize(
         from workshop_video_brain.edit_mcp.adapters.ffmpeg.audio import normalize_audio
         result = normalize_audio(source, output, target_lufs=target_lufs)
         if not result.success:
-            return _err(f"FFmpeg normalize failed: {result.stderr[-300:]}")
+            return operation_failed("FFmpeg normalize failed", cause=result.stderr[-300:], suggestion="Confirm the input is a valid audio/video file and ffmpeg is installed.")
         return _ok({
             "input": str(source),
             "output": str(output),
@@ -114,7 +118,7 @@ def audio_compress(workspace_path: str, file_path: str = "") -> dict:
         ws_path = _validate_workspace_path(workspace_path)
         source = _find_audio_file(ws_path, file_path)
         if source is None:
-            return _err("No audio file found. Provide file_path or add files to media/raw/.")
+            return invalid_input("No audio file found. Provide file_path or add files to media/raw/.", "Pass file_path to an existing audio/video file, or add a media file to media/raw/.", param="file_path")
         if not source.exists():
             return err(f"File not found: {source}", error_type="missing_file", suggestion="Check the media path is correct and the file exists.", path=str(source))
 
@@ -124,7 +128,7 @@ def audio_compress(workspace_path: str, file_path: str = "") -> dict:
         from workshop_video_brain.edit_mcp.adapters.ffmpeg.audio import compress_audio
         result = compress_audio(source, output)
         if not result.success:
-            return _err(f"FFmpeg compress failed: {result.stderr[-300:]}")
+            return operation_failed("FFmpeg compress failed", cause=result.stderr[-300:], suggestion="Confirm the input is a valid audio/video file and ffmpeg is installed.")
         return _ok({
             "input": str(source),
             "output": str(output),
@@ -152,7 +156,7 @@ def audio_denoise(
         ws_path = _validate_workspace_path(workspace_path)
         source = _find_audio_file(ws_path, file_path)
         if source is None:
-            return _err("No audio file found. Provide file_path or add files to media/raw/.")
+            return invalid_input("No audio file found. Provide file_path or add files to media/raw/.", "Pass file_path to an existing audio/video file, or add a media file to media/raw/.", param="file_path")
         if not source.exists():
             return err(f"File not found: {source}", error_type="missing_file", suggestion="Check the media path is correct and the file exists.", path=str(source))
 
@@ -162,7 +166,7 @@ def audio_denoise(
         from workshop_video_brain.edit_mcp.adapters.ffmpeg.audio import remove_background_noise
         result = remove_background_noise(source, output, noise_floor_db=strength_db)
         if not result.success:
-            return _err(f"FFmpeg denoise failed: {result.stderr[-300:]}")
+            return operation_failed("FFmpeg denoise failed", cause=result.stderr[-300:], suggestion="Confirm the input is a valid audio/video file and ffmpeg is installed.")
         return _ok({
             "input": str(source),
             "output": str(output),
@@ -193,7 +197,7 @@ def audio_enhance(
         ws_path = _validate_workspace_path(workspace_path)
         source = _find_audio_file(ws_path, file_path)
         if source is None:
-            return _err("No audio file found. Provide file_path or add files to media/raw/.")
+            return invalid_input("No audio file found. Provide file_path or add files to media/raw/.", "Pass file_path to an existing audio/video file, or add a media file to media/raw/.", param="file_path")
         if not source.exists():
             return err(f"File not found: {source}", error_type="missing_file", suggestion="Check the media path is correct and the file exists.", path=str(source))
 
@@ -266,7 +270,7 @@ def audio_analyze(workspace_path: str, file_path: str = "") -> dict:
         ws_path = _validate_workspace_path(workspace_path)
         source = _find_audio_file(ws_path, file_path)
         if source is None:
-            return _err("No audio file found. Provide file_path or add files to media/raw/.")
+            return invalid_input("No audio file found. Provide file_path or add files to media/raw/.", "Pass file_path to an existing audio/video file, or add a media file to media/raw/.", param="file_path")
         if not source.exists():
             return err(f"File not found: {source}", error_type="missing_file", suggestion="Check the media path is correct and the file exists.", path=str(source))
 

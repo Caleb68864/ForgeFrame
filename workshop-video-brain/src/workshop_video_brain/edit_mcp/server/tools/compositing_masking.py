@@ -21,6 +21,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
     not_found,
     invalid_input,
     from_exception,
+    nonfinite_guard,
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
@@ -28,6 +29,24 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _require_workspace,
     _VALID_COLOR_FORMATS_MSG,
 )
+
+
+def _validate_frame_range(start_frame: int, end_frame: int) -> dict | None:
+    """Reject negative frames or a range that does not advance. Returns an
+    error dict on failure, else None."""
+    if start_frame < 0 or end_frame < 0:
+        return invalid_input(
+            f"frame range must be non-negative (got start={start_frame}, end={end_frame})",
+            "Pass non-negative start_frame and end_frame in project frames.",
+            start_frame=start_frame, end_frame=end_frame,
+        )
+    if end_frame <= start_frame:
+        return invalid_input(
+            f"end_frame ({end_frame}) must be greater than start_frame ({start_frame})",
+            "Pass end_frame greater than start_frame so the composite has a duration.",
+            start_frame=start_frame, end_frame=end_frame,
+        )
+    return None
 
 
 
@@ -91,7 +110,11 @@ def composite_pip(
     try:
         pip_preset = PipPreset(preset)
     except ValueError:
-        return _err(f"Invalid preset '{preset}'; valid values: {[p.value for p in PipPreset]}")
+        return invalid_input(f"Invalid preset '{preset}'; valid values: {[p.value for p in PipPreset]}", "Pass one of the listed PiP presets, e.g. 'bottom_right'.", param="preset", given=preset)
+
+    nf = nonfinite_guard(scale=scale, opacity=opacity, rotation=rotation)
+    if nf is not None:
+        return nf
 
     use_transform = (
         opacity != 1.0
@@ -101,9 +124,19 @@ def composite_pip(
         or bool(rect_keyframes.strip())
     )
 
-    create_snapshot(ws_path, proj_path, description=f"before_pip_{preset}")
+    # Parse + validate track indexes + build the edit in memory BEFORE
+    # snapshotting: an out-of-range track then fails cleanly with no leaked
+    # snapshot and no silently-wrong composite referencing a nonexistent track.
+    try:
+        project = parse_project(proj_path)
+    except Exception as exc:  # noqa: BLE001
+        return from_exception(exc)
 
-    project = parse_project(proj_path)
+    n_tracks = len(project.tracks)
+    for label, tval in (("overlay_track", overlay_track), ("base_track", base_track)):
+        if tval < 0 or tval >= n_tracks:
+            return invalid_index(label, tval, f"0-{n_tracks - 1}")
+
     try:
         layout = get_pip_layout(pip_preset, project.profile.width, project.profile.height, scale)
         if use_transform:
@@ -124,6 +157,7 @@ def composite_pip(
     except (ValueError, KeyError, IndexError) as exc:
         return from_exception(exc)
 
+    create_snapshot(ws_path, proj_path, description=f"before_pip_{preset}")
     serialize_project(updated, proj_path)
     result = {
         "preset": preset,
@@ -167,14 +201,20 @@ def composite_wipe(
     if not proj_path.exists():
         return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
-    create_snapshot(ws_path, proj_path, description=f"before_wipe_{wipe_type}")
+    fe = _validate_frame_range(start_frame, end_frame)
+    if fe is not None:
+        return fe
 
-    project = parse_project(proj_path)
+    try:
+        project = parse_project(proj_path)
+    except Exception as exc:  # noqa: BLE001
+        return from_exception(exc)
     try:
         updated = apply_wipe(project, track_a, track_b, start_frame, end_frame, wipe_type)
     except ValueError as exc:
         return from_exception(exc)
 
+    create_snapshot(ws_path, proj_path, description=f"before_wipe_{wipe_type}")
     serialize_project(updated, proj_path)
     return _ok({"wipe_type": wipe_type, "frames": [start_frame, end_frame]})
 
@@ -210,15 +250,20 @@ def composite_set(
         return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     if blend_mode not in BLEND_MODES:
-        return _err(
-            f"Unknown blend_mode '{blend_mode}'; valid modes: {sorted(BLEND_MODES)}"
+        return invalid_input(
+            f"Unknown blend_mode '{blend_mode}'; valid modes: {sorted(BLEND_MODES)}",
+            "Pass one of the listed blend modes, e.g. 'cairoblend'.",
+            param="blend_mode", given=blend_mode,
         )
 
-    record = create_snapshot(
-        ws_path, proj_path, description=f"before_composite_set_{blend_mode}"
-    )
+    fe = _validate_frame_range(start_frame, end_frame)
+    if fe is not None:
+        return fe
 
-    project = parse_project(proj_path)
+    try:
+        project = parse_project(proj_path)
+    except Exception as exc:  # noqa: BLE001
+        return from_exception(exc)
     try:
         geom = geometry if geometry else None
         updated = apply_composite(
@@ -233,6 +278,9 @@ def composite_set(
     except ValueError as exc:
         return from_exception(exc)
 
+    record = create_snapshot(
+        ws_path, proj_path, description=f"before_composite_set_{blend_mode}"
+    )
     serialize_project(updated, proj_path)
     return _ok({
         "composition_added": True,
@@ -257,11 +305,17 @@ _VALID_MASK_SHAPES = ("rect", "ellipse", "polygon")
 def _masking_prelude(workspace_path: str, project_file: str, description: str):
     """Shared setup for masking tools.
 
-    Returns ``(ws_path, project_path, project, snapshot_id)`` on success, or
-    a ``_err`` dict on failure that the caller should return directly.
+    Returns ``(ws_path, project_path, project, description)`` on success, or a
+    structured error dict on failure that the caller should return directly.
+
+    NOTE: no snapshot is taken here. The project is parsed (so corrupt/missing
+    files fail loudly with *no* side effects) and the caller mutates the
+    in-memory project, then calls :func:`_masking_finalize` to snapshot + write
+    *only once the edit has succeeded* -- so a bad index or validation failure
+    never leaves a leaked snapshot behind. The ``description`` is threaded
+    through so callers keep a single source for the snapshot label.
     """
     from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
-    from workshop_video_brain.workspace import create_snapshot
 
     try:
         ws_path, _workspace = _require_workspace(workspace_path)
@@ -273,13 +327,24 @@ def _masking_prelude(workspace_path: str, project_file: str, description: str):
         return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     try:
-        record = create_snapshot(ws_path, project_path, description=description)
-        snapshot_id = record.snapshot_id
-    except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/truncated/binary project
+        return from_exception(exc)
+    return (ws_path, project_path, project, description)
 
-    project = parse_project(project_path)
-    return (ws_path, project_path, project, snapshot_id)
+
+def _masking_finalize(ws_path, project_path, project, description: str) -> str:
+    """Snapshot the pre-edit file then serialize the mutated project.
+
+    Called only after the in-memory edit has succeeded, so failed edits leave
+    no snapshot. Returns the created snapshot id.
+    """
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
+    from workshop_video_brain.workspace import create_snapshot
+
+    record = create_snapshot(ws_path, project_path, description=description)
+    serialize_project(project, project_path)
+    return record.snapshot_id
 
 
 @mcp.tool()
@@ -302,12 +367,16 @@ def mask_set(
     from workshop_video_brain.edit_mcp.pipelines import masking
 
     if type not in _VALID_MASK_TYPES:
-        return _err(
-            f"Unknown mask type {type!r}. Valid: rotoscoping, object_mask, image_alpha"
+        return invalid_input(
+            f"Unknown mask type {type!r}. Valid: rotoscoping, object_mask, image_alpha",
+            "Pass type='rotoscoping' or type='object_mask'.",
+            param="type", given=type,
         )
     if type == "image_alpha":
-        return _err(
-            "image_alpha mask type not yet implemented -- use 'rotoscoping' or 'object_mask'"
+        return invalid_input(
+            "image_alpha mask type not yet implemented -- use 'rotoscoping' or 'object_mask'",
+            "Pass type='rotoscoping' or type='object_mask' for now.",
+            param="type", given=type,
         )
 
     try:
@@ -315,12 +384,12 @@ def mask_set(
     except json.JSONDecodeError as exc:
         return err(f"Invalid params JSON: {exc}", error_type="bad_json_param", suggestion='Provide a valid JSON object, e.g. {"opacity": 0.5}.', cause=str(exc))
     if not isinstance(param_dict, dict):
-        return _err("params must decode to a JSON object")
+        return err("params must decode to a JSON object", error_type="bad_json_param", suggestion='Provide a JSON object, e.g. {"points": [...]}.', param="params")
 
     prelude = _masking_prelude(workspace_path, project_file, f"before_mask_set_{type}")
     if isinstance(prelude, dict):
         return prelude
-    ws_path, project_path, project, snapshot_id = prelude
+    ws_path, project_path, project, _desc = prelude
 
     try:
         if type == "rotoscoping":
@@ -339,7 +408,7 @@ def mask_set(
     except (IndexError, ValueError) as exc:
         return from_exception(exc)
 
-    serialize_project(project, project_path)
+    snapshot_id = _masking_finalize(ws_path, project_path, project, _desc)
     return _ok({
         "effect_index": 0,
         "type": type,
@@ -372,8 +441,10 @@ def mask_set_shape(
     from workshop_video_brain.edit_mcp.pipelines import masking
 
     if shape not in _VALID_MASK_SHAPES:
-        return _err(
-            f"Unknown shape {shape!r}. Valid: rect, ellipse, polygon"
+        return invalid_input(
+            f"Unknown shape {shape!r}. Valid: rect, ellipse, polygon",
+            "Pass shape='rect', 'ellipse', or 'polygon'.",
+            param="shape", given=shape,
         )
 
     # Parse bounds / points JSON
@@ -382,13 +453,13 @@ def mask_set_shape(
         try:
             raw = json.loads(bounds)
         except json.JSONDecodeError as exc:
-            return _err(f"Invalid bounds JSON: {exc}")
+            return err(f"Invalid bounds JSON: {exc}", error_type="bad_json_param", suggestion="Provide a JSON list [x, y, w, h] of normalized numbers.", param="bounds", cause=str(exc))
         if not isinstance(raw, list) or len(raw) != 4:
-            return _err("bounds must be a JSON list of 4 numbers [x, y, w, h]")
+            return invalid_input("bounds must be a JSON list of 4 numbers [x, y, w, h]", "Pass exactly four normalized numbers, e.g. [0, 0, 1, 1].", param="bounds")
         try:
             bounds_tuple = (float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3]))
         except (TypeError, ValueError) as exc:
-            return _err(f"Invalid bounds values: {exc}")
+            return invalid_input(f"Invalid bounds values: {exc}", "Each of x, y, w, h must be a number.", param="bounds")
 
     points_tuple: tuple[tuple[float, float], ...] = ()
     if points and points.strip():
@@ -397,11 +468,11 @@ def mask_set_shape(
         except json.JSONDecodeError as exc:
             return err(f"Invalid points JSON: {exc}", error_type="bad_json_param", suggestion='Provide a JSON list of [x, y] pairs, e.g. [[0, 0], [0.5, 0.5]].', cause=str(exc))
         if not isinstance(raw, list):
-            return _err("points must be a JSON list of [x, y] pairs")
+            return invalid_input("points must be a JSON list of [x, y] pairs", "Pass a JSON list like [[0, 0], [0.5, 0.5]].", param="points")
         try:
             points_tuple = tuple((float(p[0]), float(p[1])) for p in raw)
         except (TypeError, ValueError, IndexError) as exc:
-            return _err(f"Invalid points values: {exc}")
+            return invalid_input(f"Invalid points values: {exc}", "Each point must be an [x, y] pair of numbers.", param="points")
 
     try:
         mask_shape = masking.MaskShape(
@@ -422,7 +493,7 @@ def mask_set_shape(
     )
     if isinstance(prelude, dict):
         return prelude
-    ws_path, project_path, project, snapshot_id = prelude
+    ws_path, project_path, project, _desc = prelude
 
     try:
         xml = masking.build_rotoscoping_xml((track, clip), mask_params)
@@ -430,7 +501,7 @@ def mask_set_shape(
     except (IndexError, ValueError) as exc:
         return from_exception(exc)
 
-    serialize_project(project, project_path)
+    snapshot_id = _masking_finalize(ws_path, project_path, project, _desc)
     return _ok({
         "effect_index": 0,
         "type": "rotoscoping",
@@ -461,7 +532,7 @@ def mask_apply(
     prelude = _masking_prelude(workspace_path, project_file, "before_mask_apply")
     if isinstance(prelude, dict):
         return prelude
-    ws_path, project_path, project, snapshot_id = prelude
+    ws_path, project_path, project, _desc = prelude
 
     # Early target-is-mask guard.
     try:
@@ -471,8 +542,10 @@ def mask_apply(
     if 0 <= target_effect_index < len(filters):
         svc = filters[target_effect_index]["mlt_service"]
         if svc in ("mask_start", "mask_apply"):
-            return _err(
-                "cannot mask a mask: target effect is itself a mask filter"
+            return invalid_input(
+                "cannot mask a mask: target effect is itself a mask filter",
+                "Point target_effect_index at a non-mask filter to be masked.",
+                target_effect_index=target_effect_index,
             )
 
     try:
@@ -480,17 +553,15 @@ def mask_apply(
             project, (track, clip), mask_effect_index, target_effect_index
         )
     except IndexError as exc:
-        try:
-            available = patcher.list_effects(project, (track, clip))
-        except Exception:
-            available = []
-        return _err(
-            f"{exc}. Current stack: {len(available)} filters: {available}"
+        available = filters
+        return invalid_index(
+            "effect_index", mask_effect_index if not (0 <= mask_effect_index < len(filters)) else target_effect_index,
+            f"0-{len(available) - 1}" if available else "none (clip has no filters)",
         )
     except ValueError as exc:
         return from_exception(exc)
 
-    serialize_project(project, project_path)
+    snapshot_id = _masking_finalize(ws_path, project_path, project, _desc)
     return _ok({**result, "snapshot_id": snapshot_id})
 
 
@@ -513,12 +584,12 @@ def effect_chroma_key(
     try:
         masking.color_to_mlt_hex(color)
     except ValueError:
-        return _err(_VALID_COLOR_FORMATS_MSG)
+        return invalid_input(_VALID_COLOR_FORMATS_MSG, "Pass a hex color like '#00FF00' or '#00FF00FF'.", param="color", given=color)
 
     prelude = _masking_prelude(workspace_path, project_file, "before_chroma_key")
     if isinstance(prelude, dict):
         return prelude
-    ws_path, project_path, project, snapshot_id = prelude
+    ws_path, project_path, project, _desc = prelude
 
     try:
         xml = masking.build_chroma_key_xml((track, clip), color, tolerance, blend)
@@ -528,7 +599,7 @@ def effect_chroma_key(
     except (IndexError, ValueError) as exc:
         return from_exception(exc)
 
-    serialize_project(project, project_path)
+    snapshot_id = _masking_finalize(ws_path, project_path, project, _desc)
     return _ok({"effect_index": position, "snapshot_id": snapshot_id})
 
 
@@ -550,19 +621,25 @@ def effect_chroma_key_advanced(
     from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
     from workshop_video_brain.edit_mcp.pipelines import masking
 
+    nf = nonfinite_guard(
+        tolerance_near=tolerance_near, tolerance_far=tolerance_far,
+        edge_smooth=edge_smooth, spill_suppression=spill_suppression,
+    )
+    if nf is not None:
+        return nf
     if tolerance_far < tolerance_near:
-        return _err("tolerance_far must be >= tolerance_near")
+        return invalid_input("tolerance_far must be >= tolerance_near", "Pass tolerance_far greater than or equal to tolerance_near.", tolerance_near=tolerance_near, tolerance_far=tolerance_far)
     try:
         masking.color_to_mlt_hex(color)
     except ValueError:
-        return _err(_VALID_COLOR_FORMATS_MSG)
+        return invalid_input(_VALID_COLOR_FORMATS_MSG, "Pass a hex color like '#00FF00' or '#00FF00FF'.", param="color", given=color)
 
     prelude = _masking_prelude(
         workspace_path, project_file, "before_chroma_key_advanced"
     )
     if isinstance(prelude, dict):
         return prelude
-    ws_path, project_path, project, snapshot_id = prelude
+    ws_path, project_path, project, _desc = prelude
 
     try:
         xml = masking.build_chroma_key_advanced_xml(
@@ -575,7 +652,7 @@ def effect_chroma_key_advanced(
     except (IndexError, ValueError) as exc:
         return from_exception(exc)
 
-    serialize_project(project, project_path)
+    snapshot_id = _masking_finalize(ws_path, project_path, project, _desc)
     return _ok({"effect_index": position, "snapshot_id": snapshot_id})
 
 
@@ -602,10 +679,14 @@ def effect_object_mask(
     from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
     from workshop_video_brain.edit_mcp.pipelines import masking
 
+    nf = nonfinite_guard(threshold=threshold)
+    if nf is not None:
+        return nf
+
     prelude = _masking_prelude(workspace_path, project_file, "before_object_mask")
     if isinstance(prelude, dict):
         return prelude
-    ws_path, project_path, project, snapshot_id = prelude
+    ws_path, project_path, project, _desc = prelude
 
     try:
         xml = masking.build_object_mask_xml(
@@ -617,5 +698,5 @@ def effect_object_mask(
     except (IndexError, ValueError) as exc:
         return from_exception(exc)
 
-    serialize_project(project, project_path)
+    snapshot_id = _masking_finalize(ws_path, project_path, project, _desc)
     return _ok({"effect_index": position, "snapshot_id": snapshot_id})

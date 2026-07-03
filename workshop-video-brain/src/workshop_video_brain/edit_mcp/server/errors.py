@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import math
 from typing import Any, Callable
 
 logger = logging.getLogger("workshop_video_brain.edit_mcp.tools")
@@ -265,6 +266,50 @@ def operation_failed(
     )
 
 
+def nonfinite_guard(**named: Any) -> dict | None:
+    """Return an ``invalid_input`` error if any named float is NaN/inf, else None.
+
+    Guards numeric tool params before they are written into a project file:
+    ``float('nan')`` / ``float('inf')`` silently serialize into MLT XML and
+    corrupt the timeline, so reject them loudly. Non-numeric values are ignored
+    (they are validated elsewhere).
+    """
+    for name, val in named.items():
+        if isinstance(val, bool) or val is None:
+            continue
+        try:
+            f = float(val)
+        except (TypeError, ValueError):
+            continue
+        if math.isnan(f) or math.isinf(f):
+            return invalid_input(
+                f"{name} must be a finite number (got {val!r}).",
+                f"Pass a real finite value for {name}; NaN and infinity are "
+                "not allowed and would corrupt the project file.",
+                param=name,
+                given=str(val),
+            )
+    return None
+
+
+def nonneg_index(kind: str, **named: Any) -> dict | None:
+    """Return an ``invalid_index`` error if any named int is negative, else None.
+
+    Negative indexes are dangerous for tools that index Python lists directly
+    (a ``-1`` silently wraps to the *last* element and edits the wrong target),
+    so reject them before use.
+    """
+    for name, val in named.items():
+        try:
+            i = int(val)
+        except (TypeError, ValueError):
+            continue
+        if i < 0:
+            return invalid_index(name if kind is None else f"{kind} {name}",
+                                 i, "0 or greater")
+    return None
+
+
 def from_exception(exc: BaseException) -> dict:
     """Classify a caught exception into the richest matching structured error.
 
@@ -403,5 +448,7 @@ __all__ = [
     "invalid_input",
     "operation_failed",
     "from_exception",
+    "nonfinite_guard",
+    "nonneg_index",
     "tool_guard",
 ]

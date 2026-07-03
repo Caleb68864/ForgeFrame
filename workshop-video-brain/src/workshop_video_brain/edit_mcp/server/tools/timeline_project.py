@@ -373,7 +373,7 @@ def snapshot_restore(workspace_path: str, snapshot_id: str) -> dict:
         if not workspace_path or not workspace_path.strip():
             return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         if not snapshot_id or not snapshot_id.strip():
-            return _err("snapshot_id must be a non-empty string")
+            return invalid_input("snapshot_id must be a non-empty string", "Pass a snapshot id (run snapshot_list to see available snapshots).", param="snapshot_id")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
             return missing_file(workspace_path, "Workspace path")
@@ -382,8 +382,11 @@ def snapshot_restore(workspace_path: str, snapshot_id: str) -> dict:
         # Validate that snapshot_id exists
         snap_dir = ws_path / "projects" / "snapshots" / snapshot_id
         if not snap_dir.exists():
-            return _err(
-                f"Snapshot '{snapshot_id}' not found in {workspace_path}/projects/snapshots/"
+            return err(
+                f"Snapshot '{snapshot_id}' not found in {workspace_path}/projects/snapshots/",
+                error_type="not_found",
+                suggestion="Run snapshot_list to see valid snapshot ids for this workspace.",
+                given=snapshot_id,
             )
         from workshop_video_brain.workspace.snapshot import restore, list_snapshots
 
@@ -394,7 +397,7 @@ def snapshot_restore(workspace_path: str, snapshot_id: str) -> dict:
             "workspace_path": workspace_path,
         })
     except FileNotFoundError as exc:
-        return _err(f"Snapshot not found: {exc}")
+        return from_exception(exc)
     except ValueError as exc:
         return from_exception(exc)
     except Exception as exc:
