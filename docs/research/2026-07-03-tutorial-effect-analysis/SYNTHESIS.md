@@ -61,3 +61,31 @@ covering all 10 videos of the Nuxttux Kdenlive tutorials playlist. Transcripts:
 - **Wave 3 (bundles)**: sequence_to_alpha_video and effect_object_remove(static)
   first (fewest deps), then fire_text, burning_text, mograph_import, teleport,
   composite_fire, glow_eyes, clone_self.
+
+## Migration note — gap #6 Timeline placement upgrades: BUILT (Wave-3b, 2026-07-03)
+
+Gap #6 ("Timeline placement upgrades") is **BUILT**. The canonical, public
+placement engine now lives in:
+
+- `edit_mcp/pipelines/clip_place.py` — pure planning: frame-exact
+  `seconds_to_frames` (half-up, correct at 23.976/29.97), `plan_overwrite`,
+  `plan_insert`, `plan_insert_blank`, plus reference-clip helpers. Returns an
+  `index_map` so clip-filter associations follow the renumbering.
+- `core/models/timeline.py` — `PlaceClip` + `MoveClipToTrack` intents.
+- `adapters/kdenlive/patcher.py` — `_apply_place_clip` / `_apply_move_clip_to_track`
+  (+ `_remap_clip_filters`, `_sync_tractor_out`), `ripple_all_tracks` implemented.
+- `server/bundles/clip_place.py` — MCP tools `clip_place`, `clip_move_to`,
+  `clip_place_matched` (overwrite + insert modes, cross-track move, match-length).
+
+Melt-proven (`tests/integration/external/test_clip_place_render.py`): overwrite
+places blue over red at exact time (1.9s red / 2.5s blue / 3.1s red); insert
+ripples content right and grows duration; cross-track move reveals the lower
+track at the old position and shows the moved clip at the new; match-length spans
+exactly the reference clip (boundary frames 89 blue / 90 white).
+
+**Modules that should migrate onto this engine** (they currently carry private
+model-level insert-at-time workarounds; do NOT keep re-implementing placement):
+`pipelines/overlay_looks.py` (`insert_overlay_clip`), `pipelines/titles.py`, and
+the Wave-3a `vo_loop` / `image_overlay` modules once they land. Point their
+inserts at `pipelines.clip_place.plan_overwrite` / `plan_insert` (or the
+`PlaceClip` intent) so placement math has one home.

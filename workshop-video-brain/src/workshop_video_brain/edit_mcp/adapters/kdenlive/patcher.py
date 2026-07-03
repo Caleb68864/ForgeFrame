@@ -32,6 +32,8 @@ from workshop_video_brain.core.models.timeline import (
     CreateTrack,
     InsertGap,
     MoveClip,
+    MoveClipToTrack,
+    PlaceClip,
     RemoveClip,
     RippleDelete,
     SetClipSpeed,
@@ -164,6 +166,10 @@ def patch_project(
             _apply_remove_clip(new_project, intent)
         elif isinstance(intent, MoveClip):
             _apply_move_clip(new_project, intent)
+        elif isinstance(intent, PlaceClip):
+            _apply_place_clip(new_project, intent)
+        elif isinstance(intent, MoveClipToTrack):
+            _apply_move_clip_to_track(new_project, intent)
         elif isinstance(intent, SplitClip):
             _apply_split_clip(new_project, intent)
         elif isinstance(intent, RippleDelete):
@@ -486,6 +492,192 @@ def _apply_move_clip(project: KdenliveProject, intent: MoveClip) -> None:
     logger.info(
         "MoveClip: moved clip from index %d to %d in playlist '%s'",
         intent.from_index, intent.to_index, intent.track_ref,
+    )
+
+
+def _sync_tractor_out(project: KdenliveProject) -> None:
+    """Keep the tractor ``out`` in step with the longest content playlist."""
+    if project.tractor is None:
+        return
+    max_len = 0
+    for pl in project.playlists:
+        total = sum((e.out_point - e.in_point + 1) for e in pl.entries)
+        max_len = max(max_len, total)
+    if max_len > 0:
+        project.tractor["out"] = str(max_len - 1)
+
+
+def _remap_clip_filters(
+    project: KdenliveProject,
+    track_index: int,
+    index_map: dict,
+) -> None:
+    """Shift/drop clip-filter ``clip_index`` associations after a placement.
+
+    Clip effects are ``<filter>`` OpaqueElements keyed by ``track``/``clip_index``
+    (index into the track's real clips).  Placement renumbers those clips, so we
+    rewrite each affected filter's ``clip_index`` per ``index_map`` (old -> new),
+    dropping filters whose clip was overwritten (mapped to ``None``).
+    """
+    track_attr = str(track_index)
+    survivors: list[OpaqueElement] = []
+    for elem in project.opaque_elements:
+        if elem.tag != "filter":
+            survivors.append(elem)
+            continue
+        try:
+            root = ET.fromstring(elem.xml_string)
+        except ET.ParseError:
+            survivors.append(elem)
+            continue
+        if root.get("track") != track_attr or root.get("clip_index") is None:
+            survivors.append(elem)
+            continue
+        try:
+            old_ci = int(root.get("clip_index"))
+        except (TypeError, ValueError):
+            survivors.append(elem)
+            continue
+        new_ci = index_map.get(old_ci, old_ci)
+        if new_ci is None:
+            continue  # clip overwritten -> drop its filter
+        if new_ci != old_ci:
+            root.set("clip_index", str(new_ci))
+            elem.xml_string = ET.tostring(root, encoding="unicode")
+        survivors.append(elem)
+    project.opaque_elements = survivors
+
+
+def _apply_place_clip(project: KdenliveProject, intent: PlaceClip) -> None:
+    """Place a clip at an absolute frame on a track (overwrite or insert)."""
+    from workshop_video_brain.edit_mcp.pipelines import clip_place as cp
+
+    playlist = _find_playlist(project, intent.track_ref)
+    track_index = _playlist_index(project, intent.track_ref)
+    if playlist is None or track_index is None:
+        logger.warning(
+            "PlaceClip: no playlist found with id '%s' – skipped.", intent.track_ref
+        )
+        return
+    if intent.out_point < intent.in_point:
+        logger.warning("PlaceClip: out_point < in_point – skipped.")
+        return
+
+    # Register the producer if it isn't already present.
+    if intent.producer_id and intent.producer_id not in {p.id for p in project.producers}:
+        project.producers.append(
+            Producer(
+                id=intent.producer_id,
+                resource=intent.source_path or "",
+                properties={"resource": intent.source_path} if intent.source_path else {},
+            )
+        )
+
+    clip = cp.PlacedClip(
+        producer_id=intent.producer_id,
+        in_point=intent.in_point,
+        out_point=intent.out_point,
+    )
+    mode = (intent.mode or "overwrite").lower()
+    if mode == "insert":
+        result = cp.plan_insert(playlist.entries, intent.at_frame, clip)
+    else:
+        result = cp.plan_overwrite(playlist.entries, intent.at_frame, clip)
+
+    playlist.entries = result.entries
+    _remap_clip_filters(project, track_index, result.index_map)
+
+    # Optional cross-track ripple: shift every other track + guides right by L.
+    if mode == "insert" and intent.ripple_all_tracks:
+        length = clip.length
+        for other_index, other in enumerate(project.playlists):
+            if other_index == track_index:
+                continue
+            other.entries = cp.plan_insert_blank(other.entries, intent.at_frame, length)
+        for guide in project.guides:
+            if guide.position >= intent.at_frame:
+                guide.position += length
+
+    _sync_tractor_out(project)
+    logger.info(
+        "PlaceClip: %s producer '%s' at frame %d on '%s' (new index %d)",
+        mode, intent.producer_id, intent.at_frame, intent.track_ref, result.placed_index,
+    )
+
+
+def _apply_move_clip_to_track(project: KdenliveProject, intent: MoveClipToTrack) -> None:
+    """Cross-track move: remove a clip from one track and place it on another."""
+    from workshop_video_brain.edit_mcp.pipelines import clip_place as cp
+
+    src = _find_playlist(project, intent.from_track_ref)
+    src_index = _playlist_index(project, intent.from_track_ref)
+    dst = _find_playlist(project, intent.to_track_ref)
+    dst_index = _playlist_index(project, intent.to_track_ref)
+    if src is None or src_index is None:
+        logger.warning(
+            "MoveClipToTrack: source track '%s' not found – skipped.",
+            intent.from_track_ref,
+        )
+        return
+    if dst is None or dst_index is None:
+        logger.warning(
+            "MoveClipToTrack: target track '%s' not found – skipped.",
+            intent.to_track_ref,
+        )
+        return
+
+    try:
+        moving = cp.clip_at_index(src.entries, intent.clip_index)
+        orig_start = cp.clip_start_frame(src.entries, intent.clip_index)
+    except IndexError as exc:
+        logger.warning("MoveClipToTrack: %s – skipped.", exc)
+        return
+
+    producer_id = moving.producer_id
+    in_point = moving.in_point
+    out_point = moving.out_point
+    length = cp.entry_length(moving)
+
+    # Remove from the source: close the gap, or leave a same-length blank so the
+    # rest of the source track keeps its timeline position.
+    full_idx = src.entries.index(moving)
+    if intent.close_gap:
+        src.entries.pop(full_idx)
+        # every real clip after the removed one drops by one index
+        src_map = {}
+        removed = intent.clip_index
+        src_real = sum(1 for e in src.entries if e.producer_id) + 1
+        for old in range(src_real):
+            if old < removed:
+                src_map[old] = old
+            elif old == removed:
+                src_map[old] = None
+            else:
+                src_map[old] = old - 1
+        _remap_clip_filters(project, src_index, src_map)
+    else:
+        src.entries[full_idx] = PlaylistEntry(
+            producer_id="", in_point=0, out_point=length - 1
+        )
+        # the moved clip's own filters no longer have a clip to attach to
+        src_map = {intent.clip_index: None}
+        _remap_clip_filters(project, src_index, src_map)
+
+    at_frame = orig_start if intent.at_frame < 0 else intent.at_frame
+    clip = cp.PlacedClip(producer_id=producer_id, in_point=in_point, out_point=out_point)
+    mode = (intent.mode or "overwrite").lower()
+    if mode == "insert":
+        result = cp.plan_insert(dst.entries, at_frame, clip)
+    else:
+        result = cp.plan_overwrite(dst.entries, at_frame, clip)
+    dst.entries = result.entries
+    _remap_clip_filters(project, dst_index, result.index_map)
+
+    _sync_tractor_out(project)
+    logger.info(
+        "MoveClipToTrack: clip %d '%s' -> track '%s' at frame %d (%s, close_gap=%s)",
+        intent.clip_index, intent.from_track_ref, intent.to_track_ref,
+        at_frame, mode, intent.close_gap,
     )
 
 

@@ -146,6 +146,45 @@ class SetTrackVisibility(TimelineIntent):
     visible: bool = True
 
 
+class PlaceClip(TimelineIntent):
+    """Place a clip at an absolute timeline frame ``T`` on a specific track.
+
+    Unlike :class:`AddClip` (which appends at a playlist index on the first video
+    track), ``PlaceClip`` positions the clip at frame ``at_frame`` on the target
+    playlist and either overwrites the content there (``mode="overwrite"``) or
+    splits and ripples that track right (``mode="insert"``).  The frame-exact
+    placement math lives in ``pipelines.clip_place``.
+
+    ``ripple_all_tracks`` (insert mode only) additionally shifts every *other*
+    track right by the clip length at ``at_frame`` and moves guides at/after
+    ``at_frame`` by the same amount, so the whole timeline stays in sync.
+    """
+    track_ref: str = ""
+    producer_id: str = ""
+    source_path: str = ""  # register a producer for this media if absent
+    in_point: int = 0
+    out_point: int = 0
+    at_frame: int = 0
+    mode: str = "overwrite"  # "overwrite" | "insert"
+    ripple_all_tracks: bool = False
+
+
+class MoveClipToTrack(TimelineIntent):
+    """Move a real clip from one track to another (cross-track move).
+
+    The clip at ``clip_index`` on ``from_track_ref`` is removed (leaving a blank
+    of the same length, or closing the gap when ``close_gap`` is true) and placed
+    on ``to_track_ref`` at ``at_frame`` (``-1`` keeps its original timeline
+    start).  Placement on the target uses the same engine as :class:`PlaceClip`.
+    """
+    from_track_ref: str = ""
+    clip_index: int = 0
+    to_track_ref: str = ""
+    at_frame: int = -1  # -1 = keep the clip's original timeline start
+    mode: str = "overwrite"  # "overwrite" | "insert"
+    close_gap: bool = False
+
+
 class AddEffect(TimelineIntent):
     """Apply an MLT filter (effect) to a clip on a track.
 
