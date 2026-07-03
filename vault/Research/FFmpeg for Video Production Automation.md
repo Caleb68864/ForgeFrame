@@ -271,8 +271,8 @@ data model), **L** = multi-day.
 | 5 | `audio_loudness_scan` | Batch `ebur128`/`loudnorm` measure across clips and store per-clip LUFS for consistency sorting | **S** | reuses `measure_loudness`; index field | ✅ BUILT |
 | 6 | `clips_find_duplicates` | Perceptual/`signature`-hash clips to surface near-duplicate and re-recorded takes | **M** | dedupes `broll_library` | |
 | 7 | `clips_preview_gif` | Generate a small looping GIF/mp4 preview per clip for fast visual triage | **S** | review UI / index | |
-| 8 | `audio_normalize_two_pass` | Upgrade `normalize_audio` to measured two-pass `loudnorm` for accurate broadcast loudness | **S** | replaces single-pass path | |
-| 9 | `media_denoise_video` | One-call `hqdn3d`/`atadenoise` cleanup for high-ISO/low-light footage | **S** | `media/processed/` output | |
+| 8 | `audio_normalize_two_pass` | Upgrade `normalize_audio` to measured two-pass `loudnorm` for accurate broadcast loudness | **S** | replaces single-pass path -- **BUILT 2026-07-03** (pipelines/loudnorm_two_pass.py; verified within +/-1 LU) | |
+| 9 | `media_denoise_video` | One-call `hqdn3d`/`atadenoise` cleanup for high-ISO/low-light footage | **S** | `media/processed/` output -- **BUILT 2026-07-03** (pipelines/denoise_video.py; verified noise reduction via YDIF) | |
 | 10 | `media_stabilize` | Two-pass `vidstabdetect`+`vidstabtransform` (with `deshake` fallback) stabilization | **M** | `media/processed/` output | ✅ BUILT |
 
 ### Why this ordering
