@@ -14,6 +14,26 @@ from __future__ import annotations
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _err
 from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
@@ -54,6 +74,7 @@ def _find_workspace_root(start: Path) -> Path | None:
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@tool_guard
 def guide_add(
     project_file: str,
     at_seconds: float,
@@ -77,7 +98,7 @@ def guide_add(
     try:
         project_path = _resolve(project_file)
         if not project_path.exists():
-            return _err(f"Project file not found: {project_file}")
+            return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
         if at_seconds < 0:
             return _err("at_seconds must be >= 0")
 
@@ -109,16 +130,17 @@ def guide_add(
             }
         )
     except (ValueError, FileNotFoundError, IndexError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
 
 @mcp.tool()
+@tool_guard
 def guide_list(project_file: str) -> dict:
     """List all guides in a Kdenlive project (read-only)."""
     try:
         project_path = _resolve(project_file)
         if not project_path.exists():
-            return _err(f"Project file not found: {project_file}")
+            return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
         project = parse_project(project_path)
         return _ok(
             {
@@ -130,10 +152,11 @@ def guide_list(project_file: str) -> dict:
             }
         )
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
 
 @mcp.tool()
+@tool_guard
 def guide_remove(project_file: str, at_seconds_or_label: str) -> dict:
     """Remove guides by time (numeric seconds) or by label (string).
 
@@ -145,7 +168,7 @@ def guide_remove(project_file: str, at_seconds_or_label: str) -> dict:
     try:
         project_path = _resolve(project_file)
         if not project_path.exists():
-            return _err(f"Project file not found: {project_file}")
+            return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
 
         project = parse_project(project_path)
         new_project, removed = guides_pipeline.remove_guide(
@@ -177,7 +200,7 @@ def guide_remove(project_file: str, at_seconds_or_label: str) -> dict:
             }
         )
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +208,7 @@ def guide_remove(project_file: str, at_seconds_or_label: str) -> dict:
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@tool_guard
 def publish_chapters(
     project_file_or_workspace: str,
     min_gap_seconds: float = 10.0,
@@ -243,4 +267,4 @@ def publish_chapters(
             }
         )
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")

@@ -20,9 +20,30 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _validate_workspace_path,
 )
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 
 
 @mcp.tool()
+@tool_guard
 def transcript_index_build(workspace_path: str, rebuild: bool = False) -> dict:
     """Build (or incrementally update) the transcript search index.
 
@@ -41,10 +62,11 @@ def transcript_index_build(workspace_path: str, rebuild: bool = False) -> dict:
         ws = _validate_workspace_path(workspace_path)
         return _ok(_idx.build_index(ws, rebuild=rebuild))
     except Exception as exc:  # noqa: BLE001
-        return _err(str(exc))
+        return operation_failed(str(exc), cause=exc)
 
 
 @mcp.tool()
+@tool_guard
 def transcript_search(
     workspace_path: str,
     query: str,
@@ -70,17 +92,18 @@ def transcript_search(
     try:
         ws = _validate_workspace_path(workspace_path)
         if not query or not query.strip():
-            return _err("query must be a non-empty string")
+            return invalid_input("query must be a non-empty string", suggestion="Pass a non-empty value for this argument.")
         db = _idx.index_db_path(ws)
         if not db.exists():
             _idx.build_index(ws, rebuild=False)
         hits = _idx.search(ws, query, limit=limit, clip=(clip or None))
         return _ok({"query": query, "count": len(hits), "hits": hits})
     except Exception as exc:  # noqa: BLE001
-        return _err(str(exc))
+        return operation_failed(str(exc), cause=exc)
 
 
 @mcp.tool()
+@tool_guard
 def transcript_edit(
     workspace_path: str,
     clip: str,
@@ -104,8 +127,8 @@ def transcript_edit(
     try:
         ws = _validate_workspace_path(workspace_path)
         if not clip or not clip.strip():
-            return _err("clip must be a non-empty string")
+            return invalid_input("clip must be a non-empty string", suggestion="Pass a non-empty value for this argument.")
         result = _idx.edit_segment(ws, clip.strip(), segment_index, new_text)
         return _ok(result)
     except Exception as exc:  # noqa: BLE001
-        return _err(str(exc))
+        return operation_failed(str(exc), cause=exc)

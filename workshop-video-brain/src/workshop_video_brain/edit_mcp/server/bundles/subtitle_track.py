@@ -25,6 +25,26 @@ import tempfile
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _err
 from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
@@ -105,6 +125,7 @@ def _escape_ff(path: Path) -> str:
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@tool_guard
 def subtitles_attach(
     workspace_path: str,
     project_file: str = "",
@@ -133,10 +154,10 @@ def subtitles_attach(
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", suggestion="Pass an existing workspace directory (the folder that holds workspace.yaml).")
         ws = Path(workspace_path)
         if not ws.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", suggestion="Pass an existing workspace directory (the folder that holds workspace.yaml).", path=workspace_path)
 
         project_path = _resolve_project(workspace_path, project_file)
         srt = _resolve_srt(workspace_path, srt_path)
@@ -183,7 +204,7 @@ def subtitles_attach(
             }
         )
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +212,7 @@ def subtitles_attach(
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@tool_guard
 def subtitles_burn_in(
     workspace_path: str,
     project_file_or_media: str = "",
@@ -218,12 +240,12 @@ def subtitles_burn_in(
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", suggestion="Pass an existing workspace directory (the folder that holds workspace.yaml).")
         ws = Path(workspace_path)
         if not ws.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", suggestion="Pass an existing workspace directory (the folder that holds workspace.yaml).", path=workspace_path)
         if not shutil.which("ffmpeg"):
-            return _err("ffmpeg not found on PATH -- required for burn-in")
+            return missing_binary("ffmpeg", "apt install ffmpeg (Debian/Ubuntu) or brew install ffmpeg (macOS).")
 
         srt = _resolve_srt(workspace_path, srt_path)
         subtitle_style = st.SubtitleStyle.from_input(style)
@@ -255,7 +277,7 @@ def subtitles_burn_in(
 
             if source_kind == "project":
                 if not shutil.which("melt"):
-                    return _err("melt not found on PATH -- required to render a project")
+                    return missing_binary("melt", "apt install melt (Debian/Ubuntu) or brew install mlt (macOS).")
                 rendered = tmpdir / "render.mp4"
                 content_frames = _project_frame_count(source)
                 melt_cmd = [
@@ -267,9 +289,9 @@ def subtitles_burn_in(
                     melt_cmd, capture_output=True, text=True, timeout=600
                 )
                 if not rendered.exists():
-                    return _err(
-                        f"melt failed to render project (rc={proc.returncode}): "
-                        f"{proc.stderr[-400:]}"
+                    return operation_failed(
+                        f"melt failed to render project (rc={proc.returncode})",
+                        cause=proc.stderr[-400:], suggestion="The external command exited non-zero; the stderr tail is in 'cause'. Check the input media/codecs and that the tool's filters are supported by your ffmpeg/melt build.",
                     )
                 media_input = rendered
             else:
@@ -285,8 +307,9 @@ def subtitles_burn_in(
                 output_path=out_path,
             )
             if not result.success or not out_path.exists():
-                return _err(
-                    f"ffmpeg burn-in failed: {result.stderr[-400:]}"
+                return operation_failed(
+                    "ffmpeg burn-in failed",
+                    cause=result.stderr[-400:], suggestion="The external command exited non-zero; the stderr tail is in 'cause'. Check the input media/codecs and that the tool's filters are supported by your ffmpeg/melt build.",
                 )
 
         return _ok(
@@ -299,7 +322,7 @@ def subtitles_burn_in(
             }
         )
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
 
 def _project_frame_count(project_path: Path) -> int:

@@ -21,6 +21,26 @@ many short constant-speed sub-segments. All planning is pure
 from __future__ import annotations
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _err, _require_workspace
 from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
 from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
@@ -69,6 +89,7 @@ def _apply_timeremap_engine(project, playlist, entry, segments, *, image_mode, p
 
 
 @mcp.tool()
+@tool_guard
 def speed_ramp(
     workspace_path: str,
     project_file: str,
@@ -125,11 +146,11 @@ def speed_ramp(
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
 
     project = parse_project(project_path)
 
@@ -154,7 +175,7 @@ def speed_ramp(
         )
         kf_format = sr.keyframe_format(sr.parse_keyframes(keyframes))
     except ValueError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     seg_tuples = [(s.src_in, s.src_out, s.speed) for s in segments]
     src_frames, output_frames = sr.source_output_frames(segments)
@@ -164,7 +185,7 @@ def speed_ramp(
         snap = create_snapshot(ws_path, project_path, description="before_speed_ramp")
         snapshot_id = snap.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
+        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
     if engine == "timeremap":
         try:

@@ -19,6 +19,27 @@ import json
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+    NOT_FOUND,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -41,6 +62,7 @@ def _resolve_source(ws_path: Path, source: str) -> Path | None:
 
 
 @mcp.tool()
+@tool_guard
 def music_beat_grid(
     workspace_path: str,
     source: str,
@@ -60,10 +82,10 @@ def music_beat_grid(
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     if not ffmpeg_available():
-        return _err("ffmpeg not found on PATH")
+        return missing_binary("ffmpeg", "apt install ffmpeg (Debian/Ubuntu) or brew install ffmpeg (macOS).")
     if not 0.0 <= float(sensitivity) <= 1.0:
         return _err(f"sensitivity must be in [0.0, 1.0]; got {sensitivity}")
 
@@ -74,7 +96,7 @@ def music_beat_grid(
     try:
         result = _bg.analyze_beats(src, sensitivity=sensitivity)
     except RuntimeError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     result["source"] = str(src)
     reports_dir = ws_path / "reports"
@@ -88,6 +110,7 @@ def music_beat_grid(
 
 
 @mcp.tool()
+@tool_guard
 def markers_from_beats(
     workspace_path: str,
     beat_file: str = "",
@@ -108,7 +131,7 @@ def markers_from_beats(
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     if every_n < 1:
         return _err("every_n must be >= 1")
@@ -129,7 +152,7 @@ def markers_from_beats(
 
     beats = payload.get("beats", []) if isinstance(payload, dict) else payload
     if not isinstance(beats, list) or not beats:
-        return _err("Beat file has no beats")
+        return err("Beat file has no beats", error_type=NOT_FOUND, suggestion="Re-run music_beat_grid on a music track first; a valid beat grid has a non-empty beats list.")
 
     markers = _bg.beats_to_bar_markers(beats, every_n=every_n, category=category)
     markers_dir = ws_path / "markers"

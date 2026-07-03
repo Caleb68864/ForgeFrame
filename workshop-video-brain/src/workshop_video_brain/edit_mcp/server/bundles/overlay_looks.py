@@ -19,6 +19,26 @@ Registered by the ``bundles`` package auto-importer.
 from __future__ import annotations
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -51,6 +71,7 @@ def _resolve_video_clip(project, track: int, clip: int):
 
 
 @mcp.tool()
+@tool_guard
 def effect_light_leak(
     workspace_path: str,
     project_file: str,
@@ -109,11 +130,11 @@ def effect_light_leak(
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
     if not leak_media or not str(leak_media).strip():
         return _err("leak_media must be a non-empty path")
     if not Path(leak_media).exists():
@@ -142,7 +163,7 @@ def effect_light_leak(
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
+        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
     project = parse_project(project_path)
     fps = project.profile.fps or 25.0
@@ -154,7 +175,7 @@ def effect_light_leak(
             project, resolved_overlay, leak_media, at_frame, duration_frames
         )
     except ValueError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     # 2. Optional keyframed opacity fades on the leak clip.
     fade_effect_index = None
@@ -176,7 +197,7 @@ def effect_light_leak(
             ]
             rect_str = _kf.build_keyframe_string("rect", rekeyed, fps=fps)
         except ValueError as exc:
-            return _err(str(exc))
+            return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
         kid = lookup_catalog_id("affine") or "transform"
         xml = build_filter_xml(
             mlt_service="affine",
@@ -193,7 +214,7 @@ def effect_light_leak(
                 position=fade_effect_index,
             )
         except (IndexError, ValueError) as exc:
-            return _err(str(exc))
+            return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     # 3. Composite the overlay onto the base with a lightening blend mode.
     end_frame = at_frame + duration_frames - 1
@@ -208,7 +229,7 @@ def effect_light_leak(
             geometry=overlay_geometry(width, height, opacity),
         )
     except ValueError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     serialize_project(updated, project_path)
     return _ok({
@@ -227,6 +248,7 @@ def effect_light_leak(
 
 
 @mcp.tool()
+@tool_guard
 def effect_day_to_night(
     workspace_path: str,
     project_file: str,
@@ -292,11 +314,11 @@ def effect_day_to_night(
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
     if not 0.0 <= float(intensity) <= 1.0:
         return _err(f"intensity must be in [0.0, 1.0]; got {intensity}")
 
@@ -319,7 +341,7 @@ def effect_day_to_night(
     try:
         _pl, _real, duration = _resolve_video_clip(project, track, clip_index)
     except ValueError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     resolved_overlay = overlay_track if overlay_track >= 0 else track + 1
 
@@ -331,7 +353,7 @@ def effect_day_to_night(
             fps=fps,
         )
     except ValueError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     # Verify every service resolves in the catalog up front.
     resolved: list[tuple[str, str, dict[str, str]]] = []
@@ -348,13 +370,13 @@ def effect_day_to_night(
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
+        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
     # Grade filters onto the target clip.
     try:
         existing = patcher.list_effects(project, (track, clip_index))
     except (IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
     first_effect_index = len(existing)
 
     inserted = 0
@@ -402,7 +424,7 @@ def effect_day_to_night(
                 "end_frame": sky_end,
             }
         except ValueError as exc:
-            return _err(str(exc))
+            return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     serialize_project(final_project, project_path)
     return _ok({

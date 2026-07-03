@@ -28,6 +28,26 @@ import json
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
     _ok,
@@ -109,6 +129,7 @@ def _find_workspace_root(project_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@tool_guard
 def subject_locate_frames(
     workspace_path: str,
     project_file: str,
@@ -138,12 +159,12 @@ def subject_locate_frames(
     try:
         ws_path = _validate_workspace_path(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
     try:
         project, project_path = _resolve_project(ws_path, project_file)
         entry, _real_index, producer = _resolve_clip(project, track, clip_index)
     except (FileNotFoundError, IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     source = _producer_resource(ws_path, producer)
     if source is None or not source.exists():
@@ -159,7 +180,7 @@ def subject_locate_frames(
             stem=f"{source.stem}_t{track}_c{clip_index}",
         )
     except RuntimeError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     clip_frames = entry.out_point - entry.in_point + 1
     return _ok({
@@ -183,6 +204,7 @@ def subject_locate_frames(
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@tool_guard
 def subject_track(
     workspace_path: str,
     project_file: str,
@@ -221,12 +243,12 @@ def subject_track(
     try:
         ws_path = _validate_workspace_path(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
     try:
         project, project_path = _resolve_project(ws_path, project_file)
         entry, _real_index, producer = _resolve_clip(project, track, clip_index)
     except (FileNotFoundError, IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     source = _producer_resource(ws_path, producer)
     if source is None or not source.exists():
@@ -256,9 +278,9 @@ def subject_track(
             start_frame=start_frame, end_frame=end_frame,
         )
     except mt.TrackerUnavailable as exc:
-        return _err(str(exc))
+        return err(str(exc), error_type=MISSING_DEPENDENCY, suggestion="Install the tracker backend as shown, or pass engine='opencv' after: pip install opencv-contrib-python-headless.")
     except (ValueError, RuntimeError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     out_dir = ws_path.joinpath(*mt.TRACKS_DIR)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -327,6 +349,7 @@ def _load_tracked_keyframes(track_data: str, ws_path: Path):
 
 
 @mcp.tool()
+@tool_guard
 def subject_zoom(
     workspace_path: str,
     project_file: str,
@@ -374,12 +397,12 @@ def subject_zoom(
     try:
         ws_path = _validate_workspace_path(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
     try:
         project, project_path = _resolve_project(ws_path, project_file)
         _entry, _real_index, _producer = _resolve_clip(project, track, clip_index)
     except (FileNotFoundError, IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     fps = project.profile.fps or 25.0
     width = project.profile.width
@@ -409,13 +432,13 @@ def subject_zoom(
         else:
             return _err("provide either track_data (follow-zoom) or rect (static punch-in)")
     except (FileNotFoundError, ValueError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     clip_ref = (track, clip_index)
     try:
         effect_index = len(patcher.list_effects(project, clip_ref))
     except IndexError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     ws_root = _find_workspace_root(project_path)
     try:
@@ -424,13 +447,13 @@ def subject_zoom(
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:  # noqa: BLE001 - surface snapshot failure as error
-        return _err(f"Snapshot failed: {exc}")
+        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
     xml = _build_transform_xml(track, clip_index, rect_kf)
     try:
         patcher.insert_effect_xml(project, clip_ref, xml, position=effect_index)
     except (IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     serialize_project(project, project_path)
 

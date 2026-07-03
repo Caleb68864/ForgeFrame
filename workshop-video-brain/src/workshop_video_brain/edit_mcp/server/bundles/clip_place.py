@@ -30,6 +30,26 @@ import subprocess
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _err, _require_workspace
 from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
 from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
@@ -132,6 +152,7 @@ def _resolve_track(project, track: int):
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@tool_guard
 def clip_place(
     workspace_path: str,
     project_file: str,
@@ -168,7 +189,7 @@ def clip_place(
     try:
         ws_path, project_path, project = _load(workspace_path, project_file)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     if mode not in ("overwrite", "insert"):
         return _err(f"mode must be 'overwrite' or 'insert', got {mode!r}")
@@ -176,7 +197,7 @@ def clip_place(
     try:
         playlist = _resolve_track(project, track)
     except ValueError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     fps = project.profile.fps or 25.0
     producer_id, source_path, duration_s = _resolve_source(
@@ -187,7 +208,7 @@ def clip_place(
         at_frame = cp.seconds_to_frames(at_seconds, fps)
         in_point = cp.seconds_to_frames(in_seconds, fps)
     except ValueError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     if out_seconds is not None:
         out_point = cp.seconds_to_frames(out_seconds, fps) - 1
@@ -211,7 +232,7 @@ def clip_place(
         snap = create_snapshot(ws_path, project_path, description="before_clip_place")
         snapshot_id = snap.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
+        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
     from workshop_video_brain.core.models.timeline import PlaceClip
 
@@ -258,6 +279,7 @@ def clip_place(
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@tool_guard
 def clip_move_to(
     workspace_path: str,
     project_file: str,
@@ -289,7 +311,7 @@ def clip_move_to(
     try:
         ws_path, project_path, project = _load(workspace_path, project_file)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     if mode not in ("overwrite", "insert"):
         return _err(f"mode must be 'overwrite' or 'insert', got {mode!r}")
@@ -297,14 +319,14 @@ def clip_move_to(
         src = _resolve_track(project, from_track)
         dst = _resolve_track(project, to_track)
     except ValueError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
     if from_track == to_track:
         return _err("from_track and to_track are the same; use clip_move for same-track moves")
 
     try:
         cp.clip_at_index(src.entries, clip_index)  # validate
     except IndexError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     fps = project.profile.fps or 25.0
     at_frame = -1
@@ -312,13 +334,13 @@ def clip_move_to(
         try:
             at_frame = cp.seconds_to_frames(at_seconds, fps)
         except ValueError as exc:
-            return _err(str(exc))
+            return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     try:
         snap = create_snapshot(ws_path, project_path, description="before_clip_move_to")
         snapshot_id = snap.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
+        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
     from workshop_video_brain.core.models.timeline import MoveClipToTrack
 
@@ -355,6 +377,7 @@ def clip_move_to(
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@tool_guard
 def clip_place_matched(
     workspace_path: str,
     project_file: str,
@@ -385,7 +408,7 @@ def clip_place_matched(
     try:
         ws_path, project_path, project = _load(workspace_path, project_file)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     if mode not in ("overwrite", "insert"):
         return _err(f"mode must be 'overwrite' or 'insert', got {mode!r}")
@@ -393,13 +416,13 @@ def clip_place_matched(
         playlist = _resolve_track(project, track)
         ref_playlist = _resolve_track(project, match_track)
     except ValueError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     try:
         ref_length = cp.reference_length(ref_playlist.entries, match_clip_index)
         ref_start = cp.clip_start_frame(ref_playlist.entries, match_clip_index)
     except IndexError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     fps = project.profile.fps or 25.0
     producer_id, source_path, _duration_s = _resolve_source(project, source, ws_path)
@@ -412,7 +435,7 @@ def clip_place_matched(
         snap = create_snapshot(ws_path, project_path, description="before_clip_place_matched")
         snapshot_id = snap.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
+        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
     from workshop_video_brain.core.models.timeline import PlaceClip
 

@@ -18,6 +18,26 @@ from __future__ import annotations
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
     _ok,
@@ -68,7 +88,7 @@ def _generate(
     if src is None:
         return _err("No video file found. Provide source or add files to media/raw/.")
     if not src.exists():
-        return _err(f"File not found: {src}")
+        return err(f"File not found: {src}", error_type=MISSING_FILE, suggestion="Check the source path; it is resolved relative to the workspace root unless absolute.", path=str(src))
 
     out_dir = ws_path.joinpath(*ai_mask.DERIVED_MASKS_DIR)
     try:
@@ -79,9 +99,9 @@ def _generate(
             max_frames=max_frames,
         )
     except ai_mask.EngineUnavailable as exc:
-        return _err(str(exc))
+        return err(str(exc), error_type=MISSING_DEPENDENCY, suggestion="Install the requested segmentation engine as shown above, or pass engine='rembg' (the lightest CPU/no-torch engine).")
     except (ValueError, TypeError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     if not result.get("success"):
         return _err(result.get("error", "matte generation failed"))
@@ -89,6 +109,7 @@ def _generate(
 
 
 @mcp.tool()
+@tool_guard
 def mask_generate(
     workspace_path: str,
     source: str = "",
@@ -130,7 +151,7 @@ def mask_generate(
     try:
         ws_path = _validate_workspace_path(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
     return _generate(
         ws_path, source, subject, engine, box, invert, feather_px,
         model, output_name, max_frames,
@@ -138,6 +159,7 @@ def mask_generate(
 
 
 @mcp.tool()
+@tool_guard
 def mask_generate_and_apply(
     workspace_path: str,
     project_file: str,
@@ -179,11 +201,11 @@ def mask_generate_and_apply(
     try:
         ws_path = _validate_workspace_path(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
 
     # 1. Generate the matte (never touches the project).
     gen = _generate(
@@ -206,7 +228,7 @@ def mask_generate_and_apply(
             use_mix=use_threshold,
         )
     except (ValueError, TypeError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     # 3. Snapshot + patch + serialize (mirrors mask_set_from_file).
     try:
@@ -215,13 +237,13 @@ def mask_generate_and_apply(
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
+        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
     project = parse_project(project_path)
     try:
         patcher.insert_effect_xml(project, (track, clip), xml, position=0)
     except (IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
     serialize_project(project, project_path)
 
     return _ok({

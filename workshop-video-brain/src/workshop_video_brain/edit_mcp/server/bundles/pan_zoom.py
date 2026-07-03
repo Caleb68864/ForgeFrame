@@ -17,6 +17,26 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _err
 
 _MLT_SERVICE = "affine"
@@ -57,6 +77,7 @@ def _build_transform_xml(track: int, clip_index: int, rect_kf: str) -> str:
 
 
 @mcp.tool()
+@tool_guard
 def effect_pan_zoom(
     project_file: str,
     track: int,
@@ -107,17 +128,23 @@ def effect_pan_zoom(
     from workshop_video_brain.workspace import create_snapshot
 
     if not project_file or not project_file.strip():
-        return _err("project_file must be a non-empty string")
+        return invalid_input("project_file must be a non-empty string", suggestion="Pass a non-empty value for this argument.")
     project_path = Path(project_file)
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
 
     if start_rect is None and end_rect is None and preset is None:
         return _err(
             "provide either a preset or both start_rect and end_rect"
         )
 
-    project = parse_project(project_path)
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import (
+        ProjectParseError,
+    )
+    try:
+        project = parse_project(project_path)
+    except ProjectParseError as exc:
+        return corrupt_project(str(project_path), exc)
     fps = project.profile.fps or 25.0
     width = project.profile.width
     height = project.profile.height
@@ -125,15 +152,15 @@ def effect_pan_zoom(
     # Validate track / clip and resolve the clip length for the default
     # duration.
     if track < 0 or track >= len(project.playlists):
-        return _err(
-            f"track index {track} out of range "
-            f"(project has {len(project.playlists)} track(s))"
+        return invalid_index(
+            "track", track, f"0..{len(project.playlists) - 1}"
         )
     real_entries = [e for e in project.playlists[track].entries if e.producer_id]
     if clip_index < 0 or clip_index >= len(real_entries):
-        return _err(
-            f"clip_index {clip_index} out of range "
-            f"(track has {len(real_entries)} clip(s))"
+        upper = len(real_entries) - 1
+        return invalid_index(
+            "clip_index", clip_index,
+            f"0..{upper}" if real_entries else "no clips on this track",
         )
     entry = real_entries[clip_index]
 
@@ -163,13 +190,13 @@ def effect_pan_zoom(
             easing=easing, hold_frames=hold_frames,
         )
     except ValueError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     clip_ref = (track, clip_index)
     try:
         effect_index = len(patcher.list_effects(project, clip_ref))
     except IndexError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     # Snapshot before write.
     ws_root = _find_workspace_root(project_path)
@@ -179,13 +206,13 @@ def effect_pan_zoom(
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:  # noqa: BLE001 - surface snapshot failure as error
-        return _err(f"Snapshot failed: {exc}")
+        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
     xml = _build_transform_xml(track, clip_index, rect_kf)
     try:
         patcher.insert_effect_xml(project, clip_ref, xml, position=effect_index)
     except IndexError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     serialize_project(project, project_path)
 

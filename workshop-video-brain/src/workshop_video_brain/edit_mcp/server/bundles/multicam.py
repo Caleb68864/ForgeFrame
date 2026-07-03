@@ -28,6 +28,26 @@ import subprocess
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -115,6 +135,7 @@ def _unique_track_id(project, base: str) -> str:
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@tool_guard
 def multicam_assemble(
     workspace_path: str,
     project_file: str,
@@ -152,9 +173,9 @@ def multicam_assemble(
     try:
         paths = mc.parse_source_list(sources)
     except ValueError as exc:
-        return _err(str(exc))
+        return err(str(exc), error_type=BAD_JSON_PARAM, suggestion='Provide sources as a JSON array or a comma/newline list, e.g. ["/clips/a.mp4", "/clips/b.mp4"].', given=sources)
     if len(paths) < 2:
-        return _err("multicam needs at least 2 sources to stack")
+        return invalid_input("multicam needs at least 2 sources to stack", suggestion="Provide at least two angle recordings in sources (JSON array or comma/newline list).", given=sources)
 
     sync_mode = (sync or "audio").lower()
     if sync_mode not in ("audio", "none", "manual"):
@@ -168,7 +189,7 @@ def multicam_assemble(
     try:
         ws_path, project_path, project = _load(workspace_path, project_file)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     resolved = [_resolve(ws_path, s) for s in paths]
     for p in resolved:
@@ -201,7 +222,7 @@ def multicam_assemble(
     try:
         gaps = mc.compute_alignment(offsets, fps)
     except ValueError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     # 3. Source durations -> clip lengths in frames.
     lengths: list[int] = []
@@ -219,7 +240,7 @@ def multicam_assemble(
         snap = create_snapshot(ws_path, project_path, description="before_multicam_assemble")
         snapshot_id = snap.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
+        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
     # 5. Add one video track per angle, then place each angle via clip_place.
     base_index = len(project.playlists)
@@ -275,6 +296,7 @@ def multicam_assemble(
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@tool_guard
 def multicam_switch(
     workspace_path: str,
     project_file: str,
@@ -311,7 +333,7 @@ def multicam_switch(
     try:
         parsed_cuts = mc.parse_cuts(cuts)
     except ValueError as exc:
-        return _err(str(exc))
+        return err(str(exc), error_type=BAD_JSON_PARAM, suggestion='Provide cuts as JSON, e.g. [{"at_seconds": 0, "angle": 0}, {"at_seconds": 4.0, "angle": 1}].', given=cuts)
     try:
         angle_track_map = mc.parse_int_list(angle_tracks)
     except ValueError as exc:
@@ -320,7 +342,7 @@ def multicam_switch(
     try:
         ws_path, project_path, project = _load(workspace_path, project_file)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     fps = project.profile.fps or 25.0
 
@@ -351,7 +373,7 @@ def multicam_switch(
     try:
         segments = mc.build_switch_segments(parsed_cuts, timeline_end, fps)
     except ValueError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     # Locate each segment's source footage before mutating anything.
     placements = []  # (at_frame, producer_id, in_point, out_point, end, angle)
@@ -378,7 +400,7 @@ def multicam_switch(
         snap = create_snapshot(ws_path, project_path, description="before_multicam_switch")
         snapshot_id = snap.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
+        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
     # Create the top program track and overwrite-place each segment's angle onto it.
     program_id = _unique_track_id(project, "multicam_program")

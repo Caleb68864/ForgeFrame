@@ -22,6 +22,26 @@ from __future__ import annotations
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _err, _require_workspace
 from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
 from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
@@ -80,6 +100,7 @@ def _validate_track(project, track: int) -> str | None:
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@tool_guard
 def track_volume(
     workspace_path: str,
     project_file: str,
@@ -108,7 +129,7 @@ def track_volume(
         ws_path, _ws = _require_workspace(workspace_path)
         project_path = _resolve_project(ws_path, project_file)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     project = parse_project(project_path)
     err = _validate_track(project, track)
@@ -149,6 +170,7 @@ def track_volume(
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@tool_guard
 def track_pan(
     workspace_path: str,
     project_file: str,
@@ -169,7 +191,7 @@ def track_pan(
         ws_path, _ws = _require_workspace(workspace_path)
         project_path = _resolve_project(ws_path, project_file)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     project = parse_project(project_path)
     err = _validate_track(project, track)
@@ -179,7 +201,7 @@ def track_pan(
     try:
         start = ta.pan_to_start(pan)
     except ValueError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     intent = AddTrackFilter(
         track_index=track,
@@ -208,6 +230,7 @@ def track_pan(
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@tool_guard
 def track_eq(
     workspace_path: str,
     project_file: str,
@@ -229,7 +252,7 @@ def track_eq(
         ws_path, _ws = _require_workspace(workspace_path)
         project_path = _resolve_project(ws_path, project_file)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     project = parse_project(project_path)
     err = _validate_track(project, track)
@@ -313,6 +336,7 @@ def _voice_speech_intervals(project, voice_playlist, fps, threshold_db):
 
 
 @mcp.tool()
+@tool_guard
 def audio_duck(
     workspace_path: str,
     project_file: str,
@@ -347,7 +371,7 @@ def audio_duck(
         ws_path, _ws = _require_workspace(workspace_path)
         project_path = _resolve_project(ws_path, project_file)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     project = parse_project(project_path)
     for label, idx in (("music_track", music_track), ("voice_track", voice_track)):

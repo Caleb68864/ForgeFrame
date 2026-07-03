@@ -22,9 +22,30 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _validate_workspace_path,
 )
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 
 
 @mcp.tool()
+@tool_guard
 def media_thumbnail_sheet(
     workspace_path: str,
     source: str = "",
@@ -56,7 +77,7 @@ def media_thumbnail_sheet(
             return _err("source is required (path to a video file).")
         src = resolve_under_workspace(ws_path, source)
         if not src.exists():
-            return _err(f"File not found: {src}")
+            return err(f"File not found: {src}", error_type=MISSING_FILE, suggestion="Check the source path; it is resolved relative to the workspace root unless absolute.", path=str(src))
 
         out_dir = sheet_output_dir(ws_path, src)
         result = generate_thumbnail_sheet(
@@ -80,7 +101,7 @@ def media_thumbnail_sheet(
 
         return _ok(data)
     except Exception as exc:  # noqa: BLE001
-        return _err(str(exc))
+        return operation_failed(str(exc), cause=exc)
 
 
 def _record_index_stub(src: Path, sheet_path: str | None) -> dict:

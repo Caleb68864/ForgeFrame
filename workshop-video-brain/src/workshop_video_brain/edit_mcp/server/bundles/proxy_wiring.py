@@ -21,6 +21,26 @@ from __future__ import annotations
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _err
 from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
@@ -78,6 +98,7 @@ def _proxy_dir(ws: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@tool_guard
 def proxy_attach(
     workspace_path: str,
     project_file: str = "",
@@ -108,10 +129,10 @@ def proxy_attach(
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", suggestion="Pass an existing workspace directory (the folder that holds workspace.yaml).")
         ws = Path(workspace_path)
         if not ws.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", suggestion="Pass an existing workspace directory (the folder that holds workspace.yaml).", path=workspace_path)
 
         project_path = _resolve_project(workspace_path, project_file)
         project = parse_project(project_path)
@@ -149,7 +170,7 @@ def proxy_attach(
             }
         )
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
 
 # ---------------------------------------------------------------------------
@@ -157,6 +178,7 @@ def proxy_attach(
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@tool_guard
 def proxy_detach(
     workspace_path: str,
     project_file: str = "",
@@ -176,10 +198,10 @@ def proxy_detach(
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", suggestion="Pass an existing workspace directory (the folder that holds workspace.yaml).")
         ws = Path(workspace_path)
         if not ws.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", suggestion="Pass an existing workspace directory (the folder that holds workspace.yaml).", path=workspace_path)
 
         project_path = _resolve_project(workspace_path, project_file)
         project = parse_project(project_path)
@@ -206,7 +228,7 @@ def proxy_detach(
             }
         )
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +236,7 @@ def proxy_detach(
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@tool_guard
 def proxy_status(workspace_path: str, project_file: str = "") -> dict:
     """Report per-producer proxy state (read-only).
 
@@ -228,10 +251,10 @@ def proxy_status(workspace_path: str, project_file: str = "") -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", suggestion="Pass an existing workspace directory (the folder that holds workspace.yaml).")
         ws = Path(workspace_path)
         if not ws.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", suggestion="Pass an existing workspace directory (the folder that holds workspace.yaml).", path=workspace_path)
 
         project_path = _resolve_project(workspace_path, project_file)
         project = parse_project(project_path)
@@ -262,4 +285,4 @@ def proxy_status(workspace_path: str, project_file: str = "") -> dict:
             }
         )
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")

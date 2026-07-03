@@ -19,6 +19,26 @@ from pathlib import Path
 import yaml
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 
 # --- template discovery ----------------------------------------------------
 
@@ -81,6 +101,7 @@ def _ok(data: dict) -> dict:
 
 
 @mcp.tool()
+@tool_guard
 def title_card_add(
     project_file: str,
     text: str,
@@ -119,12 +140,12 @@ def title_card_add(
 
     try:
         if not project_file or not project_file.strip():
-            return _err("project_file must be a non-empty string")
+            return invalid_input("project_file must be a non-empty string", suggestion="Pass a non-empty value for this argument.")
         if not text or not text.strip():
-            return _err("text must be a non-empty string")
+            return invalid_input("text must be a non-empty string", suggestion="Pass a non-empty value for this argument.")
         project_path = Path(project_file)
         if not project_path.exists():
-            return _err(f"Project file not found: {project_file}")
+            return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
         if at_seconds < 0:
             return _err("at_seconds must be >= 0")
         if duration_seconds <= 0:
@@ -133,7 +154,7 @@ def title_card_add(
         try:
             style_overrides = _load_style(style)
         except ValueError as exc:
-            return _err(str(exc))
+            return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
         project = parse_project(project_path)
         new = project.model_copy(deep=True)
@@ -231,7 +252,7 @@ def title_card_add(
             }
         )
     except Exception as exc:  # pragma: no cover - defensive
-        return _err(str(exc))
+        return operation_failed(str(exc), cause=exc)
 
 
 def _snapshot_before_write(project_path: Path) -> None:

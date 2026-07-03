@@ -19,6 +19,26 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _validate_workspace_path,
 )
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 
 _VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".mts", ".m2ts"}
 
@@ -44,6 +64,7 @@ def _find_video_file(workspace_path: Path, source: str) -> Path | None:
 
 
 @mcp.tool()
+@tool_guard
 def media_denoise_video(
     workspace_path: str,
     source: str = "",
@@ -77,7 +98,7 @@ def media_denoise_video(
                 "No video file found. Provide source or add files to media/raw/."
             )
         if not src.exists():
-            return _err(f"File not found: {src}")
+            return err(f"File not found: {src}", error_type=MISSING_FILE, suggestion="Check the source path; it is resolved relative to the workspace root unless absolute.", path=str(src))
 
         # Safety: never overwrite files in media/raw/.
         raw_dir = (ws_path / "media" / "raw").resolve()
@@ -115,4 +136,4 @@ def media_denoise_video(
             "steps_count": len(result["steps"]),
         })
     except Exception as exc:  # noqa: BLE001 -- surface any failure as an error dict
-        return _err(str(exc))
+        return operation_failed(str(exc), cause=exc)

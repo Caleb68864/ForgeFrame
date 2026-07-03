@@ -21,6 +21,26 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
     _ok,
@@ -163,6 +183,7 @@ def _find_signature(
 
 
 @mcp.tool()
+@tool_guard
 def clips_find_duplicates(
     workspace_path: str,
     source_dir: str,
@@ -196,7 +217,7 @@ def clips_find_duplicates(
     """
     try:
         if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
-            return _err("ffmpeg/ffprobe are not available on PATH.")
+            return missing_binary("ffmpeg/ffprobe", "apt install ffmpeg (Debian/Ubuntu) or brew install ffmpeg (macOS).")
 
         ws_path = _validate_workspace_path(workspace_path)
 
@@ -262,4 +283,4 @@ def clips_find_duplicates(
             "duplicate_groups": groups,
         })
     except Exception as exc:  # noqa: BLE001
-        return _err(str(exc))
+        return operation_failed(str(exc), cause=exc)

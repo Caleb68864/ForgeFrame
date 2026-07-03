@@ -23,6 +23,26 @@ import subprocess
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _err, _require_workspace
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import run_ffmpeg
 from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
@@ -114,6 +134,7 @@ def _apply_vhs_overlay(
 
 
 @mcp.tool()
+@tool_guard
 def effect_rewind(
     workspace_path: str,
     project_file: str,
@@ -154,18 +175,18 @@ def effect_rewind(
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
 
     # Validate timing / speed up front (pure).
     try:
         rw.segment_duration(start_seconds, end_seconds)
         rw.reversed_duration(start_seconds, end_seconds, speed)
     except ValueError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     project = parse_project(project_path)
 
@@ -207,7 +228,7 @@ def effect_rewind(
     )
     result = run_ffmpeg(args, input_path=source, output_path=out_path, overwrite=True)
     if not result.success:
-        return _err(f"ffmpeg reverse failed: {result.stderr[-300:]}")
+        return operation_failed("ffmpeg reverse failed", cause=result.stderr[-300:], suggestion="The external command exited non-zero; the stderr tail is in 'cause'. Check the input media/codecs and that the tool's filters are supported by your ffmpeg/melt build.")
 
     fps = project.profile.fps or 25.0
     frames = rw.reversed_frame_count(start_seconds, end_seconds, speed, fps)
@@ -218,7 +239,7 @@ def effect_rewind(
         snap = create_snapshot(ws_path, project_path, description="before_effect_rewind")
         snapshot_id = snap.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
+        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
     # Register the reversed file as a producer and insert it after the segment.
     from workshop_video_brain.core.models.timeline import AddClip

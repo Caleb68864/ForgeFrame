@@ -22,9 +22,30 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _validate_workspace_path,
 )
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 
 
 @mcp.tool()
+@tool_guard
 def render_review_frames(
     workspace_path: str,
     project_file: str,
@@ -70,10 +91,11 @@ def render_review_frames(
         result.pop("success", None)
         return _ok(result)
     except Exception as exc:  # noqa: BLE001
-        return _err(str(exc))
+        return operation_failed(str(exc), cause=exc)
 
 
 @mcp.tool()
+@tool_guard
 def thumbnail_generate(
     workspace_path: str,
     source_or_project: str,
@@ -121,4 +143,4 @@ def thumbnail_generate(
         result.pop("success", None)
         return _ok(result)
     except Exception as exc:  # noqa: BLE001
-        return _err(str(exc))
+        return operation_failed(str(exc), cause=exc)

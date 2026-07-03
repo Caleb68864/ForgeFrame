@@ -14,6 +14,26 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 
 from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
 from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
@@ -56,6 +76,7 @@ def _clip_frames(project, track: int, clip_index: int) -> int:
 
 
 @mcp.tool()
+@tool_guard
 def transition_zoom_whip(
     workspace_path: str,
     project_file: str,
@@ -97,28 +118,38 @@ def transition_zoom_whip(
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
 
     if direction not in _zw.DIRECTIONS:
-        return _err(
-            f"direction must be one of {sorted(_zw.DIRECTIONS)}; got {direction!r}"
+        return invalid_input(
+            f"direction must be one of {sorted(_zw.DIRECTIONS)}; got {direction!r}",
+            suggestion=f"Pass one of {sorted(_zw.DIRECTIONS)}.",
+            given=direction,
         )
 
-    project = parse_project(project_path)
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import (
+        ProjectParseError,
+    )
+    try:
+        project = parse_project(project_path)
+    except ProjectParseError as exc:
+        return corrupt_project(str(project_path), exc)
 
     # Resolve track / clip references up front for clear errors.
     n_tracks = len(project.playlists)
     if track < 0 or track >= n_tracks:
-        return _err(f"track {track} out of range (project has {n_tracks} playlists)")
+        return invalid_index("track", track, f"0..{n_tracks - 1}")
     real = [e for e in project.playlists[track].entries if e.producer_id]
     n_clips = len(real)
     for label, idx in (("out_clip_index", out_clip_index), ("in_clip_index", in_clip_index)):
         if idx < 0 or idx >= n_clips:
-            return _err(f"{label} {idx} out of range (track {track} has {n_clips} clips)")
+            return invalid_index(
+                label, idx, f"0..{n_clips - 1}" if real else "no clips on this track"
+            )
 
     fps = project.profile.fps
     width = project.profile.width
@@ -139,7 +170,7 @@ def transition_zoom_whip(
             pan_fraction=pan_fraction,
         )
     except ValueError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     # Snapshot before any write.
     try:
@@ -148,7 +179,7 @@ def transition_zoom_whip(
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:  # noqa: BLE001 -- surface as error dict
-        return _err(f"Snapshot failed: {exc}")
+        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
     written: dict[str, dict] = {}
     try:

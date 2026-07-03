@@ -17,6 +17,27 @@ import subprocess
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+    NOT_FOUND,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
     _ok,
@@ -90,6 +111,7 @@ def _probe_duration(path: Path) -> float | None:
 
 
 @mcp.tool()
+@tool_guard
 def media_slideshow(
     workspace_path: str,
     image_folder: str,
@@ -131,7 +153,7 @@ def media_slideshow(
     try:
         import shutil
         if not shutil.which("ffmpeg"):
-            return _err("ffmpeg is not available on PATH.")
+            return missing_binary("ffmpeg", "apt install ffmpeg (Debian/Ubuntu) or brew install ffmpeg (macOS).")
 
         ws_path = _validate_workspace_path(workspace_path)
 
@@ -143,9 +165,12 @@ def media_slideshow(
 
         images = _ss.list_images(folder)
         if not images:
-            return _err(
+            return err(
                 f"No images found in {folder} "
-                f"(recognised: {', '.join(sorted(_ss.IMAGE_EXTENSIONS))})."
+                f"(recognised: {', '.join(sorted(_ss.IMAGE_EXTENSIONS))}).",
+                error_type=NOT_FOUND,
+                suggestion="Point image_folder at a directory containing image files "
+                "(png/jpg/...); the folder is scanned non-recursively.",
             )
 
         width, height, fps = _resolve_profile(ws_path, resolution)
@@ -186,7 +211,7 @@ def media_slideshow(
 
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if proc.returncode != 0 or not output_path.exists():
-            return _err(f"FFmpeg slideshow failed: {proc.stderr[-400:]}")
+            return operation_failed("FFmpeg slideshow failed", cause=proc.stderr[-400:], suggestion="The external command exited non-zero; the stderr tail is in 'cause'. Check the input media/codecs and that the tool's filters are supported by your ffmpeg/melt build.")
 
         expected = _ss.compute_total_duration(
             len(images), per_image_seconds, crossfade_seconds
@@ -206,4 +231,4 @@ def media_slideshow(
             "ingestable": True,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return operation_failed(str(exc), cause=exc)

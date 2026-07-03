@@ -26,6 +26,26 @@ import json
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    invalid_input,
+    bad_json_param,
+    corrupt_project,
+    operation_failed,
+    media_unreadable,
+    MISSING_FILE,
+    MISSING_BINARY,
+    INVALID_INDEX,
+    INVALID_INPUT,
+    CORRUPT_PROJECT,
+    MISSING_DEPENDENCY,
+    BAD_JSON_PARAM,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -56,6 +76,7 @@ def _write_plan(ws_path: Path, plan: dict) -> Path:
 
 
 @mcp.tool()
+@tool_guard
 def vo_plan(
     workspace_path: str,
     script_file: str,
@@ -78,7 +99,7 @@ def vo_plan(
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     if wpm <= 0:
         return _err("wpm must be > 0")
@@ -96,7 +117,7 @@ def vo_plan(
 
     plan = _vo.build_plan(text, wpm)
     if plan["cue_count"] == 0:
-        return _err("Script produced no cues (empty or unparseable)")
+        return invalid_input("Script produced no cues (empty or unparseable)", suggestion="Provide a markdown script with headings and paragraphs; a blank or heading-less file yields no cues.")
 
     plan["script_file"] = str(script_path)
     plan["project_file"] = project_file or None
@@ -117,14 +138,14 @@ def vo_plan(
 
         project_path = ws_path / project_file
         if not project_path.exists():
-            return _err(f"Project file not found: {project_file}")
+            return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
         try:
             record = create_snapshot(
                 ws_path, project_path, description="before_vo_plan"
             )
             snapshot_id = record.snapshot_id
         except Exception as exc:  # noqa: BLE001
-            return _err(f"Snapshot failed: {exc}")
+            return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
         project = parse_project(project_path)
         for cue in plan["cues"]:
@@ -183,6 +204,7 @@ def vo_plan(
 
 
 @mcp.tool()
+@tool_guard
 def vo_attach(
     workspace_path: str,
     project_file: str,
@@ -216,7 +238,7 @@ def vo_attach(
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     plan = _read_plan(ws_path)
     if plan is None:
@@ -234,12 +256,12 @@ def vo_attach(
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
 
     try:
         actual_seconds = _vo.audio_duration_seconds(audio_path)
     except RuntimeError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     try:
         record = create_snapshot(
@@ -247,7 +269,7 @@ def vo_attach(
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
+        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
     project = parse_project(project_path)
     fps = project.profile.fps or _vo.DEFAULT_FPS
@@ -259,7 +281,7 @@ def vo_attach(
             project, audio_track, str(audio_path), at_frame, dur_frames
         )
     except ValueError as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     serialize_project(project, project_path)
 
@@ -294,6 +316,7 @@ def vo_attach(
 
 
 @mcp.tool()
+@tool_guard
 def vo_status(workspace_path: str) -> dict:
     """Return the VO cue table: planned / recorded / missing, est vs actual, drift.
 
@@ -304,7 +327,7 @@ def vo_status(workspace_path: str) -> dict:
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     plan = _read_plan(ws_path)
     if plan is None:
