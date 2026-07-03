@@ -7,17 +7,35 @@ that the patcher realises as ``timewarp:`` producer swaps. All side effects
 (parsing/serialising the project, snapshotting) live in the bundle module
 ``edit_mcp/server/bundles/speed_ramp.py``.
 
-Why segments (not a native ``timeremap`` link)?
-    Kdenlive's UI "Time Remap" maps output-time -> source-time with keyframes.
-    MLT can express that with a ``timeremap`` *link*, but a link must live inside
-    a ``<chain>`` and the project serializer here emits plain ``<producer>``
-    elements, so the native route is not writable without serializer changes.
-    The reliable, melt-proven route is to slice the clip at ramp boundaries and
-    play each slice through a constant-speed ``timewarp:`` producer (the same
-    machinery ``clip_speed`` uses -- verified: 2x halves the rendered duration).
-    A smooth ease is approximated by subdividing each keyframe interval into many
-    short constant-speed sub-segments. See
-    ``docs/research/2026-07-03-tutorial-effect-analysis/speed-ramping.md``.
+Two engines
+    * ``segments`` (default) -- slice the clip at ramp boundaries and play each
+      slice through a constant-speed ``timewarp:`` producer (the same machinery
+      ``clip_speed`` uses -- verified: 2x halves the rendered duration). A smooth
+      ease is approximated by subdividing each keyframe interval into many short
+      constant-speed sub-segments.
+    * ``timeremap`` (native) -- a single ``<chain>`` wrapping the source with a
+      ``<link mlt_service="timeremap">`` carrying an animated ``speed_map``. The
+      link integrates the per-output-frame speed to walk source time, giving a
+      *continuous* eased curve in one producer instead of a piecewise-constant
+      stack. Requires the chain/link serializer support added in Wave-4a.
+
+``timeremap`` link properties (melt 7.40, ``link_timeremap.yml`` + source):
+    * ``speed_map`` -- animated float keyed by **output frame**, value = speed
+      multiplier; the link integrates ``source_time += speed/fps`` per output
+      frame (2.0 = 2x fast, 0.5 = slow). Overrides ``time_map``.
+    * ``time_map`` -- animated float keyed by output frame, value = source time
+      in **seconds** (the alternative to ``speed_map``; not used by this engine).
+    * ``image_mode`` -- ``nearest`` (default) or ``blend`` (frame-blend the
+      source frames that make up an output frame -> motion-blurred slow-mo).
+    * ``pitch`` -- boolean; keep audio pitch constant across the speed change.
+    The chain's ``out`` bounds the remapped output length (the link reads the
+    chain length to size its animation window -- verified empirically: without a
+    matched chain ``out``/``length`` the link degrades to 1x passthrough).
+
+Verified with melt 7.40 + frei0r: ``speed_map=2.0`` on a 100-frame source with a
+50-frame chain renders output frame 25 == source frame 50 and output frame 49 ==
+source frame 98 (both mean-RGB diff < 2). See
+``docs/research/2026-07-03-tutorial-effect-analysis/speed-ramping.md``.
 
 Two keyframe formats are accepted (JSON string or already-decoded list):
 
@@ -308,3 +326,72 @@ def source_output_frames(segments: list[Segment]) -> tuple[int, int]:
     """Return (total source frames covered, entry-in=0 output frames)."""
     src = sum(seg.source_frames for seg in segments)
     return src, total_output_frames(0, segments)
+
+
+# ---------------------------------------------------------------------------
+# native timeremap engine (chain/link)
+# ---------------------------------------------------------------------------
+
+# Legal ``image_mode`` values for the timeremap link (``link_timeremap.yml``).
+IMAGE_MODES = ("nearest", "blend")
+
+
+def _fmt_num(v: float) -> str:
+    """Compact numeric string (no trailing zeros) for MLT property values."""
+    return f"{v:.6g}"
+
+
+def speed_map_from_segments(segments: list[Segment]) -> tuple[str, int]:
+    """Build a timeremap ``speed_map`` animation from constant-speed segments.
+
+    Returns ``(speed_map, total_output_frames)`` where ``speed_map`` is an MLT
+    animation string keyed by **output** frame. MLT integrates
+    ``source_time += speed/fps`` per output frame, so summing each segment's
+    ``round(source_frames / speed)`` output frames reproduces the same integral
+    the ``segments`` engine renders (they agree within a couple of frames).
+
+    Each constant-speed segment is emitted as a **step**: a key at the segment's
+    first output frame and another at its last, both carrying the segment speed,
+    so MLT holds that speed across the whole segment (linear interpolation
+    between the two equal keys is flat). Because ``plan_segments`` already
+    subdivides eased ramps into many short segments, the resulting staircase
+    tracks the intended eased curve while keeping the integral -- and therefore
+    the rendered duration -- identical to the ``segments`` engine.
+    """
+    if not segments:
+        raise ValueError("speed_map_from_segments requires at least one segment")
+    keys: list[str] = []
+    out_cursor = 0
+    for seg in segments:
+        out_dur = max(1, int(round(seg.source_frames / seg.speed)))
+        speed_str = _fmt_num(seg.speed)
+        start = out_cursor
+        end = out_cursor + out_dur - 1
+        keys.append(f"{start}={speed_str}")
+        if end > start:
+            keys.append(f"{end}={speed_str}")
+        out_cursor += out_dur
+    total = out_cursor
+    return ";".join(keys), total
+
+
+def timeremap_link_properties(
+    speed_map: str,
+    *,
+    image_mode: str = "nearest",
+    pitch: bool = False,
+) -> dict[str, str]:
+    """Assemble the ``<link mlt_service="timeremap">`` property dict.
+
+    ``image_mode`` must be one of :data:`IMAGE_MODES` (``nearest`` | ``blend``);
+    ``pitch`` toggles the link's pitch-compensation boolean.
+    """
+    if image_mode not in IMAGE_MODES:
+        raise ValueError(
+            f"image_mode {image_mode!r} not in {IMAGE_MODES}"
+        )
+    return {
+        "speed_map": speed_map,
+        "image_mode": image_mode,
+        "pitch": "1" if pitch else "0",
+    }

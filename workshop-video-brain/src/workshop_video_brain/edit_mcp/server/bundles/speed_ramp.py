@@ -29,6 +29,45 @@ from workshop_video_brain.edit_mcp.pipelines import speed_ramp as sr
 from workshop_video_brain.workspace import create_snapshot
 
 
+def _apply_timeremap_engine(project, playlist, entry, segments, *, image_mode, pitch):
+    """Rewrite ``entry`` to play its source through a native ``timeremap`` chain.
+
+    Builds a ``<chain>`` producer wrapping the clip's source with an animated
+    ``speed_map`` link and re-points the playlist entry at it (``in=0``,
+    ``out=total-1``). Returns the new total output frame count. Assumes the clip
+    starts at source in-point 0 (the chain re-loads the full resource).
+    """
+    from workshop_video_brain.core.models.kdenlive import Link, Producer
+
+    src = next((p for p in project.producers if p.id == entry.producer_id), None)
+    if src is None:
+        raise ValueError(f"source producer {entry.producer_id!r} not found for timeremap")
+
+    speed_map, total = sr.speed_map_from_segments(segments)
+    link_props = sr.timeremap_link_properties(
+        speed_map, image_mode=image_mode, pitch=pitch
+    )
+
+    chain_id = f"{entry.producer_id}_timeremap_{playlist.id}_{entry.in_point}"
+    chain_props: dict[str, str] = {}
+    if src.properties.get("mlt_service"):
+        chain_props["mlt_service"] = src.properties["mlt_service"]
+    chain_props["length"] = str(total)
+    chain = Producer(
+        id=chain_id,
+        resource=src.resource,
+        properties=chain_props,
+        links=[Link(mlt_service="timeremap", properties=link_props)],
+        chain_out=total - 1,
+    )
+    project.producers.append(chain)
+
+    entry.producer_id = chain_id
+    entry.in_point = 0
+    entry.out_point = total - 1
+    return total
+
+
 @mcp.tool()
 def speed_ramp(
     workspace_path: str,
@@ -38,6 +77,8 @@ def speed_ramp(
     keyframes: str,
     easing: str = "cubic",
     pitch_compensation: bool = False,
+    engine: str = "segments",
+    image_mode: str = "nearest",
 ) -> dict:
     """Apply a keyframed speed ramp (time remap) to a clip.
 
@@ -63,12 +104,24 @@ def speed_ramp(
         easing: Ramp curve between speed keyframes -- ``cubic`` (smoothstep,
             default), ``linear``, ``ease_in``, or ``ease_out``.
         pitch_compensation: When True, keep audio pitch constant across the
-            speed change (MLT ``warp_pitch``); otherwise pitch shifts with speed.
+            speed change (``timewarp`` ``warp_pitch`` for the segments engine,
+            the timeremap link ``pitch`` boolean for the native engine).
+        engine: ``segments`` (default) slices the clip into constant-speed
+            ``timewarp:`` producers; ``timeremap`` emits a single native
+            ``<chain>`` + ``<link mlt_service="timeremap">`` carrying an animated
+            ``speed_map`` for a continuous eased curve.
+        image_mode: Timeremap-only -- ``nearest`` (default) or ``blend``
+            (frame-blend for motion-blurred slow-mo). Ignored by the segments
+            engine.
 
-    Returns a success dict with the segment count, expected timeline frames /
-    seconds, source frames covered, keyframe format, and snapshot id -- or an
-    error dict.
+    Returns a success dict with the engine, segment count, expected timeline
+    frames / seconds, source frames covered, keyframe format, and snapshot id --
+    or an error dict.
     """
+    if engine not in ("segments", "timeremap"):
+        return _err(f"engine {engine!r} must be 'segments' or 'timeremap'")
+    if image_mode not in sr.IMAGE_MODES:
+        return _err(f"image_mode {image_mode!r} must be one of {sr.IMAGE_MODES}")
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
@@ -113,18 +166,28 @@ def speed_ramp(
     except Exception as exc:  # noqa: BLE001
         return _err(f"Snapshot failed: {exc}")
 
-    from workshop_video_brain.core.models.timeline import SpeedRamp
+    if engine == "timeremap":
+        try:
+            output_frames = _apply_timeremap_engine(
+                project, playlist, entry, segments,
+                image_mode=image_mode, pitch=pitch_compensation,
+            )
+        except (ValueError, IndexError) as exc:
+            return _err(f"failed to apply timeremap ramp: {exc}")
+        patched = project
+    else:
+        from workshop_video_brain.core.models.timeline import SpeedRamp
 
-    intent = SpeedRamp(
-        track_ref=playlist.id,
-        clip_index=clip_index,
-        segments=seg_tuples,
-        pitch_compensation=pitch_compensation,
-    )
-    try:
-        patched = patcher.patch_project(project, [intent])
-    except (ValueError, IndexError) as exc:
-        return _err(f"failed to apply speed ramp: {exc}")
+        intent = SpeedRamp(
+            track_ref=playlist.id,
+            clip_index=clip_index,
+            segments=seg_tuples,
+            pitch_compensation=pitch_compensation,
+        )
+        try:
+            patched = patcher.patch_project(project, [intent])
+        except (ValueError, IndexError) as exc:
+            return _err(f"failed to apply speed ramp: {exc}")
     serialize_project(patched, project_path)
 
     return _ok({
@@ -132,9 +195,11 @@ def speed_ramp(
         "track": track,
         "clip_index": clip_index,
         "playlist_id": playlist.id,
+        "engine": engine,
         "keyframe_format": kf_format,
         "easing": easing,
         "pitch_compensation": pitch_compensation,
+        "image_mode": image_mode if engine == "timeremap" else None,
         "segment_count": len(seg_tuples),
         "source_frames": src_frames,
         "expected_output_frames": output_frames,

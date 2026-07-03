@@ -114,6 +114,9 @@ top, so they come first.
   effect_catalog → `effect_stack_preset` can't save stacks containing masks.
   Currently documented only in a commit message and a script comment — belongs
   in the backlog.
+  **BUILT (Wave-4a, 2026-07-03)**: `ParamType.ROTO_SPLINE` added to
+  `effect_catalog_gen.py`; `rotoscoping` + `mask_start-rotoscoping` now in
+  `effect_catalog.py` (321→323), so `effect_stack_preset` saves mask stacks.
 - Hardcoded profile assumptions: 1920×1080@25 fallbacks, forced `progressive=1`
   / SAR 1:1, transition frame-count presets assuming ~25 fps.
 
@@ -243,6 +246,11 @@ Grouped by how much they block a real end-to-end workshop-video workflow.
   only).
 - **Working speed control**: replace the bogus speed filter with `timewarp`
   producers; later add time-remap keyframes for speed ramps.
+  **BUILT (Wave-4a, 2026-07-03)**: native `timeremap` engine added to
+  `speed_ramp` (`engine="timeremap"`, default stays `"segments"`) — a `<chain>` +
+  `<link mlt_service="timeremap">` with an animated `speed_map` (chain/link
+  serializer + parser round-trip in the kdenlive adapter). Melt-proven to render
+  the ramp integral, agreeing with the segments engine within a few frames.
 - **Same-track transitions (mixes)**: Kdenlive's native `mix` concept is absent
   and the current crossfade XML is invalid (§1.1). Fix transitions to emit real
   `luma`/`mix` transitions in the tractor with proper a/b tracks.
@@ -263,6 +271,9 @@ Grouped by how much they block a real end-to-end workshop-video workflow.
   only; allow passing keyframe strings through to any animatable param.
 - **image_alpha mask type** (explicitly deferred in the masking spec) and
   animated/keyframed rotoscoping splines.
+  *(Animated/keyframed rotoscoping splines + luma mode: **BUILT (Wave-4a)** —
+  `MaskParams.spline_keyframes` / `mode`, melt-proven moving matte. `image_alpha`
+  remains deferred.)*
 - **Audio channels/sample-rate project settings, vertical-video profile
   presets** (Shorts/Reels are already a target via social_* tools).
 

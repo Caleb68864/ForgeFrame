@@ -188,6 +188,47 @@ def test_tool_applies_ramp_and_reports_frames(project_ws):
     assert tw
 
 
+def test_tool_timeremap_engine_emits_chain(project_ws):
+    import json
+
+    ws_root, proj_rel, track = project_ws
+    kfs = json.dumps([
+        {"at_seconds": 0, "speed": 2.0},
+        {"at_seconds": 2, "speed": 2.0},
+        {"at_seconds": 2, "speed": 0.5},
+        {"at_seconds": 4, "speed": 0.5},
+    ])
+    res = speed_ramp(
+        str(ws_root), proj_rel, track=track, clip_index=0, keyframes=kfs,
+        easing="linear", engine="timeremap", image_mode="blend",
+    )
+    assert res["status"] == "success", res
+    data = res["data"]
+    assert data["engine"] == "timeremap"
+    assert data["image_mode"] == "blend"
+    assert data["expected_output_frames"] == 125
+
+    # A <chain> with a timeremap link now backs the clip.
+    xml = (ws_root / proj_rel).read_text()
+    assert "<chain" in xml and '<link mlt_service="timeremap">' in xml
+    assert "speed_map" in xml and 'name="image_mode">blend' in xml
+
+    reparsed = parse_project(ws_root / proj_rel)
+    chains = [p for p in reparsed.producers if p.links]
+    assert len(chains) == 1
+    assert chains[0].links[0].mlt_service == "timeremap"
+    assert chains[0].chain_out == 124
+
+
+def test_tool_rejects_bad_engine(project_ws):
+    import json
+
+    ws_root, proj_rel, track = project_ws
+    kfs = json.dumps([{"at_seconds": 0, "speed": 2.0}])
+    res = speed_ramp(str(ws_root), proj_rel, track=track, clip_index=0, keyframes=kfs, engine="warp")
+    assert res["status"] == "error"
+
+
 def test_tool_accepts_timemap_format(project_ws):
     import json
 

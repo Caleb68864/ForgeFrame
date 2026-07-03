@@ -292,8 +292,17 @@ def serialize_project(
     # User producers (sub-spec 1: kdenlive metadata properties)
     # ------------------------------------------------------------------
     for kdenlive_id, producer in enumerate(project.producers, start=2):
-        p_elem = ET.SubElement(root, "producer")
-        p_elem.set("id", producer.id)
+        # A producer carrying MLT links serializes as a <chain> (links may only
+        # live inside a chain); otherwise a plain <producer>.  The chain's `out`
+        # attribute bounds the (possibly time-remapped) output length.
+        if producer.links:
+            p_elem = ET.SubElement(root, "chain")
+            p_elem.set("id", producer.id)
+            if producer.chain_out is not None:
+                p_elem.set("out", str(producer.chain_out))
+        else:
+            p_elem = ET.SubElement(root, "producer")
+            p_elem.set("id", producer.id)
         # resource property first (critical for Kdenlive to find media)
         if producer.resource:
             resource_prop = ET.SubElement(p_elem, "property")
@@ -317,6 +326,14 @@ def serialize_project(
             "kdenlive:folderid",
             producer.properties.get("kdenlive:folderid", "-1"),
         )
+        # MLT <link> children (chain-only).  Each link is a service + properties.
+        for link in producer.links:
+            link_elem = ET.SubElement(p_elem, "link")
+            link_elem.set("mlt_service", link.mlt_service)
+            for name, value in link.properties.items():
+                lprop = ET.SubElement(link_elem, "property")
+                lprop.set("name", name)
+                lprop.text = value
 
     # ------------------------------------------------------------------
     # Sub-spec 3: black_track background producer

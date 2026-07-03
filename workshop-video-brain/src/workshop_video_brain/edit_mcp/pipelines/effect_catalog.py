@@ -31,7 +31,8 @@ class ParamType(str, enum.Enum):
     URL = "url",
     STRING = "string",
     READONLY = "readonly",
-    HIDDEN = "hidden"
+    HIDDEN = "hidden",
+    ROTO_SPLINE = "roto-spline"
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -60,7 +61,7 @@ class EffectDef:
 
 __generated_at__ = '2026-04-13T21:04:01+00:00'
 __source_version__ = '25.12.3'
-__local_count__ = 321
+__local_count__ = 323
 __upstream_diff__ = {"local_count": 321, "upstream_count": None, "upstream_only_ids": (), "local_only_ids": (), "upstream_check": 'skipped'}
 
 
@@ -3990,6 +3991,22 @@ CATALOG: dict[str, EffectDef] = {
             ParamDef(name='filter.Operation', display_name='Operation', type=ParamType.LIST, default='0.0', min=None, max=None, decimals=None, values=('0', '0.3', '0.5', '0.7', '1'), value_labels=('Write on clear', 'Max', 'Min', 'Add', 'Subtract'), keyframable=False),
         ),
     ),
+    'mask_start_rotoscoping': EffectDef(
+        kdenlive_id='mask_start_rotoscoping',
+        mlt_service='mask_start',
+        display_name='Rotoscoping (Mask)',
+        description="This filter makes a snapshot of the frame before a keyframable vector based rotoscoping is applied. Use it together with the mask_apply effect, that uses a transition to composite the current frame's image over the snapshot. The typical use case is to add effects in the following sequence: this effect, zero or more effects, mask_apply.",
+        category='custom',
+        params=(
+            ParamDef(name='filter', display_name='Filter', type=ParamType.FIXED, default=None, min=None, max=None, decimals=None, values=(), value_labels=(), keyframable=False),
+            ParamDef(name='filter.spline', display_name='filter.spline', type=ParamType.ROTO_SPLINE, default='', min=None, max=None, decimals=None, values=(), value_labels=(), keyframable=True),
+            ParamDef(name='filter.mode', display_name='Mode', type=ParamType.LIST, default='alpha', min=None, max=None, decimals=None, values=('alpha', 'luma', 'rgb'), value_labels=('Alpha', 'Luma', 'RGB'), keyframable=False),
+            ParamDef(name='filter.alpha_operation', display_name='Alpha Operation', type=ParamType.LIST, default='clear', min=None, max=None, decimals=None, values=('clear', 'max', 'min', 'add', 'sub'), value_labels=('Write on clear', 'Maximum', 'Minimum', 'Add', 'Subtract'), keyframable=False),
+            ParamDef(name='filter.invert', display_name='Invert', type=ParamType.BOOL, default='0', min=None, max=None, decimals=None, values=(), value_labels=(), keyframable=False),
+            ParamDef(name='filter.feather', display_name='Feather width', type=ParamType.CONSTANT, default='0', min=0.0, max=500.0, decimals=None, values=(), value_labels=(), keyframable=False),
+            ParamDef(name='filter.feather_passes', display_name='Feathering passes', type=ParamType.CONSTANT, default='1', min=1.0, max=20.0, decimals=None, values=(), value_labels=(), keyframable=False),
+        ),
+    ),
     'mirror': EffectDef(
         kdenlive_id='mirror',
         mlt_service='mirror',
@@ -4198,6 +4215,21 @@ CATALOG: dict[str, EffectDef] = {
             ParamDef(name='pitchscale', display_name='Pitch Scale', type=ParamType.CONSTANT, default='1.0', min=0.1, max=10.0, decimals=3, values=(), value_labels=(), keyframable=False),
             ParamDef(name='stretch', display_name='Stretch', type=ParamType.BOOL, default='0', min=None, max=None, decimals=None, values=(), value_labels=(), keyframable=False),
             ParamDef(name='latency', display_name='Latency', type=ParamType.CONSTANT, default='0', min=0.0, max=2000.0, decimals=None, values=(), value_labels=(), keyframable=False),
+        ),
+    ),
+    'rotoscoping': EffectDef(
+        kdenlive_id='rotoscoping',
+        mlt_service='rotoscoping',
+        display_name='Rotoscoping',
+        description='Keyframable vector based rotoscoping',
+        category='custom',
+        params=(
+            ParamDef(name='spline', display_name='spline', type=ParamType.ROTO_SPLINE, default='', min=None, max=None, decimals=None, values=(), value_labels=(), keyframable=True),
+            ParamDef(name='mode', display_name='Mode', type=ParamType.LIST, default='alpha', min=None, max=None, decimals=None, values=('alpha', 'luma', 'rgb'), value_labels=('Alpha', 'Luma', 'RGB'), keyframable=False),
+            ParamDef(name='alpha_operation', display_name='Alpha Operation', type=ParamType.LIST, default='clear', min=None, max=None, decimals=None, values=('clear', 'max', 'min', 'add', 'sub'), value_labels=('Write on clear', 'Maximum', 'Minimum', 'Add', 'Subtract'), keyframable=False),
+            ParamDef(name='invert', display_name='Invert', type=ParamType.BOOL, default='0', min=None, max=None, decimals=None, values=(), value_labels=(), keyframable=False),
+            ParamDef(name='feather', display_name='Feather width', type=ParamType.CONSTANT, default='0', min=0.0, max=500.0, decimals=None, values=(), value_labels=(), keyframable=False),
+            ParamDef(name='feather_passes', display_name='Feathering passes', type=ParamType.CONSTANT, default='1', min=1.0, max=20.0, decimals=None, values=(), value_labels=(), keyframable=False),
         ),
     ),
     'scratchlines': EffectDef(

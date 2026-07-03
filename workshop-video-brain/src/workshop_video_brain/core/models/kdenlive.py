@@ -13,10 +13,31 @@ class ProjectProfile(SerializableMixin):
     colorspace: str | None = None
 
 
+class Link(SerializableMixin):
+    """An MLT ``<link>`` inside a ``<chain>`` (e.g. the ``timeremap`` link).
+
+    Links are the chain-era successor to filters for time-domain processing;
+    the ``timeremap`` link carries an animated ``time_map``/``speed_map`` plus
+    ``image_mode`` and ``pitch`` properties. ``mlt_service`` is the link service
+    name; ``properties`` are its ``<property>`` children.
+    """
+
+    mlt_service: str
+    properties: dict[str, str] = Field(default_factory=dict)
+
+
 class Producer(SerializableMixin):
     id: str
     resource: str = ""
     properties: dict[str, str] = Field(default_factory=dict)
+    # When ``links`` is non-empty the serializer emits this producer as a
+    # ``<chain>`` (with the links as ``<link>`` children) instead of a plain
+    # ``<producer>`` -- MLT requires links to live inside a chain. ``chain_out``
+    # sets the explicit ``out`` attribute the timeremap link needs to bound its
+    # remapped output length (the link reads the chain's length to size its
+    # animation window). Both default to the plain-producer behaviour.
+    links: list[Link] = Field(default_factory=list)
+    chain_out: int | None = None
 
 
 class PlaylistEntry(SerializableMixin):

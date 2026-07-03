@@ -12,6 +12,7 @@ from pathlib import Path
 from workshop_video_brain.core.models.kdenlive import (
     Guide,
     KdenliveProject,
+    Link,
     OpaqueElement,
     Playlist,
     PlaylistEntry,
@@ -44,6 +45,8 @@ _KNOWN_TAGS = {
     "mlt",
     "profile",
     "producer",
+    "chain",
+    "link",
     "playlist",
     "tractor",
     "track",
@@ -89,6 +92,43 @@ def _parse_producer(elem: ET.Element) -> Producer:
             props[name] = value
     resource = props.get("resource", "")
     return Producer(id=producer_id, resource=resource, properties=props)
+
+
+def _parse_chain(elem: ET.Element) -> Producer:
+    """Parse a ``<chain>`` (producer + MLT ``<link>`` children) into a Producer.
+
+    Round-trips the chain form the serializer emits for the native
+    ``timeremap`` engine: top-level ``<property>`` children populate the
+    producer, each ``<link>`` becomes a :class:`Link`, and the chain's ``out``
+    attribute is preserved on ``chain_out``.  Kept deliberately independent of
+    ``_parse_producer`` so the chain-only vocabulary stays isolated.
+    """
+    producer_id = elem.get("id", "")
+    props: dict[str, str] = {}
+    links: list[Link] = []
+    for child in elem:
+        if child.tag == "property":
+            props[child.get("name", "")] = child.text or ""
+        elif child.tag == "link":
+            link_props: dict[str, str] = {}
+            for lchild in child:
+                if lchild.tag == "property":
+                    link_props[lchild.get("name", "")] = lchild.text or ""
+            links.append(
+                Link(
+                    mlt_service=child.get("mlt_service", ""),
+                    properties=link_props,
+                )
+            )
+    chain_out_raw = elem.get("out")
+    chain_out = int(chain_out_raw) if chain_out_raw is not None else None
+    return Producer(
+        id=producer_id,
+        resource=props.get("resource", ""),
+        properties=props,
+        links=links,
+        chain_out=chain_out,
+    )
 
 
 def _parse_playlist(
@@ -349,6 +389,13 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
                 producers.append(_parse_producer(elem))
             except Exception as exc:
                 logger.warning("Skipping malformed <producer>: %s", exc)
+                opaque_elements.append(_elem_to_opaque(elem))
+
+        elif tag == "chain":
+            try:
+                producers.append(_parse_chain(elem))
+            except Exception as exc:
+                logger.warning("Skipping malformed <chain>: %s", exc)
                 opaque_elements.append(_elem_to_opaque(elem))
 
         elif tag == "playlist":

@@ -28,6 +28,8 @@ covering all 10 videos of the Nuxttux Kdenlive tutorials playlist. Transcripts:
    docs/plans/2026-07-03-melt-oracle-test-harness-design.md).
 2. **Animated rotoscoping** (4 videos) — `masking._spline_json` emits frame 0 only;
    need keyframed splines + luma mode + `roto-spline` ParamType.
+   **BUILT (Wave-4a, 2026-07-03)** — keyframed splines + luma mode + ParamType fix
+   all landed; see the Wave-4a migration note below.
 3. **motion_track / subject_track** (3 videos) — `opencv.tracker` absent everywhere;
    plan §5 already designs it; needs tracker→transform keyframe bridge.
 4. **effect_transform** (4 videos) — first-class qtblend/affine wrapper (scale, pos,
@@ -89,3 +91,52 @@ model-level insert-at-time workarounds; do NOT keep re-implementing placement):
 the Wave-3a `vo_loop` / `image_overlay` modules once they land. Point their
 inserts at `pipelines.clip_place.plan_overwrite` / `plan_insert` (or the
 `PlaceClip` intent) so placement math has one home.
+
+## Migration note — gap #2 Animated rotoscoping: BUILT (Wave-4a, 2026-07-03)
+
+Gap #2 ("Animated rotoscoping") is **BUILT** — the `effect_clone_self` hard
+blocker (plus 3 other bundles' animated-roto need) is cleared:
+
+- `edit_mcp/pipelines/masking.py` — `MaskParams` gains `spline_keyframes`
+  (`{frame: points}`) and `mode` (`alpha` | `luma` | `rgb`, was hardcoded
+  `alpha`). `_spline_json_frames` emits a multi-keyframe `roto-spline`
+  (`{"0": [...], "48": [...]}`); `build_rotoscoping_xml` /
+  `build_mask_start_rotoscoping_xml` use them. Static `points` (frame-0-only)
+  still works — backwards compatible.
+- `edit_mcp/pipelines/effect_catalog_gen.py` — `ParamType.ROTO_SPLINE`
+  (`"roto-spline"`) added, so `rotoscoping` + `mask_start-rotoscoping` now parse
+  into the catalog (`effect_catalog.py`, 321→323 effects). `effect_stack_preset`
+  can now save rotoscoping mask stacks (`validate_against_catalog` finds the
+  `rotoscoping` / `mask_start` services).
+
+Melt-proven (`tests/integration/external/test_roto_animated_render.py`, melt 7.40
++ frei0r): a keyframed spline puts the masked-in GREEN patch on the LEFT at frame
+0 and the RIGHT at the last frame (matte provably moves); a static frame-0 spline
+stays put. Roto storage format confirmed: `spline` is a JSON object keyed by
+string frame number, each value a list of `[anchor,handle_in,handle_out]` point
+triples in normalized [0,1] coords; MLT interpolates the matte between keys.
+
+## Migration note — gap (plan §3) Native timeremap: BUILT (Wave-4a, 2026-07-03)
+
+The native `timeremap` route the speed-ramp agent deferred (link loads headless
+but needed `<chain>`/`<link>` XML the serializer could not emit) is **BUILT**:
+
+- `core/models/kdenlive.py` — `Link` model + `Producer.links` / `Producer.chain_out`.
+  A producer with links serializes as a `<chain>` (not `<producer>`).
+- `adapters/kdenlive/serializer.py` — emits `<chain out=N>` with `<link
+  mlt_service=...>` children when `producer.links` is set.
+- `adapters/kdenlive/parser.py` — `_parse_chain` round-trips chains back into
+  `Producer(links=..., chain_out=...)`.
+- `edit_mcp/pipelines/speed_ramp.py` — `speed_map_from_segments` (step function
+  keyed by output frame, integral == segments engine) + `timeremap_link_properties`
+  (`image_mode` nearest|blend, `pitch`). `server/bundles/speed_ramp.py` gains
+  `engine="timeremap"` (default stays `"segments"`) + `image_mode`.
+
+Melt-proven (`tests/integration/external/test_timeremap_render.py`): the two-phase
+2x→0.5x ramp renders to the 125-frame / 5.0 s integral, agreeing with the
+segments engine within a few frames. Empirically verified `speed_map=2.0` remaps
+content (output frame 25 == source 50, output 49 == source 98, mean-RGB diff < 2)
+once the chain `out`/`length` match the output length; without them the link
+degrades to 1x passthrough. `time_map` (the alternative) is keyed by output frame
+with values in **seconds** (source→time), so `speed_map` is the ramp engine's
+choice.
