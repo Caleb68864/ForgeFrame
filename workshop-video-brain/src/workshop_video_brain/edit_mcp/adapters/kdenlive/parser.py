@@ -199,6 +199,9 @@ _MANAGED_DOCPROPERTY_SUFFIXES = frozenset(
         "guides",
         "subtitlesList",
         "activeSubtitleIndex",
+        # Sequence wiring -- regenerated from the sequence uuid on every write.
+        "opensequences",
+        "activetimeline",
     }
 )
 
@@ -262,45 +265,115 @@ def _subtitle_from_filter(elem: ET.Element) -> SubtitleTrack | None:
     )
 
 
+# Sequence-tractor properties the serializer regenerates from model state.
+# Skipping them on parse avoids duplicate properties on the next write; these
+# describe the sequence *architecture* (rebuilt fresh), not user content.
+_REGENERATED_SEQUENCE_PROPS = frozenset(
+    {
+        "kdenlive:uuid",
+        "kdenlive:control_uuid",
+        "kdenlive:clipname",
+        "kdenlive:clip_type",
+        "kdenlive:duration",
+        "kdenlive:maxduration",
+        "kdenlive:producer_type",
+        "kdenlive:id",
+        "kdenlive:file_size",
+        "kdenlive:folderid",
+        "kdenlive:projectTractor",
+        "kdenlive:trackheight",
+        "kdenlive:timeline_active",
+        "kdenlive:thumbs_format",
+        "kdenlive:audio_rec",
+        "kdenlive:collapsed",
+        "kdenlive:audio_track",
+    }
+)
+
+
+def _tractor_role(elem: ET.Element, props: dict[str, str]) -> str:
+    """Classify a ``<tractor>`` in the modern (nested) document.
+
+    Returns one of:
+      * ``"project"``  -- the render-root project tractor (``projectTractor``).
+      * ``"sequence"`` -- a registered sequence tractor (``producer_type=17`` or
+        carrying ``kdenlive:uuid``); holds the black track + track-tractors +
+        compositing transitions.
+      * ``"track"``    -- a per-track lane-wrapper tractor, or a legacy single
+        timeline tractor; its ``<track>`` children reference playlists.
+    """
+    if "kdenlive:projectTractor" in props:
+        return "project"
+    if props.get("kdenlive:producer_type") == "17" or "kdenlive:uuid" in props:
+        return "sequence"
+    return "track"
+
+
 def _parse_tractor(
     elem: ET.Element,
+    playlist_ids: set[str],
 ) -> tuple[dict, list[Track], list[OpaqueElement], list[SubtitleTrack]]:
+    """Parse one ``<tractor>``.
+
+    *playlist_ids* is the set of already-parsed content playlist ids so a
+    track-tractor's lane references can be recognised as timeline tracks (and
+    the sequence tractor's tractor references are NOT mistaken for tracks).
+    """
     tractor_dict: dict = {k: v for k, v in elem.attrib.items()}
     tracks: list[Track] = []
     opaques: list[OpaqueElement] = []
     subtitles: list[SubtitleTrack] = []
+
+    props = {
+        c.get("name", ""): (c.text or "")
+        for c in elem
+        if c.tag == "property"
+    }
+    role = _tractor_role(elem, props)
+
+    # The project (render-root) tractor is pure infrastructure -- regenerated.
+    if role == "project":
+        return tractor_dict, tracks, opaques, subtitles
+
     for child in elem:
         if child.tag == "track":
             producer_ref = child.get("producer", "")
-            # Skip serializer-generated infrastructure tracks
+            # Only lane references (playlists) become timeline tracks.  In the
+            # sequence tractor the <track> refs point at the black producer and
+            # the track-tractors -- infrastructure, skipped.
+            if producer_ref not in playlist_ids:
+                continue
             if producer_ref == "black_track" or producer_ref.endswith("_kdpair"):
                 continue
-            # Determine type from hide attribute
             hide = child.get("hide", "")
-            if hide == "video":
-                track_type = "audio"
-            elif hide == "audio":
-                track_type = "video"
-            else:
-                track_type = "video"
+            track_type = "audio" if hide == "video" else "video"
             tracks.append(Track(id=producer_ref, track_type=track_type))
         elif child.tag == "filter":
-            # Real subtitle tracks are avfilter.subtitles filters on the tractor;
-            # read them into first-class SubtitleTrack objects (round-trip) rather
-            # than losing them into the opaque store.
+            # Subtitle tracks are avfilter.subtitles filters; the internal
+            # audio filters (volume/panner/audiolevel, internal_added=237) are
+            # regenerated and dropped.
             sub = _subtitle_from_filter(child)
             if sub is not None:
                 subtitles.append(sub)
-            else:
-                opaques.append(_elem_to_opaque(child, position_hint="tractor"))
+                continue
+            fprops = _filter_props(child)
+            if fprops.get("internal_added") == "237":
+                continue
+            opaques.append(_elem_to_opaque(child, position_hint="tractor"))
         elif child.tag == "transition":
+            # Regenerated always-active compositors carry internal_added=237;
+            # only user transitions (no internal_added) round-trip.
+            tprops = _filter_props(child)
+            if tprops.get("internal_added") == "237":
+                continue
             opaques.append(_elem_to_opaque(child, position_hint="tractor"))
         elif child.tag == "property":
-            # Tractor sequence properties.  The serializer regenerates the guides
-            # and subtitlesList JSON from model state, so dropping those two here
-            # avoids a duplicate property on the next write; any other sequence
-            # property (groups, activeTrack, ...) is preserved verbatim.
-            if child.get("name") in _REGENERATED_TRACTOR_PROPS:
+            name = child.get("name", "")
+            if name in _REGENERATED_TRACTOR_PROPS:
+                continue
+            if name in _REGENERATED_SEQUENCE_PROPS:
+                continue
+            if name.startswith("kdenlive:sequenceproperties."):
                 continue
             opaques.append(_elem_to_opaque(child, position_hint="tractor"))
         else:
@@ -364,6 +437,17 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
     version = root.get("version", "")
     title = root.get("title", "")
 
+    # Pre-pass: collect content-playlist ids so tractor classification (below)
+    # recognises track-tractor lane references regardless of element order.
+    content_playlist_ids: set[str] = set()
+    for elem in root:
+        if elem.tag != "playlist":
+            continue
+        pid = elem.get("id", "")
+        if pid == "main_bin" or pid.endswith("_kdpair"):
+            continue
+        content_playlist_ids.add(pid)
+
     profile = ProjectProfile()
     producers: list[Producer] = []
     playlists: list[Playlist] = []
@@ -382,8 +466,17 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
 
         elif tag == "producer":
             producer_id = elem.get("id", "")
-            # Skip the serializer-generated background producer
-            if producer_id == "black_track":
+            # Skip the serializer-generated background producer (legacy id
+            # "black_track" or E-shape id "producer_black" / playlistid marker).
+            _pprops = {
+                c.get("name", ""): (c.text or "")
+                for c in elem
+                if c.tag == "property"
+            }
+            if (
+                producer_id in ("black_track", "producer_black")
+                or _pprops.get("kdenlive:playlistid") == "black_track"
+            ):
                 continue
             try:
                 producers.append(_parse_producer(elem))
@@ -422,9 +515,15 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
         elif tag == "tractor":
             try:
                 tractor_dict, tractor_tracks, tractor_opaques, tractor_subs = (
-                    _parse_tractor(elem)
+                    _parse_tractor(elem, content_playlist_ids)
                 )
-                tractor = tractor_dict
+                # Keep the most meaningful tractor dict: the project (render
+                # root) tractor is infrastructure, so never let it clobber a
+                # real timeline/sequence tractor.
+                if "kdenlive:projectTractor" not in {
+                    c.get("name", "") for c in elem if c.tag == "property"
+                }:
+                    tractor = tractor_dict
                 tracks.extend(tractor_tracks)
                 opaque_elements.extend(tractor_opaques)
                 subtitles.extend(tractor_subs)

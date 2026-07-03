@@ -183,10 +183,13 @@ def test_sr17_fade_writes_opacity_keyframes_on_transform(tmp_path):
     assert 2 <= out["data"]["keyframe_count"] <= 4
 
     filters = _list_filters(ws, pf, TRACK, CLIP)
-    # Find the newly-added affine+transform filter at end of stack.
+    # Find the newly-added Transform (opacity fade) filter at end of stack.
+    # The Transform effect is emitted as qtblend in modern Kdenlive (FIX-2b);
+    # the legacy affine/"transform" id has no installed asset and is flagged
+    # "Fixed" on load, so effect_fade now emits qtblend + rect.
     last = filters[-1]
-    assert last["mlt_service"] == "affine"
-    assert last["kdenlive_id"] == "transform"
+    assert last["mlt_service"] == "qtblend"
+    assert last["kdenlive_id"] == "qtblend"
     rect = last["properties"].get("rect", "")
     # Should contain keyframe separators (';') with operator-encoded opacity.
     assert ";" in rect, rect

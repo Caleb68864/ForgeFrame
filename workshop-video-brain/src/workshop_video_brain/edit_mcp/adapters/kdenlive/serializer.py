@@ -12,7 +12,7 @@ import xml.etree.ElementTree as ET
 from math import gcd
 from pathlib import Path
 
-from workshop_video_brain.core.models.kdenlive import KdenliveProject, Track
+from workshop_video_brain.core.models.kdenlive import KdenliveProject
 from workshop_video_brain.workspace import snapshot as snapshot_manager
 
 logger = logging.getLogger(__name__)
@@ -20,9 +20,20 @@ logger = logging.getLogger(__name__)
 # Stable UUID namespace for deterministic producer/project UUIDs
 _KDENLIVE_UUID_NS = uuid.NAMESPACE_URL
 
-# Properties managed entirely by the serializer; skip from stored properties dict
+# Properties managed entirely by the serializer; skip from stored properties dict.
+# ``kdenlive:uuid`` and ``kdenlive:control_uuid`` are listed here so that, if a
+# parsed producer carried them, they are DROPPED on re-serialize -- the modern
+# (E-shape) document must not stamp media/AV bin producers with either uuid
+# (only sequence tractors carry them).  ``kdenlive:id``/``clip_type``/
+# ``folderid`` are regenerated fresh below.
 _MANAGED_PROPS = frozenset(
-    {"kdenlive:uuid", "kdenlive:id", "kdenlive:clip_type", "kdenlive:folderid"}
+    {
+        "kdenlive:uuid",
+        "kdenlive:control_uuid",
+        "kdenlive:id",
+        "kdenlive:clip_type",
+        "kdenlive:folderid",
+    }
 )
 
 
@@ -51,9 +62,35 @@ def _producer_uuid(producer_id: str) -> str:
 
 
 def _project_uuid(title: str) -> str:
-    """Deterministic UUID5 for the whole project."""
+    """Deterministic UUID5 for the whole project (used as the sequence uuid)."""
     u = uuid.uuid5(_KDENLIVE_UUID_NS, "project:" + title)
     return "{" + str(u) + "}"
+
+
+def _looks_like_media(resource: str) -> bool:
+    """Heuristic: does *resource* point at an on-disk media file?
+
+    A media/AV bin producer needs an ``mlt_service`` so Kdenlive's bin model
+    classifies it.  Our upstream producers sometimes carry only ``resource`` +
+    ``length`` (see the smoke fixtures), so the serializer defaults the service
+    to ``avformat-novalidate`` when the resource is a real path.  Builtin
+    producers (``black``, colour hex, ``color:``) and title/qml producers are
+    excluded (they already carry their own service).
+    """
+    if not resource:
+        return False
+    if resource == "black" or resource.startswith(("#", "0x", "color:")):
+        return False
+    return ("/" in resource) or ("." in resource)
+
+
+def _frames_to_timecode(frames: int, fps: float) -> str:
+    """Format a frame count as an HH:MM:SS;FF drop-style timecode string."""
+    fps_i = max(1, int(round(fps)))
+    total_seconds, frame = divmod(max(0, frames), fps_i)
+    hours, rem = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(rem, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d};{frame:02d}"
 
 
 def _clip_type(properties: dict[str, str]) -> str:
@@ -104,6 +141,47 @@ def _set_prop(elem: ET.Element, name: str, value: str) -> None:
     prop = ET.SubElement(elem, "property")
     prop.set("name", name)
     prop.text = value
+
+
+def _elem_props(elem: ET.Element) -> dict[str, ET.Element]:
+    """Map ``<property name=...>`` children of *elem* by name."""
+    return {
+        c.get("name", ""): c
+        for c in elem
+        if c.tag == "property"
+    }
+
+
+def _normalize_transition_id(elem: ET.Element) -> None:
+    """Ensure a user ``<transition>`` carries a repository ``kdenlive_id``.
+
+    Kdenlive resolves compositing assets by ``kdenlive_id``; a composition with
+    none is marked "Remove" (§FIX-2 / §(c)).  When absent, derive it from the
+    transition's ``mlt_service`` (the ``frei0r.*``/``qtblend``/``mix`` services
+    are already the repository dot-form id).  This is deliberately limited to
+    transitions -- clip/track filters are normalised at build time by
+    ``_build_filter_xml`` so render-proven ``affine`` effect paths (pan_zoom,
+    zoom_whip, ...) are left untouched.
+    """
+    if elem.tag != "transition":
+        return
+    props = _elem_props(elem)
+    if "kdenlive_id" in props and (props["kdenlive_id"].text or ""):
+        return
+    svc = elem.get("mlt_service", "")
+    if "mlt_service" in props and (props["mlt_service"].text or ""):
+        svc = props["mlt_service"].text or ""
+    if not svc:
+        return
+    kid_elem = ET.Element("property")
+    kid_elem.set("name", "kdenlive_id")
+    kid_elem.text = svc
+    insert_at = 0
+    for i, child in enumerate(list(elem)):
+        if child.tag == "property" and child.get("name") == "mlt_service":
+            insert_at = i + 1
+            break
+    elem.insert(insert_at, kid_elem)
 
 
 def _entry_length(entry) -> int:
@@ -264,11 +342,14 @@ def serialize_project(
     # Build XML tree
     # ------------------------------------------------------------------
     root = ET.Element("mlt")
-    root.set("title", project.title)
-    root.set("version", project.version)
-    # Sub-spec 2: required root attributes
-    root.set("producer", "main_bin")
     root.set("LC_NUMERIC", "C")
+    # Sub-spec 2 / E-shape: root resolves to the project (main_bin) producer and
+    # carries the workspace ``root`` path so relative resources resolve.
+    root.set("producer", "main_bin")
+    root.set("root", str(output_path.parent))
+    root.set("version", project.version)
+    if project.title:
+        root.set("title", project.title)
 
     # ------------------------------------------------------------------
     # Profile  (sub-spec 3: proper num/den + extra attributes)
@@ -288,8 +369,37 @@ def serialize_project(
     if project.profile.colorspace:
         profile_elem.set("colorspace", project.profile.colorspace)
 
+    # Timeline length (last frame index) bounds the background, sequence tractor
+    # and project tractor so a render/`-consumer null` stops at the content.
+    content_out = _content_out(project)
+    seq_uuid = _project_uuid(project.title)
+    profile_name = (
+        f"{project.profile.width}x{project.profile.height}"
+        f"_fps{int(round(project.profile.fps))}"
+    )
+
     # ------------------------------------------------------------------
-    # User producers (sub-spec 1: kdenlive metadata properties)
+    # Background (black) producer -- id "producer_black", carrying
+    # kdenlive:playlistid=black_track (E-shape / empty_from_user ground truth).
+    # ------------------------------------------------------------------
+    bt_elem = ET.SubElement(root, "producer")
+    bt_elem.set("id", "producer_black")
+    bt_elem.set("in", "0")
+    bt_elem.set("out", str(content_out))
+    _set_prop(bt_elem, "length", "2147483647")
+    _set_prop(bt_elem, "eof", "continue")
+    _set_prop(bt_elem, "resource", "black")
+    _set_prop(bt_elem, "aspect_ratio", "1")
+    _set_prop(bt_elem, "mlt_service", "color")
+    _set_prop(bt_elem, "kdenlive:playlistid", "black_track")
+    _set_prop(bt_elem, "mlt_image_format", "rgba")
+    _set_prop(bt_elem, "set.test_audio", "0")
+
+    # ------------------------------------------------------------------
+    # Media / AV bin producers (E-shape: kdenlive:id + clip_type + folderid;
+    # NO kdenlive:uuid and NO kdenlive:control_uuid -- only sequence tractors
+    # carry uuids, else loadBinPlaylist routes them into the sequence branch and
+    # skips them as malformed sequences).
     # ------------------------------------------------------------------
     for kdenlive_id, producer in enumerate(project.producers, start=2):
         # A producer carrying MLT links serializes as a <chain> (links may only
@@ -308,19 +418,34 @@ def serialize_project(
             resource_prop = ET.SubElement(p_elem, "property")
             resource_prop.set("name", "resource")
             resource_prop.text = producer.resource
+        # A media bin producer needs an mlt_service so Kdenlive classifies it.
+        # Default AV producers that carry only a resource (smoke fixtures) to
+        # ``avformat`` -- the *validating* demuxer, which probes the file and
+        # decodes correctly.  (``avformat-novalidate`` skips probing and relies
+        # on stored format metadata Kdenlive normally writes; our upstream
+        # producers lack it, so novalidate renders black for lavfi-generated
+        # clips.  ``avformat`` is fully GUI-loadable.)
+        service = producer.properties.get("mlt_service", "")
+        if not service and _looks_like_media(producer.resource):
+            service = "avformat"
+            _set_prop(p_elem, "mlt_service", service)
+            _set_prop(p_elem, "eof", "pause")
         # Stored properties (skip resource and managed kdenlive keys)
         for name, value in producer.properties.items():
             if name == "resource":
                 continue
             if name in _MANAGED_PROPS:
-                continue  # will be written fresh below
+                continue  # dropped (uuids) or regenerated (id/clip_type/folderid)
             prop = ET.SubElement(p_elem, "property")
             prop.set("name", name)
             prop.text = value
-        # Serializer-managed kdenlive metadata (always regenerated)
-        _set_prop(p_elem, "kdenlive:uuid", _producer_uuid(producer.id))
+        # Serializer-managed kdenlive metadata (regenerated; NO uuid/control_uuid)
         _set_prop(p_elem, "kdenlive:id", str(kdenlive_id))
-        _set_prop(p_elem, "kdenlive:clip_type", _clip_type(producer.properties))
+        _set_prop(
+            p_elem,
+            "kdenlive:clip_type",
+            _clip_type({**producer.properties, "mlt_service": service}),
+        )
         _set_prop(
             p_elem,
             "kdenlive:folderid",
@@ -336,95 +461,23 @@ def serialize_project(
                 lprop.text = value
 
     # ------------------------------------------------------------------
-    # Sub-spec 3: black_track background producer
+    # Per-track lanes + track-tractors (E-shape / empty_from_user ground truth).
+    # Each timeline track is a <tractor> wrapping two <playlist> lanes: the
+    # clips lane (playlist.id, holds entries + nested clip/track filters) and an
+    # empty companion lane (playlist.id + "_kdpair").
     # ------------------------------------------------------------------
-    # Bound the background to the actual timeline length so that a render or
-    # `-consumer null` stops at the content instead of ~2e9 frames.  A clip
-    # that has been sped up (timewarp) shortens the timeline, and this is what
-    # makes the shorter duration observable to a fixed-`out` render.
-    content_out = _content_out(project)
-    bt_elem = ET.SubElement(root, "producer")
-    bt_elem.set("id", "black_track")
-    bt_elem.set("in", "0")
-    bt_elem.set("out", str(content_out))
-    _set_prop(bt_elem, "mlt_service", "color")
-    _set_prop(bt_elem, "resource", "black")
-    _set_prop(bt_elem, "length", "2147483647")
-
-    # ------------------------------------------------------------------
-    # Sub-spec 2: main_bin playlist (bin registration for all producers)
-    # ------------------------------------------------------------------
-    proj_uuid = _project_uuid(project.title)
-    profile_name = (
-        f"{project.profile.width}x{project.profile.height}"
-        f"_fps{int(round(project.profile.fps))}"
-    )
-    main_bin = ET.SubElement(root, "playlist")
-    main_bin.set("id", "main_bin")
-    _set_prop(main_bin, "kdenlive:docproperties.version", "1.1")
-    _set_prop(main_bin, "kdenlive:docproperties.profile", profile_name)
-    _set_prop(main_bin, "kdenlive:docproperties.uuid", proj_uuid)
-    # Modern Kdenlive (24.x/25.x) reads guides from a JSON docproperties/
-    # sequenceproperties property, not the legacy top-level <guide> elements.
-    # Emit the JSON here (main_bin) for pre-sequence docs; the tractor also gets
-    # kdenlive:sequenceproperties.guides below.  Legacy <guide> elements are
-    # still written (harmless) for our own round-trip.
-    if project.guides:
-        try:
-            from workshop_video_brain.edit_mcp.pipelines.guides import (
-                guides_docproperties_json,
-            )
-            guides_json = guides_docproperties_json(project)
-            _set_prop(main_bin, "kdenlive:docproperties.guides", guides_json)
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("Could not serialise guides JSON: %s", exc)
-    # Subtitle tracks: modern Kdenlive reads the Subtitles panel from a
-    # docproperties.subtitlesList JSON (mirrored on the sequence tractor below)
-    # plus an activeSubtitleIndex.  The rendered pixels come from the
-    # avfilter.subtitles filter emitted on the tractor.
-    if project.subtitles:
-        try:
-            from workshop_video_brain.edit_mcp.pipelines.subtitle_track import (
-                active_subtitle_index,
-                subtitles_list_json,
-            )
-            _set_prop(
-                main_bin,
-                "kdenlive:docproperties.subtitlesList",
-                subtitles_list_json(project),
-            )
-            _set_prop(
-                main_bin,
-                "kdenlive:docproperties.activeSubtitleIndex",
-                active_subtitle_index(project),
-            )
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("Could not serialise subtitlesList JSON: %s", exc)
-    # ---- PROXY / doc-property bag (round-tripped, suffix-keyed) ----
-    # Non-managed ``kdenlive:docproperties.*`` settings (notably proxy: enableproxy,
-    # proxyparams, proxyextension, generateproxy, proxyminsize, ...).  Managed keys
-    # (version/profile/uuid/guides/subtitlesList/activeSubtitleIndex) are emitted
-    # above and excluded by the parser, so no duplicates arise here.
-    for suffix, value in project.docproperties.items():
-        _set_prop(main_bin, f"kdenlive:docproperties.{suffix}", str(value))
-    # ---- end PROXY / doc-property bag ----
-    for producer in project.producers:
-        entry = ET.SubElement(main_bin, "entry")
-        entry.set("producer", producer.id)
-        entry.set("in", "0")
-        entry.set("out", "0")
-
-    # ------------------------------------------------------------------
-    # Content playlists + sub-spec 3: paired empty playlists
-    # ------------------------------------------------------------------
-    # Clip effects are relocated from the flat opaque store into the clip
-    # <entry> they target (§1.1 filter-placement fix).
     clip_filters, consumed_filter_ids = _extract_clip_filters(project)
-    # Track-level audio/effect filters are relocated into the track's <playlist>
-    # (after its entries) -- the only placement melt applies track-wide
-    # (§3 "Track-level audio", render-verified).
     track_filters, consumed_track_filter_ids = _extract_track_filters(project)
+    track_type_map: dict[str, str] = {t.id: t.track_type for t in project.tracks}
+    hide_by_track, consumed_hide_ids = _hide_directives(project)
+
+    # (track_tractor_id, track_type, clips_playlist_id, is_xfade)
+    track_tractors: list[tuple[str, str, str, bool]] = []
     for track_index, playlist in enumerate(project.playlists):
+        track_type = track_type_map.get(playlist.id, "video")
+        lane_hide = "audio" if track_type == "video" else "video"
+
+        # Clips lane
         pl_elem = ET.SubElement(root, "playlist")
         pl_elem.set("id", playlist.id)
         real_index = 0
@@ -444,149 +497,229 @@ def serialize_project(
         for felem in track_filters.get(track_index, []):
             pl_elem.append(felem)
 
-        # Paired empty playlist (Kdenlive convention)
-        pair_elem = ET.SubElement(root, "playlist")
-        pair_elem.set("id", f"{playlist.id}_kdpair")
+        # Empty companion lane
+        b_id = f"{playlist.id}_kdpair"
+        b_elem = ET.SubElement(root, "playlist")
+        b_elem.set("id", b_id)
+
+        # Track-tractor wrapping both lanes
+        tt_id = f"tractor_{playlist.id}"
+        tt = ET.SubElement(root, "tractor")
+        tt.set("id", tt_id)
+        tt.set("in", "0")
+        tt.set("out", str(content_out))
+        _set_prop(tt, "kdenlive:trackheight", "62")
+        _set_prop(tt, "kdenlive:timeline_active", "1")
+        _set_prop(tt, "kdenlive:thumbs_format", "")
+        _set_prop(tt, "kdenlive:audio_rec", "")
+        for lane_id in (playlist.id, b_id):
+            lt = ET.SubElement(tt, "track")
+            lt.set("hide", lane_hide)
+            lt.set("producer", lane_id)
+        # Audio tracks carry the internal volume/panner/audiolevel filters real
+        # Kdenlive nests in the track-tractor (disabled no-ops; ground truth:
+        # empty_from_user audio track-tractors).
+        if track_type == "audio":
+            for svc, extra in (
+                ("volume", [("window", "75"), ("max_gain", "20dB"),
+                            ("channel_mask", "-1")]),
+                ("panner", [("channel", "-1"), ("start", "0.5")]),
+                ("audiolevel", [("iec_scale", "0"), ("dbpeak", "1")]),
+            ):
+                af = ET.SubElement(tt, "filter")
+                for k, v in extra:
+                    _set_prop(af, k, v)
+                _set_prop(af, "mlt_service", svc)
+                _set_prop(af, "internal_added", "237")
+                _set_prop(af, "disable", "1")
+
+        track_tractors.append(
+            (tt_id, track_type, playlist.id, "_xfade" in playlist.id)
+        )
 
     # ------------------------------------------------------------------
-    # Sub-spec 3: Tractor with black_track, paired tracks, transitions
+    # Sequence tractor (kdenlive:producer_type=17): the registered sequence bin
+    # clip.  Its element id IS the sequence uuid.  Holds the black background +
+    # the track-tractors, the always-active compositing transitions, guides and
+    # subtitle filters.  This is ``tractor_elem`` for opaque tractor-hinted
+    # content below.
     # ------------------------------------------------------------------
-    # Determine which tracks to include and their types
-    track_type_map: dict[str, str] = {t.id: t.track_type for t in project.tracks}
+    has_audio = any(tt[1] == "audio" for tt in track_tractors)
+    has_video = any(tt[1] == "video" for tt in track_tractors)
+    seq_kid = len(project.producers) + 2
+    tractor_elem = ET.SubElement(root, "tractor")
+    tractor_elem.set("id", seq_uuid)
+    tractor_elem.set("in", "0")
+    tractor_elem.set("out", str(content_out))
+    _set_prop(tractor_elem, "kdenlive:sequenceproperties.hasAudio",
+              "1" if has_audio else "0")
+    _set_prop(tractor_elem, "kdenlive:sequenceproperties.hasVideo",
+              "1" if has_video else "0")
+    _set_prop(tractor_elem, "kdenlive:clip_type", "2")
+    _set_prop(tractor_elem, "kdenlive:uuid", seq_uuid)
+    _set_prop(tractor_elem, "kdenlive:clipname", "Sequence 1")
+    _set_prop(tractor_elem, "kdenlive:sequenceproperties.tracksCount",
+              str(len(track_tractors)))
+    _set_prop(tractor_elem, "kdenlive:sequenceproperties.documentuuid", seq_uuid)
+    _set_prop(tractor_elem, "kdenlive:control_uuid", seq_uuid)
+    _set_prop(tractor_elem, "kdenlive:duration",
+              _frames_to_timecode(content_out + 1, project.profile.fps))
+    _set_prop(tractor_elem, "kdenlive:maxduration", str(content_out + 1))
+    _set_prop(tractor_elem, "kdenlive:producer_type", "17")
+    _set_prop(tractor_elem, "kdenlive:id", str(seq_kid))
+    _set_prop(tractor_elem, "kdenlive:file_size", "0")
+    _set_prop(tractor_elem, "kdenlive:folderid", "2")
+    _set_prop(tractor_elem, "kdenlive:sequenceproperties.activeTrack",
+              str(len(track_tractors)) if track_tractors else "0")
+    _set_prop(tractor_elem, "kdenlive:sequenceproperties.groups", "[\n]\n")
 
-    # Track mute/visibility directives override the default hide attribute.
-    hide_by_track, consumed_hide_ids = _hide_directives(project)
+    # Sequence tracks: black background first, then each track-tractor.
+    bt_track = ET.SubElement(tractor_elem, "track")
+    bt_track.set("producer", "producer_black")
+    for tt_id, _ttype, clips_id, _xf in track_tractors:
+        st = ET.SubElement(tractor_elem, "track")
+        st.set("producer", tt_id)
+        # Explicit mute/visibility directives apply on the sequence-track entry.
+        if clips_id in hide_by_track and hide_by_track[clips_id]:
+            st.set("hide", hide_by_track[clips_id])
 
-    tractor_elem: ET.Element | None = None
-    if project.tractor is not None or project.playlists:
-        tractor_elem = ET.SubElement(root, "tractor")
-
-        if project.tractor is not None:
-            for k, v in project.tractor.items():
-                tractor_elem.set(k, str(v))
-            # Determine tracks source
-            if project.tracks:
-                tracks_source = project.tracks
-            else:
-                # Fall back to playlists as video tracks
-                tracks_source = [
-                    Track(id=pl.id, track_type="video") for pl in project.playlists
-                ]
+    # Always-active compositing transitions (regenerated; internal_added=237).
+    # Crossfade overlay tracks (_xfade) deliberately get NO always_active
+    # compositor -- their compositing is driven by an explicit luma mix.
+    for b_index, (_tt_id, ttype, _clips_id, is_xfade) in enumerate(
+        track_tractors, start=1
+    ):
+        if is_xfade:
+            continue
+        trans_elem = ET.SubElement(tractor_elem, "transition")
+        _set_prop(trans_elem, "a_track", "0")
+        _set_prop(trans_elem, "b_track", str(b_index))
+        if ttype == "audio":
+            _set_prop(trans_elem, "mlt_service", "mix")
+            _set_prop(trans_elem, "kdenlive_id", "mix")
+            _set_prop(trans_elem, "internal_added", "237")
+            _set_prop(trans_elem, "always_active", "1")
+            _set_prop(trans_elem, "accepts_blanks", "1")
+            _set_prop(trans_elem, "sum", "1")
         else:
-            # Auto-generate tractor
-            tractor_elem.set("id", "tractor0")
-            max_out = max(
-                (
-                    sum(
-                        (e.out_point - e.in_point + 1)
-                        for e in pl.entries
-                        if e.producer_id
-                    )
-                    for pl in project.playlists
-                ),
-                default=0,
+            # frei0r.cairoblend is the melt-proven internal video compositor
+            # (multi-track stacking renders correctly headless); it loads in the
+            # 26.04 GUI as an internal_added track compositor.  A kdenlive_id is
+            # required so Kdenlive resolves the composition asset (§FIX-2/§(c)).
+            _set_prop(trans_elem, "mlt_service", "frei0r.cairoblend")
+            _set_prop(trans_elem, "kdenlive_id", "frei0r.cairoblend")
+            _set_prop(trans_elem, "internal_added", "237")
+            _set_prop(trans_elem, "always_active", "1")
+
+    # Guides JSON on the active sequence tractor (else an empty JSON array).
+    _seq_guides = "[\n]\n"
+    if project.guides:
+        try:
+            from workshop_video_brain.edit_mcp.pipelines.guides import (
+                guides_docproperties_json,
             )
-            tractor_elem.set("in", "0")
-            tractor_elem.set("out", str(max_out - 1) if max_out > 0 else "0")
-            tracks_source = [
-                Track(id=pl.id, track_type=track_type_map.get(pl.id, "video"))
-                for pl in project.playlists
-            ]
+            _seq_guides = guides_docproperties_json(project)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Could not serialise sequence guides JSON: %s", exc)
+    _set_prop(tractor_elem, "kdenlive:sequenceproperties.guides", _seq_guides)
 
-        # black_track is the first tractor track (track index 0)
-        bt_track = ET.SubElement(tractor_elem, "track")
-        bt_track.set("producer", "black_track")
-        bt_track.set("hide", "video")
-
-        # Content + pair tracks (track indices 1, 2, 3, 4, …)
-        track_index = 1
-        for track in tracks_source:
-            pair_id = f"{track.id}_kdpair"
-
-            # Content track
-            t_content = ET.SubElement(tractor_elem, "track")
-            t_content.set("producer", track.id)
-            if track.id in hide_by_track:
-                hide_val = hide_by_track[track.id]
-                if hide_val:
-                    t_content.set("hide", hide_val)
-            elif track.track_type == "audio":
-                t_content.set("hide", "video")
-
-            # Paired empty track
-            t_pair = ET.SubElement(tractor_elem, "track")
-            t_pair.set("producer", pair_id)
-            if track.track_type == "audio":
-                t_pair.set("hide", "video")
-
-            # Internal transition for this track pair (Kdenlive-managed).
-            # Crossfade overlay tracks (created by AddTransition) deliberately
-            # get NO always_active compositor: their compositing is driven by
-            # the explicit luma mix transition instead, so the dissolve animates
-            # instead of being flattened to a fixed blend.
-            if "_xfade" not in track.id:
-                trans_elem = ET.SubElement(tractor_elem, "transition")
-                if track.track_type == "audio":
-                    _set_prop(trans_elem, "mlt_service", "mix")
-                    _set_prop(trans_elem, "a_track", "0")
-                    _set_prop(trans_elem, "b_track", str(track_index))
-                    _set_prop(trans_elem, "always_active", "1")
-                    _set_prop(trans_elem, "sum", "1")
-                    _set_prop(trans_elem, "internal_added", "237")
-                else:
-                    _set_prop(trans_elem, "mlt_service", "frei0r.cairoblend")
-                    _set_prop(trans_elem, "a_track", "0")
-                    _set_prop(trans_elem, "b_track", str(track_index))
-                    _set_prop(trans_elem, "always_active", "1")
-                    _set_prop(trans_elem, "internal_added", "237")
-
-            track_index += 2  # content + pair occupy two slots each
-
-        # Modern Kdenlive stores guides as JSON on the active sequence tractor.
-        if project.guides:
-            try:
-                from workshop_video_brain.edit_mcp.pipelines.guides import (
-                    guides_docproperties_json,
-                )
-                _set_prop(
-                    tractor_elem,
-                    "kdenlive:sequenceproperties.guides",
-                    guides_docproperties_json(project),
-                )
-            except Exception as exc:  # pragma: no cover - defensive
-                logger.warning("Could not serialise sequence guides JSON: %s", exc)
-
-        # Subtitle tracks: one avfilter.subtitles filter per track attached to
-        # the timeline tractor (the only place MLT/melt render subtitle pixels
-        # -- proven headless), plus the sequenceproperties mirror of the list.
-        if project.subtitles:
-            try:
-                from workshop_video_brain.edit_mcp.pipelines.subtitle_track import (
-                    subtitles_list_json,
-                )
-                _set_prop(
-                    tractor_elem,
-                    "kdenlive:sequenceproperties.subtitlesList",
-                    subtitles_list_json(project),
-                )
-            except Exception as exc:  # pragma: no cover - defensive
-                logger.warning("Could not serialise sequence subtitles JSON: %s", exc)
-            for sub in project.subtitles:
-                if not sub.file:
-                    continue
-                sub_filter = ET.SubElement(tractor_elem, "filter")
-                sub_filter.set("id", f"subtitle_{sub.id}")
-                _set_prop(sub_filter, "mlt_service", "avfilter.subtitles")
-                _set_prop(sub_filter, "av.filename", sub.file)
-                _set_prop(sub_filter, "av.alpha", "1")
-                if sub.style:
-                    _set_prop(sub_filter, "av.force_style", sub.style)
-                _set_prop(sub_filter, "disable", "0")
-                _set_prop(sub_filter, "internal_added", "237")
-                _set_prop(sub_filter, "kdenlive:id", str(sub.id))
+    # Subtitle tracks: sequenceproperties mirror + one avfilter.subtitles filter
+    # per track (the only place MLT/melt render subtitle pixels).
+    if project.subtitles:
+        try:
+            from workshop_video_brain.edit_mcp.pipelines.subtitle_track import (
+                subtitles_list_json,
+            )
+            _set_prop(
+                tractor_elem,
+                "kdenlive:sequenceproperties.subtitlesList",
+                subtitles_list_json(project),
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Could not serialise sequence subtitles JSON: %s", exc)
+        for sub in project.subtitles:
+            if not sub.file:
+                continue
+            sub_filter = ET.SubElement(tractor_elem, "filter")
+            sub_filter.set("id", f"subtitle_{sub.id}")
+            _set_prop(sub_filter, "mlt_service", "avfilter.subtitles")
+            _set_prop(sub_filter, "av.filename", sub.file)
+            _set_prop(sub_filter, "av.alpha", "1")
+            if sub.style:
+                _set_prop(sub_filter, "av.force_style", sub.style)
+            _set_prop(sub_filter, "disable", "0")
+            _set_prop(sub_filter, "internal_added", "237")
+            _set_prop(sub_filter, "kdenlive:id", str(sub.id))
 
     # ------------------------------------------------------------------
-    # Guides (legacy top-level elements; harmless, kept for round-trip)
+    # main_bin playlist: bin registration.  Loaded from the project tractor's
+    # xml_retain bag, so it MUST carry xml_retain=1.  Registers the media
+    # producers plus the sequence clip; declares the Sequences folder and the
+    # open/active timeline (= sequence uuid).
+    # ------------------------------------------------------------------
+    main_bin = ET.SubElement(root, "playlist")
+    main_bin.set("id", "main_bin")
+    _set_prop(main_bin, "kdenlive:folder.-1.2", "Sequences")
+    _set_prop(main_bin, "kdenlive:sequenceFolder", "2")
+    _set_prop(main_bin, "kdenlive:docproperties.version", "1.1")
+    _set_prop(main_bin, "kdenlive:docproperties.profile", profile_name)
+    _set_prop(main_bin, "kdenlive:docproperties.uuid", seq_uuid)
+    _set_prop(main_bin, "kdenlive:docproperties.opensequences", seq_uuid)
+    _set_prop(main_bin, "kdenlive:docproperties.activetimeline", seq_uuid)
+    if project.guides:
+        try:
+            from workshop_video_brain.edit_mcp.pipelines.guides import (
+                guides_docproperties_json,
+            )
+            _set_prop(main_bin, "kdenlive:docproperties.guides",
+                      guides_docproperties_json(project))
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Could not serialise guides JSON: %s", exc)
+    if project.subtitles:
+        try:
+            from workshop_video_brain.edit_mcp.pipelines.subtitle_track import (
+                active_subtitle_index,
+                subtitles_list_json,
+            )
+            _set_prop(main_bin, "kdenlive:docproperties.subtitlesList",
+                      subtitles_list_json(project))
+            _set_prop(main_bin, "kdenlive:docproperties.activeSubtitleIndex",
+                      active_subtitle_index(project))
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Could not serialise subtitlesList JSON: %s", exc)
+    # PROXY / doc-property bag (round-tripped, suffix-keyed).  Managed keys are
+    # excluded by the parser so no duplicates arise here.
+    for suffix, value in project.docproperties.items():
+        _set_prop(main_bin, f"kdenlive:docproperties.{suffix}", str(value))
+    _set_prop(main_bin, "xml_retain", "1")
+    for producer in project.producers:
+        entry = ET.SubElement(main_bin, "entry")
+        entry.set("producer", producer.id)
+        entry.set("in", "0")
+        entry.set("out", "0")
+    # Sequence clip entry (registers the sequence in the bin).
+    seq_entry = ET.SubElement(main_bin, "entry")
+    seq_entry.set("producer", seq_uuid)
+    seq_entry.set("in", "0")
+    seq_entry.set("out", "0")
+
+    # ------------------------------------------------------------------
+    # Project tractor: the MLT render root.  Carries kdenlive:projectTractor=1
+    # and a single track referencing the active sequence uuid.  loadBinPlaylist
+    # reads the bin from this tractor's xml_retain data.
+    # ------------------------------------------------------------------
+    proj_tractor = ET.SubElement(root, "tractor")
+    proj_tractor.set("id", "tractor_project")
+    proj_tractor.set("in", "0")
+    proj_tractor.set("out", str(content_out))
+    _set_prop(proj_tractor, "kdenlive:projectTractor", "1")
+    pt_track = ET.SubElement(proj_tractor, "track")
+    pt_track.set("producer", seq_uuid)
+    pt_track.set("in", "0")
+    pt_track.set("out", str(content_out))
+
+    # ------------------------------------------------------------------
+    # Guides (legacy top-level elements; harmless, kept for round-trip parse).
     # ------------------------------------------------------------------
     for guide in project.guides:
         g_elem = ET.SubElement(root, "guide")
@@ -596,10 +729,9 @@ def serialize_project(
             g_elem.set("type", guide.category)
 
     # ------------------------------------------------------------------
-    # Opaque elements – re-insert, honouring position_hint.  Clip filters and
-    # hide directives have already been consumed above; tractor-hinted content
-    # (transitions/filters) is nested back inside the <tractor> so MLT applies
-    # it, everything else goes to the document root.
+    # Opaque elements -- re-insert, honouring position_hint.  Clip/track filters
+    # and hide directives are already consumed; tractor-hinted content (user
+    # transitions/filters) is nested back inside the sequence tractor.
     # ------------------------------------------------------------------
     consumed_ids = consumed_filter_ids | consumed_track_filter_ids | consumed_hide_ids
     for opaque in project.opaque_elements:
@@ -612,6 +744,8 @@ def serialize_project(
                 "Could not re-insert opaque element <%s>: %s", opaque.tag, exc
             )
             continue
+        if elem.tag == "transition":
+            _normalize_transition_id(elem)
         if opaque.position_hint == "tractor" and tractor_elem is not None:
             tractor_elem.append(elem)
         else:

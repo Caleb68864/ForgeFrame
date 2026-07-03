@@ -88,9 +88,10 @@ class TestSerializeProject:
         tree = ET.parse(out)
         producers = tree.getroot().findall("producer")
         prod_ids = {p.get("id") for p in producers}
-        # User producer must be present; black_track is a required infrastructure producer
+        # User producer must be present; producer_black is the required
+        # infrastructure background producer (E-shape).
         assert "prod0" in prod_ids
-        assert "black_track" in prod_ids
+        assert "producer_black" in prod_ids
 
     def test_guide_in_xml(self, tmp_path):
         project = _make_minimal_project()

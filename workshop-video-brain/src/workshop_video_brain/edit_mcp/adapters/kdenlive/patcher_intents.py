@@ -1436,12 +1436,14 @@ def _resolve_clip_index(real_entries: list, ref: str, default: int = 0) -> int:
 
 
 def _tractor_index(project: KdenliveProject, position: int) -> int:
-    """Tractor track index for the track at ``position`` in the tracks source.
+    """Sequence-tractor track index for the track at ``position``.
 
-    Mirrors the serializer: black_track occupies index 0, then each content
-    track + its pair occupy two slots, so position ``p`` maps to ``1 + 2*p``.
+    Mirrors the modern (E-shape) serializer: the sequence tractor's track 0 is
+    the black background, then each timeline track is ONE lane-wrapper
+    ``<tractor>`` slot (the clip + companion lanes are nested inside it), so the
+    track at ``position`` maps to sequence slot ``1 + position``.
     """
-    return 1 + 2 * position
+    return 1 + position
 
 
 def _emit_simple_transition(project: KdenliveProject, intent: AddTransition) -> None:
@@ -1560,7 +1562,15 @@ def _apply_add_transition(project: KdenliveProject, intent: AddTransition) -> No
         src_pos = vindex
         top_pos = len(project.playlists) - 1
 
-    a_track = _tractor_index(project, src_pos)
+    # In the E-shape sequence tractor every timeline track composites onto
+    # track 0 (the accumulator) via its always-active compositor, so the video
+    # track's clip is already on track 0 during the overlap.  The crossfade must
+    # dissolve the incoming (top/xfade) track INTO that accumulator, i.e.
+    # a_track=0 -- not the source track slot (which would write to a track that
+    # never reaches the output).  The xfade track carries no always-active
+    # compositor, so this luma is its only route to the output.
+    _ = _tractor_index(project, src_pos)  # (retained for logging/back-compat)
+    a_track = 0
     b_track = _tractor_index(project, top_pos)
     t_in = max(0, cut - half1)
     t_out = left_timeline_end  # end of the (extended) left clip on the timeline

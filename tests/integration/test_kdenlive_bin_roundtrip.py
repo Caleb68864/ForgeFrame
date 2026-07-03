@@ -41,6 +41,23 @@ def _props(elem: ET.Element) -> dict[str, str]:
     }
 
 
+def _sequence_tractor(root: ET.Element) -> ET.Element:
+    """Return the registered sequence tractor (kdenlive:producer_type=17)."""
+    for t in root.findall("tractor"):
+        if _props(t).get("kdenlive:producer_type") == "17":
+            return t
+    raise AssertionError("no sequence tractor (producer_type=17) found")
+
+
+def _media_bin_entries(main_bin: ET.Element) -> set[str]:
+    """main_bin media entry refs (excludes the sequence-clip entry {uuid})."""
+    return {
+        e.get("producer")
+        for e in main_bin.findall("entry")
+        if not e.get("producer", "").startswith("{")
+    }
+
+
 def _make_mixed_project() -> KdenliveProject:
     """Project with 3 video clips + 2 title clips, two timeline tracks."""
     return KdenliveProject(
@@ -115,9 +132,8 @@ class TestMainBinContainsAllProducers:
         root = ET.parse(out).getroot()
         main_bin = root.find("./playlist[@id='main_bin']")
         assert main_bin is not None
-        entry_refs = {e.get("producer") for e in main_bin.findall("entry")}
         expected = {"vid0", "vid1", "vid2", "title0", "title1"}
-        assert expected == entry_refs
+        assert expected == _media_bin_entries(main_bin)
 
     def test_main_bin_count_matches_producers(self, tmp_path):
         project = _make_mixed_project()
@@ -125,8 +141,13 @@ class TestMainBinContainsAllProducers:
         serialize_project(project, out)
         root = ET.parse(out).getroot()
         main_bin = root.find("./playlist[@id='main_bin']")
-        entries = main_bin.findall("entry")
-        assert len(entries) == len(project.producers)
+        # media entries + exactly one sequence-clip entry.
+        assert len(_media_bin_entries(main_bin)) == len(project.producers)
+        seq_entries = [
+            e for e in main_bin.findall("entry")
+            if e.get("producer", "").startswith("{")
+        ]
+        assert len(seq_entries) == 1
 
 
 class TestProducerKdenliveMetadata:
@@ -134,22 +155,26 @@ class TestProducerKdenliveMetadata:
         user_ids = {p.id for p in project.producers}
         return [p for p in root.findall("producer") if p.get("id") in user_ids]
 
-    def test_all_producers_have_uuid(self, tmp_path):
+    def test_media_producers_have_no_uuid(self, tmp_path):
+        """E-shape: media/AV bin producers carry NEITHER uuid nor control_uuid."""
         project = _make_mixed_project()
         out = tmp_path / "mixed.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
         for prod in self._all_user_producers(root, project):
-            assert "kdenlive:uuid" in _props(prod), f"Missing uuid on {prod.get('id')}"
+            props = _props(prod)
+            assert "kdenlive:uuid" not in props, f"uuid leaked on {prod.get('id')}"
+            assert "kdenlive:control_uuid" not in props, (
+                f"control_uuid leaked on {prod.get('id')}"
+            )
 
-    def test_all_uuids_valid_format(self, tmp_path):
+    def test_sequence_tractor_uuid_valid_format(self, tmp_path):
         project = _make_mixed_project()
         out = tmp_path / "mixed.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        for prod in self._all_user_producers(root, project):
-            uid = _props(prod).get("kdenlive:uuid", "")
-            assert _UUID_RE.match(uid), f"Bad UUID on {prod.get('id')}: {uid}"
+        uid = _props(_sequence_tractor(root)).get("kdenlive:uuid", "")
+        assert _UUID_RE.match(uid), f"Bad sequence UUID: {uid}"
 
     def test_all_producers_have_kdenlive_id(self, tmp_path):
         project = _make_mixed_project()
@@ -203,7 +228,7 @@ class TestInfrastructureElements:
         out = tmp_path / "mixed.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        assert root.find("./producer[@id='black_track']") is not None
+        assert root.find("./producer[@id='producer_black']") is not None
 
     def test_paired_playlists_exist(self, tmp_path):
         project = _make_mixed_project()
@@ -218,17 +243,17 @@ class TestInfrastructureElements:
         out = tmp_path / "mixed.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        tractor = root.find("tractor")
-        tracks = tractor.findall("track")
-        assert tracks[0].get("producer") == "black_track"
+        seq = _sequence_tractor(root)
+        tracks = seq.findall("track")
+        assert tracks[0].get("producer") == "producer_black"
 
     def test_tractor_transitions_present(self, tmp_path):
         project = _make_mixed_project()
         out = tmp_path / "mixed.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        tractor = root.find("tractor")
-        transitions = tractor.findall("transition")
+        seq = _sequence_tractor(root)
+        transitions = seq.findall("transition")
         assert len(transitions) >= 2  # one per video track
 
     def test_cairoblend_transitions_for_video_tracks(self, tmp_path):
@@ -236,13 +261,14 @@ class TestInfrastructureElements:
         out = tmp_path / "mixed.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        tractor = root.find("tractor")
+        seq = _sequence_tractor(root)
         cb = [
-            t for t in tractor.findall("transition")
+            t for t in seq.findall("transition")
             if _props(t).get("mlt_service") == "frei0r.cairoblend"
         ]
-        # 2 video tracks → 2 cairoblend transitions
+        # 2 video tracks → 2 cairoblend compositors (each with a kdenlive_id).
         assert len(cb) == 2
+        assert all(_props(t).get("kdenlive_id") == "frei0r.cairoblend" for t in cb)
 
     def test_mix_transition_for_audio_track(self, tmp_path):
         project = KdenliveProject(
@@ -260,9 +286,9 @@ class TestInfrastructureElements:
         out = tmp_path / "audio.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        tractor = root.find("tractor")
+        seq = _sequence_tractor(root)
         mix = [
-            t for t in tractor.findall("transition")
+            t for t in seq.findall("transition")
             if _props(t).get("mlt_service") == "mix"
         ]
         assert len(mix) == 1
@@ -284,9 +310,9 @@ class TestInfrastructureElements:
         out = tmp_path / "audio.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
-        tractor = root.find("tractor")
+        seq = _sequence_tractor(root)
         mix_props = [
-            _props(t) for t in tractor.findall("transition")
+            _props(t) for t in seq.findall("transition")
             if _props(t).get("mlt_service") == "mix"
         ]
         assert len(mix_props) == 1
@@ -376,9 +402,9 @@ class TestRoundTrip:
         assert root1.find("./playlist[@id='main_bin']") is not None
         assert root2.find("./playlist[@id='main_bin']") is not None
 
-        # black_track present in both
-        assert root1.find("./producer[@id='black_track']") is not None
-        assert root2.find("./producer[@id='black_track']") is not None
+        # producer_black present in both
+        assert root1.find("./producer[@id='producer_black']") is not None
+        assert root2.find("./producer[@id='producer_black']") is not None
 
 
 class TestOpaqueElementRoundTrip:

@@ -168,8 +168,28 @@ _VALID_COLOR_FORMATS_MSG = (
 
 def _build_filter_xml(mlt_service: str, kdenlive_id: str, track: int, clip: int,
                       props: list[tuple[str, str]]) -> str:
-    """Build a Kdenlive/MLT ``<filter>`` XML string with the usual attrs."""
+    """Build a Kdenlive/MLT ``<filter>`` XML string with the usual attrs.
+
+    ``mlt_service`` / ``kdenlive_id`` are normalised to the installed-repository
+    (dot-form) asset ids via :func:`normalize_effect_id` so Kdenlive resolves
+    them without a "Fixed" pass.
+    """
     import xml.etree.ElementTree as _ET
+    # Normalise to installed-repository (dot-form) asset ids so Kdenlive resolves
+    # the effect without a "Fixed" pass:
+    #   * avfilter.*/frei0r.*  -> kdenlive_id = mlt_service (dot form)
+    #   * the Transform effect (affine + kdenlive_id="transform" + 5-value rect)
+    #     is qtblend in modern Kdenlive (FIX-2b).  pan_zoom / motion tracking use
+    #     ``transition.rect`` (kdenlive_id != "transform") and are untouched.
+    _prop_names = tuple(name for name, _ in props)
+    if mlt_service.startswith(("avfilter.", "frei0r.")):
+        kdenlive_id = mlt_service
+    elif (
+        mlt_service == "affine"
+        and kdenlive_id == "transform"
+        and "transition.rect" not in _prop_names
+    ):
+        mlt_service, kdenlive_id = "qtblend", "qtblend"
     root = _ET.Element(
         "filter",
         {

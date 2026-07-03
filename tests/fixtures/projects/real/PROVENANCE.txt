@@ -1,0 +1,29 @@
+Real-Kdenlive round-trip fixtures — external ground truth.
+
+Activates tests/integration/external/test_kdenlive_fixture_roundtrip.py
+(parse -> serialize -> no <filter> loss -> melt-accept).
+
+Files
+-----
+empty_2604.kdenlive
+    Pristine empty project saved by the user's own Kdenlive 26.04.2 (never
+    touched by our MCP).  Canonical modern (doc version 1.1) skeleton:
+    producer_black + sequence tractor (producer_type=17) + projectTractor +
+    main_bin xml_retain.  Source: smoke-test/.../working_copies/empty_from_user.kdenlive.
+
+corpus_clip_ids_2604.kdenlive       (= tests/dataset/clip-ids.kdenlive)
+corpus_nesting_effects_2604.kdenlive(= tests/dataset/test-nesting-effects.kdenlive)
+corpus_mix_2604.kdenlive            (= tests/dataset/test-mix.kdenlive)
+corpus_av_legacy_2604.kdenlive      (= tests/dataset/av.kdenlive, legacy v1.04)
+    Kdenlive's own test dataset, branch release/26.04.
+    Source: https://invent.kde.org/multimedia/kdenlive  (tests/dataset/)
+    License: GPL-3.0-or-later, (c) KDE e.V. / Kdenlive authors.
+    Modern media bin clips here are <chain> with kdenlive:id and NEITHER
+    kdenlive:uuid NOR kdenlive:control_uuid; only sequence tractors
+    (producer_type=17) carry kdenlive:uuid -- the E-shape invariant our
+    serializer now emits.
+
+These reference sample media that is not vendored; the round-trip test loads
+structure only (melt tolerates the absent avformat resources), it does not
+render media.  See docs/research/2026-07-03-tutorial-effect-analysis/
+reference-projects/PROVENANCE.txt and kdenlive-gui-bin-rejection.md.

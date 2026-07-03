@@ -113,11 +113,23 @@ def test_attach_writes_avfilter_and_docproperties(tmp_path):
     assert len(reparsed.subtitles) == 1
     assert reparsed.subtitles[0].file.endswith("subs_test.kdenlive.ass")
 
-    # The avfilter.subtitles filter is nested in the tractor (where MLT renders).
+    # The avfilter.subtitles filter is nested in the sequence tractor (the
+    # producer_type=17 tractor -- where MLT renders subtitle pixels in the
+    # modern E-shape document).
     root = ET.fromstring(xml)
-    tractor = root.find("tractor")
+
+    def _props(el):
+        return {
+            c.get("name"): (c.text or "")
+            for c in el if c.tag == "property"
+        }
+
+    seq = next(
+        t for t in root.findall("tractor")
+        if _props(t).get("kdenlive:producer_type") == "17"
+    )
     services = [
-        pr.text for f in tractor.findall("filter")
+        pr.text for f in seq.findall("filter")
         for pr in f.findall("property") if pr.get("name") == "mlt_service"
     ]
     assert "avfilter.subtitles" in services
