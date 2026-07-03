@@ -29,3 +29,15 @@ All skills MUST be prefixed with `ff-` (e.g., `ff-video-idea-to-outline`, not `v
   extra: `uv pip install rembg onnxruntime` (or `uv pip install -e '.[ai-mask]'`).
   It is intentionally NOT in the default sync (rembg pulls a heavy transitive
   stack); without it those two tests fail with `EngineUnavailable`.
+
+### CI
+- `.github/workflows/tests.yml` runs on push to `main` and every pull_request.
+  Two jobs: `unit` (`uv run pytest tests/unit -q`, no system deps, fast gate)
+  then `full` (`uv run pytest tests/ -q`) which `apt-get install`s
+  `melt ffmpeg frei0r-plugins` so the `tests/integration/external/` melt/ffprobe
+  oracle tier runs instead of self-skipping. Missing optional MLT modules (e.g.
+  `opencv.tracker`) degrade gracefully via `melt_has_service`.
+- ai-mask decision: CI does `uv pip install rembg onnxruntime` in the `full` job
+  so the rembg-gated case executes rather than skips (CPU-only, ~200 MB). Note:
+  those cases are `skipif`-gated, so they SKIP (not fail) when rembg is absent --
+  the suite is green either way; installing it just exercises the real engine.
