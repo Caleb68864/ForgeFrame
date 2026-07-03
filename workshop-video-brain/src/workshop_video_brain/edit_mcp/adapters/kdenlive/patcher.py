@@ -35,6 +35,7 @@ from workshop_video_brain.core.models.timeline import (
     SetClipSpeed,
     SetTrackMute,
     SetTrackVisibility,
+    SpeedRamp,
     SplitClip,
     TrimClip,
 )
@@ -167,6 +168,8 @@ def patch_project(
             _apply_ripple_delete(new_project, intent)
         elif isinstance(intent, SetClipSpeed):
             _apply_set_clip_speed(new_project, intent)
+        elif isinstance(intent, SpeedRamp):
+            _apply_speed_ramp(new_project, intent)
         elif isinstance(intent, AudioFade):
             _apply_audio_fade(new_project, intent)
         elif isinstance(intent, SetTrackMute):
@@ -662,6 +665,149 @@ def _apply_set_clip_speed(project: KdenliveProject, intent: SetClipSpeed) -> Non
     logger.info(
         "SetClipSpeed: timewarp %.2fx for clip %d in playlist '%s' (producer %s)",
         intent.speed, intent.clip_index, intent.track_ref, tw_id,
+    )
+
+
+def _tw_producer_id(base: str, speed: float, pitch: bool) -> str:
+    """Deterministic id for a timewarp producer at ``speed`` (+ pitch flag)."""
+    sid = f"{base}_tw{speed:g}"
+    return f"{sid}_pc" if pitch else sid
+
+
+def _ensure_timewarp_producer(
+    project: KdenliveProject,
+    source: Producer,
+    speed: float,
+    pitch: bool,
+) -> str:
+    """Create (once) a ``timewarp:{speed}`` producer wrapping ``source``.
+
+    Returns the producer id. Reuses the existing :func:`_timewarp_resource`
+    helper and mirrors the property shape written by :func:`_apply_set_clip_speed`.
+    """
+    tw_id = _tw_producer_id(source.id, speed, pitch)
+    if any(p.id == tw_id for p in project.producers):
+        return tw_id
+    tw_resource = _timewarp_resource(source, speed)
+    props = {
+        "mlt_service": "timewarp",
+        "resource": tw_resource,
+        "warp_speed": f"{speed:g}",
+        "warp_resource": source.resource or source.properties.get("resource", ""),
+    }
+    if pitch:
+        props["warp_pitch"] = "1"
+    if "length" in source.properties:
+        try:
+            src_len = int(source.properties["length"])
+            props["length"] = str(max(1, round(src_len / speed)))
+        except ValueError:
+            pass
+    project.producers.append(Producer(id=tw_id, resource=tw_resource, properties=props))
+    return tw_id
+
+
+def _ramp_entries(
+    entry: PlaylistEntry,
+    segments: list[tuple[int, int, float]],
+    project: KdenliveProject,
+    source: Producer,
+    pitch: bool,
+) -> list[PlaylistEntry]:
+    """Build the per-segment timewarp entries replacing ``entry``.
+
+    Segment source offsets are relative to ``entry.in_point``; each becomes a
+    playlist entry pointing at a ``timewarp:{speed}`` producer with in/out in the
+    warped producer's frame space.
+    """
+    from workshop_video_brain.edit_mcp.pipelines.speed_ramp import timewarp_entry
+
+    new_entries: list[PlaylistEntry] = []
+    for src_in, src_out, speed in segments:
+        speed = float(speed)
+        if speed <= 0 or src_out <= src_in:
+            continue
+        tw_id = _ensure_timewarp_producer(project, source, speed, pitch)
+        tw_in, tw_out = timewarp_entry(entry.in_point, int(src_in), int(src_out), speed)
+        new_entries.append(
+            PlaylistEntry(producer_id=tw_id, in_point=tw_in, out_point=tw_out)
+        )
+    return new_entries
+
+
+def _apply_speed_ramp(project: KdenliveProject, intent: SpeedRamp) -> None:
+    """Realise a keyframed speed ramp as a run of constant-speed timewarp slices.
+
+    Kdenlive's UI "Time Remap" keyframes are approximated by slicing the clip at
+    ramp boundaries and swapping each slice's producer for a ``timewarp:{speed}``
+    producer (the proven :func:`_apply_set_clip_speed` machinery). Linked entries
+    (same original producer at the same clip index on another playlist -- e.g. the
+    paired audio) are ramped identically so tracks stay in sync.
+    """
+    playlist = _find_playlist(project, intent.track_ref)
+    if playlist is None:
+        logger.warning(
+            "SpeedRamp: no playlist found with id '%s' – skipped.", intent.track_ref
+        )
+        return
+
+    real_entries = [e for e in playlist.entries if e.producer_id]
+    if intent.clip_index < 0 or intent.clip_index >= len(real_entries):
+        logger.warning(
+            "SpeedRamp: clip_index %d out of range – skipped.", intent.clip_index
+        )
+        return
+
+    segments = [tuple(s) for s in intent.segments]
+    if not segments:
+        logger.warning("SpeedRamp: no segments supplied – skipped.")
+        return
+
+    entry = real_entries[intent.clip_index]
+    source = next((p for p in project.producers if p.id == entry.producer_id), None)
+    if source is None:
+        logger.warning(
+            "SpeedRamp: producer '%s' not found – skipped.", entry.producer_id
+        )
+        return
+
+    orig_producer = entry.producer_id
+
+    def _apply_to(pl: Playlist, target: PlaylistEntry) -> None:
+        new_entries = _ramp_entries(
+            target, segments, project, source, intent.pitch_compensation
+        )
+        if not new_entries:
+            return
+        full_idx = pl.entries.index(target)
+        pl.entries[full_idx] = new_entries[0]
+        for offset, ne in enumerate(new_entries[1:], start=1):
+            pl.entries.insert(full_idx + offset, ne)
+
+    _apply_to(playlist, entry)
+
+    # Ramp any linked copies (paired audio track etc.).
+    for other in project.playlists:
+        if other is playlist:
+            continue
+        other_real = [e for e in other.entries if e.producer_id]
+        if intent.clip_index < len(other_real):
+            candidate = other_real[intent.clip_index]
+            if candidate.producer_id == orig_producer:
+                _apply_to(other, candidate)
+
+    # Keep the tractor length in sync with the (re-timed) content.
+    if project.tractor is not None:
+        max_len = 0
+        for pl in project.playlists:
+            total = sum((e.out_point - e.in_point + 1) for e in pl.entries)
+            max_len = max(max_len, total)
+        if max_len > 0:
+            project.tractor["out"] = str(max_len - 1)
+
+    logger.info(
+        "SpeedRamp: %d segments for clip %d in playlist '%s' (producer %s)",
+        len(segments), intent.clip_index, intent.track_ref, orig_producer,
     )
 
 

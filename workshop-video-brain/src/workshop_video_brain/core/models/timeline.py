@@ -111,6 +111,21 @@ class SetClipSpeed(TimelineIntent):
     speed: float = 1.0  # 0.5 = half speed, 2.0 = double speed
 
 
+class SpeedRamp(TimelineIntent):
+    """Keyframed speed ramp / time remap for a clip.
+
+    Realised by the patcher as a sequence of constant-speed ``timewarp:``
+    producer swaps -- one playlist entry per planned segment. ``segments`` is a
+    list of ``(src_in, src_out, speed)`` triples in source-frame *offsets*
+    within the clip (0 = the clip's in-point), half-open ``[src_in, src_out)``,
+    as produced by ``pipelines.speed_ramp.plan_segments``.
+    """
+    track_ref: str = ""
+    clip_index: int = 0
+    segments: list[tuple[int, int, float]] = Field(default_factory=list)
+    pitch_compensation: bool = False
+
+
 class AudioFade(TimelineIntent):
     """Apply audio fade in or fade out to a clip."""
     track_ref: str = ""
