@@ -1,0 +1,23 @@
+# Render profile: webm-alpha
+# Transparent-background WebM using VP9 with an alpha channel (yuva420p).
+# Mirrors Kdenlive's "Video with alpha -> Alpha VP9" preset: modern, good
+# web support, lossy. Alpha is carried in the WebM container (alpha_mode=1),
+# so ffprobe reports the primary stream as yuv420p while alpha is preserved.
+# Use for logo/lower-third/cutout exports intended for web compositing.
+name: webm-alpha
+width: 1920
+height: 1080
+fps: 30
+video_codec: libvpx-vp9
+video_bitrate: "0"
+audio_codec: libopus
+audio_bitrate: "128k"
+container: webm
+pix_fmt: yuva420p
+mlt_image_format: rgba
+disable_audio: true
+melt_args:
+  - "f=webm"
+  - "crf=20"
+  - "deadline=good"
+  - "cpu-used=2"

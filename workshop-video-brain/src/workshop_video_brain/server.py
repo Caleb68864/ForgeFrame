@@ -17,6 +17,8 @@ import workshop_video_brain.edit_mcp.server.resources  # noqa: E402, F401
 # Registration side effect: each generated wrapper module applies
 # `@register_effect_wrapper` (which wraps `@mcp.tool()`).
 import workshop_video_brain.edit_mcp.pipelines.effect_wrappers  # noqa: E402, F401
+# Auto-discovers one module per tutorial-derived bundle tool.
+import workshop_video_brain.edit_mcp.server.bundles  # noqa: E402, F401
 
 
 def main() -> None:

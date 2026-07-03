@@ -167,7 +167,19 @@ def _build_melt_command(
     output_path: str,
     profile: RenderProfile,
 ) -> list[str]:
-    """Build an melt (MLT framework) render command."""
+    """Build an melt (MLT framework) render command.
+
+    Passes through alpha/advanced consumer properties when the profile
+    defines them:
+
+    - ``mlt_image_format`` (e.g. ``rgba``) preserves the alpha channel through
+      the MLT pipeline instead of flattening onto black.
+    - ``pix_fmt`` (e.g. ``yuva420p``, ``argb``) selects an alpha-capable
+      encoder pixel format.
+    - ``melt_args`` are raw ``key=value`` consumer properties (e.g. ``f=webm``
+      to force the container, ``vprofile=4`` for ProRes 4444).
+    - ``disable_audio`` emits ``an=1`` and omits the audio codec/bitrate.
+    """
     cmd = [
         "melt",
         str(project_path),
@@ -175,13 +187,31 @@ def _build_melt_command(
         f"avformat:{output_path}",
         f"vcodec={profile.video_codec}",
         f"vb={profile.video_bitrate}",
-        f"acodec={profile.audio_codec}",
-        f"ab={profile.audio_bitrate}",
+    ]
+
+    # Alpha renders need the MLT image format set before other properties so
+    # the alpha channel is retained end to end.
+    if profile.mlt_image_format:
+        cmd.append(f"mlt_image_format={profile.mlt_image_format}")
+    if profile.pix_fmt:
+        cmd.append(f"pix_fmt={profile.pix_fmt}")
+
+    if profile.disable_audio:
+        cmd.append("an=1")
+    else:
+        cmd.append(f"acodec={profile.audio_codec}")
+        cmd.append(f"ab={profile.audio_bitrate}")
+
+    cmd.extend([
         f"width={profile.width}",
         f"height={profile.height}",
         f"frame_rate_num={int(profile.fps)}",
         "frame_rate_den=1",
-    ]
+    ])
+
+    # Extra raw consumer properties (container format, encoder profile, ...).
+    cmd.extend(profile.melt_args)
+
     return cmd
 
 

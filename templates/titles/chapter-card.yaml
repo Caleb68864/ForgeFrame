@@ -1,0 +1,19 @@
+# Title style: chapter-card
+# Full-frame centred chapter/section card (large title + optional subtitle) over
+# a fully opaque backing panel. Pairs with the marker-driven title_cards_generate
+# chapter workflow. Sizes are fractions of frame height for resolution
+# independence (1080p / 4K / vertical).
+name: chapter-card
+anchor: center
+align: center
+safe_margin: 0.1
+font_family: DejaVu Sans
+title_font_scale: 0.09
+subtitle_font_scale: 0.04
+font_color: "#FFFFFF"
+subtitle_color: "#C8C8C8"
+outline_color: "#000000"
+outline_width: 0
+background: true
+background_color: "#000000FF"
+duration_seconds: 4.0

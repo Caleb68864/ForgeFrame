@@ -1,0 +1,20 @@
+# Title style: lower-third
+# Animated lower-third name/label strip seated in the lower band of the frame,
+# left-aligned over a semi-opaque rounded bar. Derived from the Geek Outdoors
+# EP995 and "Clean Smooth Lower Thirds" tutorials (vault/Transcripts/Kdenlive
+# Tutorials). All sizes are fractions of frame height so the style is
+# resolution-independent (1080p / 4K / vertical).
+name: lower-third
+anchor: lower-third
+align: left
+safe_margin: 0.1
+font_family: DejaVu Sans
+title_font_scale: 0.06
+subtitle_font_scale: 0.033
+font_color: "#FFFFFF"
+subtitle_color: "#E6E6E6"
+outline_color: "#000000"
+outline_width: 0
+background: true
+background_color: "#000000B4"
+duration_seconds: 4.0

@@ -277,3 +277,78 @@ class TestRenderArtifactRegistry:
             register_render(tmpdir, job)
             renders = list_renders(tmpdir)
             assert len(renders) == 1
+
+
+# ---------------------------------------------------------------------------
+# Alpha (transparent-background) render profiles
+# ---------------------------------------------------------------------------
+
+class TestAlphaRenderProfiles:
+    """Alpha profiles added for the 'Render with Transparent Background'
+    tutorial. They must load through the standard profile loader and carry the
+    melt-consumer settings (mlt_image_format=rgba + alpha pix_fmt) required to
+    preserve the alpha channel."""
+
+    ALPHA_PROFILES = {
+        "webm-alpha": ("libvpx-vp9", "yuva420p", "webm"),
+        "prores-4444-alpha": ("prores_ks", "yuva444p10le", "mov"),
+        "mov-alpha": ("qtrle", "argb", "mov"),
+        "ffv1-alpha": ("ffv1", "yuva420p", "mkv"),
+    }
+
+    def test_alpha_profiles_are_listed(self):
+        from workshop_video_brain.edit_mcp.adapters.render.profiles import list_profiles
+        available = set(list_profiles())
+        for name in self.ALPHA_PROFILES:
+            assert name in available, f"{name} not discoverable by list_profiles()"
+
+    @pytest.mark.parametrize("name", list(ALPHA_PROFILES))
+    def test_alpha_profile_loads_with_alpha_settings(self, name):
+        from workshop_video_brain.edit_mcp.adapters.render.profiles import load_profile
+        codec, pix_fmt, container = self.ALPHA_PROFILES[name]
+        p = load_profile(name)
+        assert p.name == name
+        assert p.video_codec == codec
+        assert p.pix_fmt == pix_fmt
+        assert p.container == container
+        assert p.mlt_image_format == "rgba"
+        assert p.disable_audio is True
+
+    def test_webm_alpha_forces_webm_container_in_melt_args(self):
+        from workshop_video_brain.edit_mcp.adapters.render.profiles import load_profile
+        p = load_profile("webm-alpha")
+        assert "f=webm" in p.melt_args
+
+    def test_melt_command_includes_alpha_flags(self):
+        from workshop_video_brain.edit_mcp.adapters.render.profiles import load_profile
+        from workshop_video_brain.edit_mcp.adapters.render.executor import (
+            _build_melt_command,
+        )
+        p = load_profile("webm-alpha")
+        cmd = _build_melt_command(Path("/tmp/x.kdenlive"), "/tmp/o.webm", p)
+        assert cmd[0] == "melt"
+        assert "mlt_image_format=rgba" in cmd
+        assert "pix_fmt=yuva420p" in cmd
+        assert "vcodec=libvpx-vp9" in cmd
+        assert "an=1" in cmd
+        assert "f=webm" in cmd
+        assert not any(c.startswith("acodec=") for c in cmd)
+
+    def test_melt_command_omits_alpha_flags_for_plain_profile(self):
+        from workshop_video_brain.edit_mcp.adapters.render.profiles import load_profile
+        from workshop_video_brain.edit_mcp.adapters.render.executor import (
+            _build_melt_command,
+        )
+        p = load_profile("preview")
+        cmd = _build_melt_command(Path("/tmp/x.kdenlive"), "/tmp/o.mp4", p)
+        assert not any(c.startswith("mlt_image_format=") for c in cmd)
+        assert not any(c.startswith("pix_fmt=") for c in cmd)
+        assert any(c.startswith("acodec=") for c in cmd)
+
+    def test_alpha_profile_drives_render_job_extension(self):
+        from workshop_video_brain.edit_mcp.adapters.render.jobs import create_render_job
+        with tempfile.TemporaryDirectory() as tmpdir:
+            job = create_render_job(
+                tmpdir, Path(tmpdir) / "edit.kdenlive", "webm-alpha"
+            )
+            assert job.output_path.endswith(".webm")
