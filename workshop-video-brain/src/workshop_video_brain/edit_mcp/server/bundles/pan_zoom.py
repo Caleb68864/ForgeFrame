@@ -21,7 +21,9 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _err
 
 _MLT_SERVICE = "affine"
 _KDENLIVE_ID = "transform"
-_RECT_PROPERTY = "rect"
+# ``affine`` reads ``transition.rect`` -- a bare ``rect`` here is a proven no-op
+# on this MLT build (render-verified). See pan_zoom.build_pan_zoom_transform_keyframes.
+_RECT_PROPERTY = "transition.rect"
 
 
 def _find_workspace_root(project_path: Path) -> Path:
@@ -98,7 +100,7 @@ def effect_pan_zoom(
     )
     from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
     from workshop_video_brain.edit_mcp.pipelines.pan_zoom import (
-        build_pan_zoom_keyframes,
+        build_pan_zoom_transform_keyframes,
         clamp_rect,
         preset_rects,
     )
@@ -153,8 +155,11 @@ def effect_pan_zoom(
             )
         final_start = clamp_rect(chosen_start, width, height)
         final_end = clamp_rect(chosen_end, width, height)
-        rect_kf = build_pan_zoom_keyframes(
-            final_start, final_end, duration_frames, fps,
+        # ``final_*`` are the intuitive source regions reported to the caller;
+        # the emitted keyframes are the affine *destination* rects (transform
+        # that actually moves pixels -- a bare ``rect`` on affine is a no-op).
+        rect_kf = build_pan_zoom_transform_keyframes(
+            final_start, final_end, width, height, duration_frames, fps,
             easing=easing, hold_frames=hold_frames,
         )
     except ValueError as exc:

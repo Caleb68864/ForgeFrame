@@ -3522,11 +3522,17 @@ def color_apply_lut(
     track: int,
     clip: int,
     lut_path: str,
+    interp: str = "",
 ) -> dict:
     """Apply a LUT file to a clip in a Kdenlive project.
 
     Creates a snapshot before modifying the project. The LUT is applied via
     the avfilter.lut3d effect and appended to any existing effects on the clip.
+
+    Args:
+        interp: Optional lut3d interpolation mode -- ``nearest`` / ``trilinear``
+            / ``tetrahedral`` / ``pyramid`` / ``prism`` (sets ``av.interp``).
+            Empty leaves it unset (ffmpeg default = ``tetrahedral``, smoothest).
     """
     from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
     from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
@@ -3551,7 +3557,9 @@ def color_apply_lut(
 
     project = parse_project(project_path)
     try:
-        patched = apply_lut_to_project(project, track, clip, str(lut))
+        patched = apply_lut_to_project(
+            project, track, clip, str(lut), interp=interp or None
+        )
     except (IndexError, ValueError) as exc:
         return _err(f"Failed to apply LUT: {exc}")
 
@@ -3561,6 +3569,7 @@ def color_apply_lut(
         "track": track,
         "clip": clip,
         "lut_applied": str(lut),
+        "interp": (interp or "").strip().lower() or None,
     })
 
 
@@ -4219,10 +4228,34 @@ def composite_pip(
     end_frame: int,
     preset: str = "bottom_right",
     scale: float = 0.25,
+    opacity: float = 1.0,
+    rotation: float = 0.0,
+    pip_width: int | None = None,
+    pip_height: int | None = None,
+    rect_keyframes: str = "",
+    overlay_clip_index: int = 0,
 ) -> dict:
-    """Add a picture-in-picture composite to the project."""
+    """Add a picture-in-picture composite to the project.
+
+    Basic PiP (default) adds a cairoblend composite transition between the base
+    and overlay tracks over ``[start_frame, end_frame]``.
+
+    Supplying any of ``opacity`` (0-1), ``rotation`` (degrees), ``pip_width`` /
+    ``pip_height`` (non-uniform, aspect-unlocked size), or ``rect_keyframes`` (an
+    MLT rect keyframe-animation string for keyframed motion) switches to the
+    **transform route**: a verified ``qtblend`` clip filter is placed on the
+    overlay clip (``overlay_clip_index`` on ``overlay_track``), which the
+    serializer's per-track compositor makes visible over the base. This mirrors
+    the render-proven image-overlay path (a bare ``affine`` rect is a no-op on
+    this MLT build, so qtblend is used).
+    """
     from workshop_video_brain.core.models.compositing import PipPreset
-    from workshop_video_brain.edit_mcp.pipelines.compositing import get_pip_layout, apply_pip
+    from workshop_video_brain.edit_mcp.pipelines.compositing import (
+        apply_pip,
+        apply_pip_transform,
+        get_pip_layout,
+        pip_transform_rect_value,
+    )
     from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
     from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
     from workshop_video_brain.workspace import create_snapshot
@@ -4241,17 +4274,52 @@ def composite_pip(
     except ValueError:
         return _err(f"Invalid preset '{preset}'; valid values: {[p.value for p in PipPreset]}")
 
+    use_transform = (
+        opacity != 1.0
+        or bool(rotation)
+        or pip_width is not None
+        or pip_height is not None
+        or bool(rect_keyframes.strip())
+    )
+
     create_snapshot(ws_path, proj_path, description=f"before_pip_{preset}")
 
     project = parse_project(proj_path)
     try:
         layout = get_pip_layout(pip_preset, project.profile.width, project.profile.height, scale)
-        updated = apply_pip(project, overlay_track, base_track, start_frame, end_frame, layout)
-    except (ValueError, KeyError) as exc:
+        if use_transform:
+            rect_value = (
+                rect_keyframes.strip()
+                if rect_keyframes.strip()
+                else pip_transform_rect_value(
+                    layout, opacity, pip_width, pip_height
+                )
+            )
+            updated = apply_pip_transform(
+                project, overlay_track, overlay_clip_index, rect_value, rotation
+            )
+        else:
+            updated = apply_pip(
+                project, overlay_track, base_track, start_frame, end_frame, layout
+            )
+    except (ValueError, KeyError, IndexError) as exc:
         return _err(str(exc))
 
     serialize_project(updated, proj_path)
-    return _ok({"preset": preset, "layout": layout.model_dump(), "frames": [start_frame, end_frame]})
+    result = {
+        "preset": preset,
+        "layout": layout.model_dump(),
+        "frames": [start_frame, end_frame],
+        "route": "transform" if use_transform else "transition",
+    }
+    if use_transform:
+        result.update({
+            "opacity": opacity,
+            "rotation": rotation,
+            "overlay_clip_index": overlay_clip_index,
+            "keyframed": bool(rect_keyframes.strip()),
+        })
+    return _ok(result)
 
 
 @mcp.tool()
@@ -5114,7 +5182,15 @@ def effect_object_mask(
     enabled: bool = True,
     threshold: float = 0.5,
 ) -> dict:
-    """Append an object_mask filter (wraps frei0r.alpha0ps_alphaspot) to a clip."""
+    """Append a parametric SPOT-SHAPE alpha mask to a clip (NOT AI).
+
+    IMPORTANT: despite the name this is **not** AI object detection. It wraps the
+    stock ``frei0r.alpha0ps_alphaspot`` filter -- a geometric ellipse/rectangle
+    alpha spot -- kept under this name for back-compat. For AI subject
+    segmentation use ``mask_generate`` / ``mask_generate_and_apply``; to apply an
+    externally-produced matte (e.g. a Kdenlive SAM2 Object Mask export) use
+    ``mask_set_from_file`` (Shape Alpha).
+    """
     from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
     from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
     from workshop_video_brain.edit_mcp.pipelines import masking

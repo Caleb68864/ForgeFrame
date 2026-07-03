@@ -96,6 +96,8 @@ def test_preset_zoom_in_writes_keyframed_transform_filter(tmp_path):
     assert data["duration_frames"] == 300
     assert data["mlt_service"] == "affine"
     assert data["kdenlive_id"] == "transform"
+    # affine reads transition.rect (a bare `rect` is a no-op on this MLT build).
+    assert data["property"] == "transition.rect"
     assert "i=" in data["keyframes_written"]  # cubic_in_out operator
 
     # Effects are now nested inside the clip <entry> (the §1.1 placement fix),
@@ -111,7 +113,8 @@ def test_preset_zoom_in_writes_keyframed_transform_filter(tmp_path):
     # fixture already had one transform filter; the tool adds a second.
     assert len(nested_transforms) == 2
     new = nested_transforms[-1]
-    parsed = parse_keyframe_string("rect", _props(new)["rect"], fps=30.0)
+    # The tool now writes the render-correct `transition.rect` property.
+    parsed = parse_keyframe_string("rect", _props(new)["transition.rect"], fps=30.0)
     assert [k.frame for k in parsed] == [0, 300]
 
 

@@ -54,6 +54,36 @@ def summarize(rows: list[dict]) -> dict:
     }
 
 
+def write_loudness_to_library(vault_path: Path, rows: list[dict]) -> dict:
+    """Optionally fold measured LUFS into matching B-roll library entries.
+
+    Matches each scanned clip to a library entry by ``source_path`` and writes
+    its integrated loudness into ``BRollEntry.loudness_lufs`` (added to the
+    model so extra keys are no longer dropped). Clips with no matching entry --
+    or no successful measurement -- are skipped. Returns
+    ``{"matched": int, "updated": int}``. Purely additive: the scan works fully
+    without a library, and unrelated entry fields are never touched.
+    """
+    from workshop_video_brain.edit_mcp.pipelines.broll_library import (
+        load_library,
+        save_library,
+    )
+
+    library = load_library(Path(vault_path))
+    by_path = {e.source_path: e for e in library.entries if e.source_path}
+    updated = 0
+    for row in rows:
+        if not row.get("ok") or row.get("lufs") is None:
+            continue
+        entry = by_path.get(row.get("clip"))
+        if entry is not None:
+            entry.loudness_lufs = float(row["lufs"])
+            updated += 1
+    if updated:
+        save_library(Path(vault_path), library)
+    return {"matched": len(by_path), "updated": updated}
+
+
 def scan_loudness(sources: list[Path]) -> dict:
     """Measure every clip in *sources* and return a table + summary."""
     rows = [measure_clip(s) for s in sources]

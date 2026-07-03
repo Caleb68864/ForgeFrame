@@ -15,6 +15,7 @@ was dropped -- it has no clean native MLT mapping).
 """
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
 from copy import deepcopy
 from typing import NamedTuple
 
@@ -25,6 +26,14 @@ from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_projec
 
 MARGIN = 20
 VALID_WIPE_TYPES = {"dissolve", "wipe"}
+
+# Transform-route PiP uses the same verified ``qtblend`` clip filter as
+# ``pipelines/image_overlay.py`` (render-proof: positions + composites + honours
+# alpha). A bare ``rect`` on ``affine``/``transform`` is a proven no-op on this
+# MLT build (affine reads ``transition.rect``; qtblend reads ``rect``), so the
+# transform route deliberately uses qtblend.
+PIP_TRANSFORM_SERVICE = "qtblend"
+PIP_TRANSFORM_KDENLIVE_ID = "qtblend"
 
 
 class MltBlendTarget(NamedTuple):
@@ -114,6 +123,91 @@ def apply_pip(
         blend_mode="cairoblend",
         geometry=geometry,
     )
+
+
+def pip_transform_rect_value(
+    layout: PipLayout,
+    opacity: float = 1.0,
+    width_override: int | None = None,
+    height_override: int | None = None,
+) -> str:
+    """Format a PiP layout as the qtblend ``rect`` string ``"x y w h opacity"``.
+
+    ``width_override`` / ``height_override`` allow **non-uniform** (aspect-
+    unlocked) sizing, overriding the layout's uniform width/height. ``opacity``
+    is a 0-1 fraction, written as the rect's trailing opacity field.
+    """
+    if not 0.0 <= opacity <= 1.0:
+        raise ValueError(f"opacity must be in [0.0, 1.0]; got {opacity}")
+    from workshop_video_brain.edit_mcp.pipelines.image_overlay import rect_to_string
+
+    w = int(width_override) if width_override is not None else int(layout.width)
+    h = int(height_override) if height_override is not None else int(layout.height)
+    if w <= 0 or h <= 0:
+        raise ValueError(f"pip width/height must be > 0; got {w}x{h}")
+    return rect_to_string((int(layout.x), int(layout.y), w, h), opacity)
+
+
+def build_pip_transform_xml(
+    overlay_track: int,
+    clip_index: int,
+    rect_value: str,
+    rotation: float = 0.0,
+) -> str:
+    """Build the qtblend ``<filter>`` XML that positions/scales/rotates a PiP.
+
+    ``rect_value`` is either a static ``"x y w h opacity"`` string or a full
+    keyframe-animation string (keyframed-motion pass-through). ``rotation`` is
+    in degrees (qtblend's ``rotation`` property). The association attrs
+    (``track`` / ``clip_index``) are read by the serializer to relocate the
+    filter inside the overlay clip's ``<entry>``, then stripped before MLT.
+    """
+    root = ET.Element(
+        "filter",
+        {
+            "mlt_service": PIP_TRANSFORM_SERVICE,
+            "track": str(overlay_track),
+            "clip_index": str(clip_index),
+        },
+    )
+    ET.SubElement(root, "property", {"name": "mlt_service"}).text = (
+        PIP_TRANSFORM_SERVICE
+    )
+    ET.SubElement(root, "property", {"name": "kdenlive_id"}).text = (
+        PIP_TRANSFORM_KDENLIVE_ID
+    )
+    ET.SubElement(root, "property", {"name": "rect"}).text = rect_value
+    # compositing 0 == source-over: the overlay paints over the layers below
+    # while its own alpha is preserved.
+    ET.SubElement(root, "property", {"name": "compositing"}).text = "0"
+    if rotation:
+        ET.SubElement(root, "property", {"name": "rotation"}).text = str(rotation)
+    return ET.tostring(root, encoding="unicode")
+
+
+def apply_pip_transform(
+    project: KdenliveProject,
+    overlay_track: int,
+    clip_index: int,
+    rect_value: str,
+    rotation: float = 0.0,
+) -> KdenliveProject:
+    """Insert a qtblend transform clip filter on the overlay clip (PiP route).
+
+    This is the enhanced picture-in-picture path -- it inherits opacity,
+    rotation, non-uniform sizing and keyframed motion from the verified qtblend
+    clip filter (see ``pipelines/image_overlay.py``). Visibility over the base
+    track comes from the serializer's per-track compositor (same as image
+    overlays), so no separate composite transition is required. Returns the
+    (mutated) project for call-site symmetry with :func:`apply_pip`.
+    """
+    from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
+
+    clip_ref = (overlay_track, clip_index)
+    xml = build_pip_transform_xml(overlay_track, clip_index, rect_value, rotation)
+    position = len(patcher.list_effects(project, clip_ref))
+    patcher.insert_effect_xml(project, clip_ref, xml, position=position)
+    return project
 
 
 def apply_wipe(

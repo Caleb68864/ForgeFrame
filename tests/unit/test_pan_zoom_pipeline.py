@@ -190,3 +190,36 @@ def test_build_rejects_unknown_easing():
         pz.build_pan_zoom_keyframes(
             (0, 0, 1920, 1080), (1, 1, 10, 10), 30, 30.0, easing="bogus",
         )
+
+
+# ---------------------------------------------------------------------------
+# Transform (affine transition.rect) emit -- render-correct destination rects
+# ---------------------------------------------------------------------------
+
+def test_transform_keyframes_convert_source_region_to_destination_rect():
+    # zoom_in on 1080p: start = full frame (dest == full frame, scale 1);
+    # end = centred 60% region -> dest is scaled/offset (region_to_transform_rect).
+    start, end = pz.preset_rects("zoom_in", 1920, 1080)
+    out = pz.build_pan_zoom_transform_keyframes(
+        start, end, 1920, 1080, 60, 30.0, easing="linear",
+    )
+    parsed = parse_keyframe_string("rect", out, fps=30.0)
+    assert [k.frame for k in parsed] == [0, 60]
+    # Start region (full frame) maps to the identity destination rect.
+    assert parsed[0].value[:4] == [0.0, 0.0, 1920.0, 1080.0]
+    # End region (384,216,1152,648) -> dest (-640,-360,3200,1800): a real zoom,
+    # NOT the bare source-region rect (which would be a no-op on affine).
+    ex, ey, ew, eh = parsed[1].value[:4]
+    assert (round(ex), round(ey), round(ew), round(eh)) == (-640, -360, 3200, 1800)
+    assert parsed[1].value[:4] != [384.0, 216.0, 1152.0, 648.0]
+
+
+def test_transform_keyframes_preserve_hold_and_easing():
+    start, end = pz.preset_rects("zoom_in", 1920, 1080)
+    out = pz.build_pan_zoom_transform_keyframes(
+        start, end, 1920, 1080, 60, 30.0, easing="cubic_in_out", hold_frames=15,
+    )
+    parsed = parse_keyframe_string("rect", out, fps=30.0)
+    assert [k.frame for k in parsed] == [0, 15, 75]
+    # First two keyframes hold the (identity) start destination rect.
+    assert parsed[0].value[:4] == parsed[1].value[:4] == [0.0, 0.0, 1920.0, 1080.0]

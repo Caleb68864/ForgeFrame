@@ -174,6 +174,67 @@ def test_apply_mask_already_ordered():
 
 
 # ---------------------------------------------------------------------------
+# Regression: wrapping a real Shape Alpha (``shape``) must preserve its NAMED
+# properties. Previously ``_build_mask_start_from_existing`` looked for the
+# alphaspot's numeric 0..7 keys, which do not exist on ``shape``, so every
+# property (resource/mix/softness/...) was silently dropped.
+# ---------------------------------------------------------------------------
+
+def test_apply_mask_to_shape_preserves_named_props():
+    from workshop_video_brain.edit_mcp.pipelines import shape_alpha
+
+    pl0 = Playlist(
+        id="playlist0",
+        entries=[PlaylistEntry(
+            producer_id="producer_a", in_point=0, out_point=100,
+        )],
+    )
+    project = KdenliveProject(playlists=[pl0])
+
+    # A real Shape Alpha filter (matte file consumer) at index 0.
+    shape_xml = shape_alpha.build_shape_alpha_xml(
+        (0, 0), "/mattes/subject.mov",
+        mix=70, softness=0.2, invert=True, use_luminance=True,
+        mask_in=3, mask_out=42,
+    )
+    project.opaque_elements.append(OpaqueElement(
+        tag="filter", xml_string=shape_xml, position_hint="after_tractor",
+    ))
+    # A target effect to mask at index 1.
+    brightness_xml = _build_filter_xml(
+        0, 0, "brightness", {"kdenlive_id": "brightness", "level": "0.5"},
+    )
+    project.opaque_elements.append(OpaqueElement(
+        tag="filter", xml_string=brightness_xml, position_hint="after_tractor",
+    ))
+
+    result = masking.apply_mask_to_effect(
+        project, (0, 0), mask_effect_index=0, target_effect_index=1,
+    )
+    assert result["converted_to_sandwich"] is True
+
+    filters = patcher.list_effects(project, (0, 0))
+    assert [f["mlt_service"] for f in filters] == [
+        "mask_start", "brightness", "mask_apply",
+    ]
+    props = filters[0]["properties"]
+    assert props["kdenlive_id"] == "mask_start-shape"
+    assert props["filter"] == "shape"
+    # Named inner props must be carried through with a filter.* prefix.
+    assert props["filter.resource"] == "/mattes/subject.mov"
+    assert props["filter.mix"] == "70"
+    assert props["filter.softness"] == "0.2"
+    assert props["filter.invert"] == "1"
+    assert props["filter.use_luminance"] == "1"
+    # No numeric 0..7 keys leaked from the alphaspot layout.
+    assert not any(k in props for k in ("0", "1", "2", "3")), props
+    # in/out sit on the OUTER mask_start filter (per mask_start_shape.xml).
+    assert props["in"] == "3"
+    assert props["out"] == "42"
+    assert "filter.in" not in props and "filter.out" not in props
+
+
+# ---------------------------------------------------------------------------
 # SR-15: reorder when out of order.
 # ---------------------------------------------------------------------------
 

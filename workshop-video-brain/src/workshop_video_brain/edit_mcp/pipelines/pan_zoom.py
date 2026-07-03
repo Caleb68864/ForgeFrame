@@ -166,3 +166,44 @@ def build_pan_zoom_keyframes(
         ]
 
     return build_keyframe_string("rect", keyframes, fps, ease_family_default)
+
+
+def build_pan_zoom_transform_keyframes(
+    start_region: object,
+    end_region: object,
+    width: int,
+    height: int,
+    duration_frames: int,
+    fps: float,
+    easing: str = "cubic_in_out",
+    hold_frames: int = 0,
+    ease_family_default: str = "cubic",
+) -> str:
+    """Emit the **render-correct** ``affine`` ``transition.rect`` keyframe string.
+
+    ``build_pan_zoom_keyframes`` reasons in intuitive *source-region* space (the
+    rect that gets scaled up to fill the frame). But a bare ``rect`` on the
+    ``affine``/``transform`` filter is a **proven no-op** on this MLT build --
+    ``affine`` reads ``transition.rect``, which names where the *whole* source
+    frame is placed/scaled, not a crop. This helper converts each source region
+    to the affine *destination* rect (via ``motion_track.region_to_transform_rect``,
+    the same math the tracked ``build_zoom_keyframes`` uses) and then builds the
+    keyframe animation, so the transform actually moves pixels.
+
+    Render-proof: ``tests/integration/external/test_pan_zoom_render.py``.
+    """
+    from workshop_video_brain.edit_mcp.pipelines.motion_track import (
+        region_to_transform_rect,
+    )
+
+    d_start = region_to_transform_rect(
+        clamp_rect(start_region, width, height), width, height
+    )
+    d_end = region_to_transform_rect(
+        clamp_rect(end_region, width, height), width, height
+    )
+    return build_pan_zoom_keyframes(
+        d_start, d_end, duration_frames, fps,
+        easing=easing, hold_frames=hold_frames,
+        ease_family_default=ease_family_default,
+    )

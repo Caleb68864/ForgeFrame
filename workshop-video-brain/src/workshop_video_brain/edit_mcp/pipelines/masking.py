@@ -278,10 +278,14 @@ def build_rotoscoping_xml(
 def build_object_mask_xml(
     clip_ref: tuple[int, int], params: dict
 ) -> str:
-    """Build an ``object_mask`` filter by wrapping ``frei0r.alpha0ps_alphaspot``.
+    """Build a parametric **spot-shape** alpha via ``frei0r.alpha0ps_alphaspot``.
 
-    Kdenlive ships no AI object-detector; this builder emulates
-    ``object_mask`` via the stock alpha-spot shape filter. See
+    NOT AI segmentation. Despite the ``object_mask`` name this is a stock
+    geometric alpha spot (ellipse/rectangle placed by ``position_*``/``size_*``),
+    unrelated to Kdenlive 25.04's SAM2 Object Mask. For AI subject masking use
+    ``mask_generate`` / ``mask_generate_and_apply``; to consume an
+    externally-produced matte file (e.g. a SAM2 export) use
+    ``mask_set_from_file`` (Shape Alpha). See
     ``docs/specs/2026-04-13-masking/index.md`` -- Object mask section.
     """
     shape = int(params.get("shape", 0))
@@ -411,10 +415,22 @@ _ROTOSCOPING_INNER_PROPS: tuple[str, ...] = (
 )
 
 # Property names on the object_mask (frei0r.alpha0ps_alphaspot) filter that
-# should be preserved (with a ``filter.`` prefix) when converting.
+# should be preserved (with a ``filter.`` prefix) when converting. This frei0r
+# filter genuinely uses positional numeric props 0..7.
 _OBJECT_MASK_INNER_PROPS: tuple[str, ...] = (
     "0", "1", "2", "3", "4", "5", "6", "7",
 )
+
+# Shape Alpha (``shape``) uses NAMED props, NOT the numeric 0..7 layout. When a
+# real ``shape`` filter is wrapped into a mask_start sandwich its ``in``/``out``
+# sit on the OUTER mask_start filter (per
+# ``/usr/share/kdenlive/effects/mask_start_shape.xml``) while the rest are
+# ``filter.*`` prefixed -- exactly the split
+# ``shape_alpha.build_mask_start_shape_xml`` encodes. Reusing that authoritative
+# prop list here fixes the latent bug where wrapping a ``shape`` filter dropped
+# every property (it looked for the alphaspot's numeric keys, which don't exist
+# on ``shape``).
+_SHAPE_OUTER_PROPS: tuple[str, ...] = ("in", "out")
 
 
 def build_mask_start_rotoscoping_xml(
@@ -469,11 +485,24 @@ def _build_mask_start_from_existing(
     ``inner_service`` is the MLT service of the plain inner filter
     (``rotoscoping`` or ``frei0r.alpha0ps_alphaspot``).
     """
+    outer_keys: tuple[str, ...] = ()
     if inner_service == "rotoscoping":
         inner_keys = _ROTOSCOPING_INNER_PROPS
         kdenlive_id = "mask_start-rotoscoping"
         filter_value = "rotoscoping"
-    elif inner_service in ("frei0r.alpha0ps_alphaspot", "shape"):
+    elif inner_service == "shape":
+        # Shape Alpha: NAMED props; ``in``/``out`` live on the outer filter.
+        # ``SHAPE_INNER_PROPS`` is the authoritative order from shape_alpha.py.
+        from workshop_video_brain.edit_mcp.pipelines.shape_alpha import (
+            SHAPE_INNER_PROPS,
+        )
+        inner_keys = tuple(
+            k for k in SHAPE_INNER_PROPS if k not in _SHAPE_OUTER_PROPS
+        )
+        outer_keys = _SHAPE_OUTER_PROPS
+        kdenlive_id = "mask_start-shape"
+        filter_value = "shape"
+    elif inner_service == "frei0r.alpha0ps_alphaspot":
         inner_keys = _OBJECT_MASK_INNER_PROPS
         kdenlive_id = "mask_start-shape"
         filter_value = inner_service
@@ -487,6 +516,10 @@ def _build_mask_start_from_existing(
         ("kdenlive_id", kdenlive_id),
         ("filter", filter_value),
     ]
+    # Outer (non-prefixed) props first -- matches mask_start_shape.xml ordering.
+    for key in outer_keys:
+        if key in existing_props:
+            props.append((key, existing_props[key]))
     for key in inner_keys:
         if key in existing_props:
             props.append((f"filter.{key}", existing_props[key]))
