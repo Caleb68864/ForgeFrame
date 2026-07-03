@@ -207,6 +207,29 @@ _MANAGED_DOCPROPERTY_SUFFIXES = frozenset(
 
 _DOCPROP_PREFIX = "kdenlive:docproperties."
 
+# Maximum element nesting depth accepted from an input document.  ElementTree
+# parses iteratively (expat) but ``ET.tostring`` -- used to snapshot unknown
+# elements as OpaqueElements -- recurses in Python, so a pathologically deep
+# document raises ``RecursionError`` mid-parse.  Real .kdenlive files nest
+# well under 20 levels; this cap is far above any legitimate document yet well
+# below the interpreter's recursion limit, converting the DoS into a clean
+# ProjectParseError.
+_MAX_NESTING_DEPTH = 256
+
+
+def _max_depth(root: ET.Element) -> int:
+    """Return the maximum element nesting depth of *root* (iterative, no
+    recursion -- safe to run on adversarially deep trees)."""
+    max_d = 1
+    stack: list[tuple[ET.Element, int]] = [(root, 1)]
+    while stack:
+        elem, depth = stack.pop()
+        if depth > max_d:
+            max_d = depth
+        for child in elem:
+            stack.append((child, depth + 1))
+    return max_d
+
 
 def _parse_docproperties(elem: ET.Element) -> dict[str, str]:
     """Read non-managed ``kdenlive:docproperties.*`` off the main_bin playlist.
@@ -419,20 +442,58 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
             ``missing_ok`` is False.
     """
     path = Path(path)
-    try:
-        tree = ET.parse(path)
-    except FileNotFoundError as exc:
-        logger.error("File not found: %s: %s", path, exc)
-        if missing_ok:
-            return KdenliveProject()
-        raise ProjectParseError(path, exc) from exc
-    except ET.ParseError as exc:
-        logger.error("XML parse error in %s: %s", path, exc)
+
+    def _fail(exc: Exception) -> KdenliveProject:
         if missing_ok:
             return KdenliveProject()
         raise ProjectParseError(path, exc) from exc
 
-    root = tree.getroot()
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError as exc:
+        logger.error("File not found: %s: %s", path, exc)
+        return _fail(exc)
+    except OSError as exc:
+        logger.error("Could not read %s: %s", path, exc)
+        return _fail(exc)
+
+    # Entity-expansion / XXE guard.  ElementTree (expat) expands *internal*
+    # general entities, so a DOCTYPE carrying nested entities is a billion-laughs
+    # DoS vector, and external SYSTEM entities are an XXE vector (expat rejects
+    # the latter, but the safe blanket rule is: a legitimate .kdenlive file never
+    # declares a DOCTYPE, so reject any document that does).
+    if b"<!DOCTYPE" in raw or b"<!doctype" in raw:
+        logger.error("Rejected DOCTYPE (entity-expansion guard) in %s", path)
+        return _fail(
+            ValueError("DOCTYPE declarations are not allowed (entity-expansion guard)")
+        )
+
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError as exc:
+        logger.error("XML parse error in %s: %s", path, exc)
+        return _fail(exc)
+
+    # The root element MUST be <mlt>.  A wrong root (an HTML error page, a
+    # truncated-then-reopened file, an OTIO/FCPXML document mis-routed here)
+    # would otherwise parse into a near-empty project and let a downstream tool
+    # silently overwrite the source with an empty timeline.
+    root_local = root.tag.rpartition("}")[2] if isinstance(root.tag, str) else root.tag
+    if root_local != "mlt":
+        logger.error("Wrong root element <%s> in %s (expected <mlt>)", root.tag, path)
+        return _fail(ValueError(f"root element is <{root.tag}>, expected <mlt>"))
+
+    # Depth guard (see _MAX_NESTING_DEPTH): convert a pathologically deep tree
+    # into a clean ProjectParseError instead of a raw RecursionError raised deep
+    # inside ET.tostring when an opaque element is snapshotted.
+    depth = _max_depth(root)
+    if depth > _MAX_NESTING_DEPTH:
+        logger.error("Document nesting too deep (%d) in %s", depth, path)
+        return _fail(
+            ValueError(
+                f"document nesting too deep ({depth} > {_MAX_NESTING_DEPTH})"
+            )
+        )
 
     version = root.get("version", "")
     title = root.get("title", "")
@@ -481,14 +542,20 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
             try:
                 producers.append(_parse_producer(elem))
             except Exception as exc:
-                logger.warning("Skipping malformed <producer>: %s", exc)
+                logger.warning(
+                    "Skipping malformed <producer id=%r>: %s",
+                    elem.get("id", ""), exc,
+                )
                 opaque_elements.append(_elem_to_opaque(elem))
 
         elif tag == "chain":
             try:
                 producers.append(_parse_chain(elem))
             except Exception as exc:
-                logger.warning("Skipping malformed <chain>: %s", exc)
+                logger.warning(
+                    "Skipping malformed <chain id=%r>: %s",
+                    elem.get("id", ""), exc,
+                )
                 opaque_elements.append(_elem_to_opaque(elem))
 
         elif tag == "playlist":
@@ -509,7 +576,9 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
                 playlists.append(playlist)
                 opaque_elements.extend(child_opaques)
             except Exception as exc:
-                logger.warning("Skipping malformed <playlist>: %s", exc)
+                logger.warning(
+                    "Skipping malformed <playlist id=%r>: %s", playlist_id, exc
+                )
                 opaque_elements.append(_elem_to_opaque(elem))
 
         elif tag == "tractor":
@@ -528,7 +597,10 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
                 opaque_elements.extend(tractor_opaques)
                 subtitles.extend(tractor_subs)
             except Exception as exc:
-                logger.warning("Skipping malformed <tractor>: %s", exc)
+                logger.warning(
+                    "Skipping malformed <tractor id=%r>: %s",
+                    elem.get("id", ""), exc,
+                )
                 opaque_elements.append(_elem_to_opaque(elem))
 
         elif tag in ("kdenlive:guide", "guide"):

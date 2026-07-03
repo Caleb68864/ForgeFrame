@@ -74,10 +74,15 @@ def _make_project(
             )
         ]
     if playlists is None:
+        # Reference the first supplied producer so the default timeline stays
+        # consistent when a test overrides ``producers`` with a different id
+        # (the serializer now rejects playlist entries pointing at a producer
+        # that is not defined anywhere -- a previously silent broken document).
+        first_id = producers[0].id if producers else "prod0"
         playlists = [
             Playlist(
                 id="pl0",
-                entries=[PlaylistEntry(producer_id="prod0", in_point=0, out_point=99)],
+                entries=[PlaylistEntry(producer_id=first_id, in_point=0, out_point=99)],
             )
         ]
     if tracks is None:

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mlt version="7">
+  <profile width="1920" height="1080" frame_rate_num="25" frame_rate_den="1"/>
+  <producer id="p0"><property name="resource">/media/a.mp4</property><property name="length">100</property></producer>
+  <playlist id="pl0"><entry producer="p0" in="-10" out="40"/></playlist>
+  <tractor id="t0"><track producer="pl0"/></tractor>
+</mlt>

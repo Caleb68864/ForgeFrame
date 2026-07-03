@@ -7,6 +7,7 @@ writing.
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 import xml.etree.ElementTree as ET
 from math import gcd
@@ -16,6 +17,18 @@ from workshop_video_brain.core.models.kdenlive import KdenliveProject
 from workshop_video_brain.workspace import snapshot as snapshot_manager
 
 logger = logging.getLogger(__name__)
+
+
+class ProjectSerializeError(Exception):
+    """Raised when a KdenliveProject is too inconsistent to emit a valid file.
+
+    The serializer refuses to write a structurally-broken .kdenlive document
+    (a playlist entry referencing a producer that is not defined anywhere, an
+    inverted or negative clip in/out point, a non-positive blank length) rather
+    than silently emitting XML that Kdenlive/melt would reject or mis-render.
+    The message carries element / track / entry-index context so the caller can
+    locate the offending node.  No output file is written when this is raised.
+    """
 
 # Stable UUID namespace for deterministic producer/project UUIDs
 _KDENLIVE_UUID_NS = uuid.NAMESPACE_URL
@@ -306,6 +319,77 @@ def _hide_directives(
 
 
 # ---------------------------------------------------------------------------
+# Model-consistency guard
+# ---------------------------------------------------------------------------
+
+
+def _known_producer_ids(project: KdenliveProject) -> set[str]:
+    """All producer ids that will exist in the emitted document.
+
+    Covers the modelled producers, the always-emitted black background, and any
+    ``<producer>``/``<chain>`` preserved verbatim as an OpaqueElement (real
+    Kdenlive ``<chain>`` clips carry timecode ``out`` attributes the chain
+    parser cannot int-cast, so they round-trip through the opaque store while
+    their ids are still referenced by playlist entries -- those references are
+    valid, not ghosts).
+    """
+    ids: set[str] = {"producer_black", "black_track"}
+    for producer in project.producers:
+        if producer.id:
+            ids.add(producer.id)
+    for opaque in project.opaque_elements:
+        if opaque.tag not in ("producer", "chain"):
+            continue
+        try:
+            el = ET.fromstring(opaque.xml_string)
+        except ET.ParseError:
+            continue
+        pid = el.get("id")
+        if pid:
+            ids.add(pid)
+    return ids
+
+
+def _assert_serializable(project: KdenliveProject) -> None:
+    """Raise :class:`ProjectSerializeError` if *project* cannot emit valid XML.
+
+    Runs before any file I/O so a rejected project never produces a partial or
+    silently-broken output document (see the class docstring for the covered
+    inconsistencies).
+    """
+    known = _known_producer_ids(project)
+    for track_index, playlist in enumerate(project.playlists):
+        for i, entry in enumerate(playlist.entries):
+            if entry.producer_id:
+                if entry.producer_id not in known:
+                    raise ProjectSerializeError(
+                        f"playlist '{playlist.id}' (track {track_index}) entry #{i} "
+                        f"references producer '{entry.producer_id}' which is not "
+                        f"defined anywhere in the project"
+                    )
+                if entry.in_point < 0 or entry.out_point < 0:
+                    raise ProjectSerializeError(
+                        f"playlist '{playlist.id}' (track {track_index}) entry #{i} "
+                        f"(producer '{entry.producer_id}') has a negative in/out "
+                        f"point ({entry.in_point}/{entry.out_point})"
+                    )
+                if entry.out_point < entry.in_point:
+                    raise ProjectSerializeError(
+                        f"playlist '{playlist.id}' (track {track_index}) entry #{i} "
+                        f"(producer '{entry.producer_id}') has out_point "
+                        f"{entry.out_point} < in_point {entry.in_point}"
+                    )
+            else:
+                # A gap serialises as <blank length="out_point + 1">; the length
+                # must be >= 1 or the document is invalid.
+                if entry.out_point < 0:
+                    raise ProjectSerializeError(
+                        f"playlist '{playlist.id}' (track {track_index}) blank entry "
+                        f"#{i} has a non-positive length ({entry.out_point + 1})"
+                    )
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -320,6 +404,11 @@ def serialize_project(
     The file is written only after the XML is verified as well-formed.
     """
     output_path = Path(output_path)
+
+    # Refuse structurally-inconsistent models *before* any file I/O so a bad
+    # project never leaves a partial/broken document behind.
+    _assert_serializable(project)
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Snapshot any existing file
@@ -758,12 +847,25 @@ def serialize_project(
     except ET.ParseError as exc:
         raise ValueError(f"Serialized XML is not well-formed: {exc}") from exc
 
-    # Write file
+    # Write file atomically: serialise to a sibling temp file, then os.replace()
+    # it into place.  A crash or I/O error mid-write therefore never truncates or
+    # corrupts an existing project at *output_path* -- combined with the
+    # well-formedness check above this guarantees the target is only ever
+    # replaced by a fully-written, valid document.
     tree = ET.ElementTree(root)
     ET.indent(tree, space="  ")
-    with output_path.open("wb") as fh:
-        fh.write(b'<?xml version="1.0" encoding="utf-8"?>\n')
-        tree.write(fh, encoding="utf-8", xml_declaration=False)
+    tmp_path = output_path.with_name(output_path.name + ".tmp")
+    try:
+        with tmp_path.open("wb") as fh:
+            fh.write(b'<?xml version="1.0" encoding="utf-8"?>\n')
+            tree.write(fh, encoding="utf-8", xml_declaration=False)
+        os.replace(tmp_path, output_path)
+    except BaseException:
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
+        raise
 
     logger.info("Wrote Kdenlive project to %s", output_path)
 
