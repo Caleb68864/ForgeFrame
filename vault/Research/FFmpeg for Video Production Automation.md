@@ -262,18 +262,18 @@ Ranked for a solo creator drowning in raw clips. Effort: **S** = a few hours
 (one filter + parse, mirrors an existing adapter), **M** = a day (two-pass or new
 data model), **L** = multi-day.
 
-| # | Tool | One-liner | Effort | Ties into |
-|---|---|---|---|---|
-| 1 | `media_thumbnail_sheet` | Extract representative keyframes + a contact sheet per clip so an AI-vision agent can auto-tag it | **S** | `broll_library_tag` |
-| 2 | `clips_qc_scan` | Batch `blackdetect`+`freezedetect`+`blurdetect`+`signalstats`+silence-ratio to flag unusable clips and auto-rate takes | **S** | extends `qc_check`; writes `rating` to index |
-| 3 | `clips_detect_scenes` | Detect shot boundaries in a long recording via `scdet`/`select=scene` and return cut timestamps | **S** | feeds `broll_library_index` |
-| 4 | `media_segment_at_silence` | Split a long recording into per-take files at detected silences using the `segment` muxer (stream copy) | **S** | reuses `silence.py`; feeds index |
-| 5 | `audio_loudness_scan` | Batch `ebur128`/`loudnorm` measure across clips and store per-clip LUFS for consistency sorting | **S** | reuses `measure_loudness`; index field |
-| 6 | `clips_find_duplicates` | Perceptual/`signature`-hash clips to surface near-duplicate and re-recorded takes | **M** | dedupes `broll_library` |
-| 7 | `clips_preview_gif` | Generate a small looping GIF/mp4 preview per clip for fast visual triage | **S** | review UI / index |
-| 8 | `audio_normalize_two_pass` | Upgrade `normalize_audio` to measured two-pass `loudnorm` for accurate broadcast loudness | **S** | replaces single-pass path |
-| 9 | `media_denoise_video` | One-call `hqdn3d`/`atadenoise` cleanup for high-ISO/low-light footage | **S** | `media/processed/` output |
-| 10 | `media_stabilize` | Two-pass `vidstabdetect`+`vidstabtransform` (with `deshake` fallback) stabilization | **M** | `media/processed/` output |
+| # | Tool | One-liner | Effort | Ties into | Status |
+|---|---|---|---|---|---|
+| 1 | `media_thumbnail_sheet` | Extract representative keyframes + a contact sheet per clip so an AI-vision agent can auto-tag it | **S** | `broll_library_tag` | ✅ BUILT |
+| 2 | `clips_qc_scan` | Batch `blackdetect`+`freezedetect`+`blurdetect`+`signalstats`+silence-ratio to flag unusable clips and auto-rate takes | **S** | extends `qc_check`; writes `rating` to index | ✅ BUILT |
+| 3 | `clips_detect_scenes` | Detect shot boundaries in a long recording via `scdet`/`select=scene` and return cut timestamps | **S** | feeds `broll_library_index` | ✅ BUILT |
+| 4 | `media_segment_at_silence` | Split a long recording into per-take files at detected silences using the `segment` muxer (stream copy) | **S** | reuses `silence.py`; feeds index | ✅ BUILT |
+| 5 | `audio_loudness_scan` | Batch `ebur128`/`loudnorm` measure across clips and store per-clip LUFS for consistency sorting | **S** | reuses `measure_loudness`; index field | ✅ BUILT |
+| 6 | `clips_find_duplicates` | Perceptual/`signature`-hash clips to surface near-duplicate and re-recorded takes | **M** | dedupes `broll_library` | |
+| 7 | `clips_preview_gif` | Generate a small looping GIF/mp4 preview per clip for fast visual triage | **S** | review UI / index | |
+| 8 | `audio_normalize_two_pass` | Upgrade `normalize_audio` to measured two-pass `loudnorm` for accurate broadcast loudness | **S** | replaces single-pass path | |
+| 9 | `media_denoise_video` | One-call `hqdn3d`/`atadenoise` cleanup for high-ISO/low-light footage | **S** | `media/processed/` output | |
+| 10 | `media_stabilize` | Two-pass `vidstabdetect`+`vidstabtransform` (with `deshake` fallback) stabilization | **M** | `media/processed/` output | ✅ BUILT |
 
 ### Why this ordering
 
