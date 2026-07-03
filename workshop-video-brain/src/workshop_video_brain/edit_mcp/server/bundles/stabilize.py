@@ -10,9 +10,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    FFmpegNotFound,
+    FFmpegTimeout,
+)
 from workshop_video_brain.edit_mcp.pipelines.stabilize import (
     stabilize_file,
     stabilized_output_path,
+)
+from workshop_video_brain.edit_mcp.server.bundles._pipeline_errors import (
+    cleanup_partial_output as _cleanup_partial,
+    error_from_pipeline_result,
+    has_video_stream as _has_video_stream,
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
@@ -107,6 +116,14 @@ def media_stabilize(
         if not src.exists():
             return err(f"File not found: {src}", error_type=MISSING_FILE, suggestion="Check the source path; it is resolved relative to the workspace root unless absolute.", path=str(src))
 
+        # Refuse an audio-only file up front: vidstab/deshake would otherwise
+        # "succeed" and emit a bogus stabilized track with no video.
+        if _has_video_stream(src) is False:
+            return media_unreadable(
+                str(src),
+                cause="no video stream (audio-only or non-video file)",
+            )
+
         # Safety: never overwrite files in media/raw/.
         raw_dir = (ws_path / "media" / "raw").resolve()
         try:
@@ -122,16 +139,29 @@ def media_stabilize(
         if src_in_raw and output.resolve() == src.resolve():
             return _err("Refusing to overwrite media/raw source; choose an output_name.")
 
-        result = stabilize_file(
-            src,
-            output,
-            shakiness=shakiness,
-            smoothing=smoothing,
-            accuracy=accuracy,
-            zoom=zoom,
-        )
+        try:
+            result = stabilize_file(
+                src,
+                output,
+                shakiness=shakiness,
+                smoothing=smoothing,
+                accuracy=accuracy,
+                zoom=zoom,
+            )
+        except FFmpegNotFound as exc:
+            return missing_binary("ffmpeg", str(exc))
+        except FFmpegTimeout as exc:
+            return operation_failed(
+                "Stabilization timed out.", cause=exc,
+                suggestion="The clip may be very large or ffmpeg wedged; try a shorter clip.",
+            )
         if not result["success"]:
-            return _err(result.get("error", "Stabilization failed"))
+            # Failed render: remove any partial/zero-byte output so nothing is
+            # left half-written in media/processed.
+            _cleanup_partial(output)
+            return error_from_pipeline_result(
+                result, "Stabilization failed", path=str(src),
+            )
 
         data = {
             "input": str(src),

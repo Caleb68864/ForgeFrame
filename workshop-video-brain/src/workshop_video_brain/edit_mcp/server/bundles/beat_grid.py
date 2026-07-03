@@ -91,7 +91,7 @@ def music_beat_grid(
 
     src = _resolve_source(ws_path, source)
     if src is None:
-        return _err(f"Source not found: {source}")
+        return err(f"Source not found: {source}", error_type=MISSING_FILE, suggestion="Check the source path; it resolves under the workspace root unless absolute.", path=str(source))
 
     try:
         result = _bg.analyze_beats(src, sensitivity=sensitivity)

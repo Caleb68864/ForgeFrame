@@ -13,6 +13,7 @@ decorator registers on import.
 """
 from __future__ import annotations
 
+import logging
 import subprocess
 from pathlib import Path
 
@@ -44,6 +45,17 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _validate_workspace_path,
 )
 from workshop_video_brain.edit_mcp.pipelines import slideshow as _ss
+from workshop_video_brain.edit_mcp.server.bundles._pipeline_errors import (
+    cleanup_partial_output as _cleanup_partial,
+)
+
+logger = logging.getLogger("workshop_video_brain.edit_mcp.tools")
+
+# Wall-clock ceiling for the slideshow render. A corrupt/undecodable image fed
+# to an ``-loop 1`` input can make ffmpeg spin forever (it never reaches the
+# ``-t`` frame count), so without this a single bad PNG would hang the server.
+# Module-level so tests can shrink it. Generous default (30 min) for real jobs.
+SLIDESHOW_RENDER_TIMEOUT: float = 1800.0
 
 _DEFAULT_WIDTH = 1920
 _DEFAULT_HEIGHT = 1080
@@ -95,6 +107,16 @@ def _resolve_profile(
 
 
 def _probe_duration(path: Path) -> float | None:
+    """Best-effort ffprobe duration for a just-rendered output (None on failure).
+
+    Optional metadata only (the render already succeeded), so a probe failure is
+    non-fatal -- but it is logged loudly, distinguishing a missing file (should
+    never happen post-render) from an unparseable/undecodable probe result, so a
+    corrupt output is not silently indistinguishable from "no duration".
+    """
+    if not Path(path).exists():
+        logger.warning("duration probe: output file missing: %s", path)
+        return None
     try:
         out = subprocess.run(
             [
@@ -105,8 +127,25 @@ def _probe_duration(path: Path) -> float | None:
             ],
             capture_output=True, text=True, check=False,
         )
-        return float(out.stdout.strip()) if out.returncode == 0 else None
-    except (ValueError, OSError):
+    except FileNotFoundError:
+        logger.warning("duration probe: ffprobe binary not on PATH (skipping)")
+        return None
+    except OSError as exc:
+        logger.warning("duration probe: ffprobe failed to run on %s: %s", path, exc)
+        return None
+    if out.returncode != 0:
+        logger.warning(
+            "duration probe: ffprobe exited %d on %s: %s",
+            out.returncode, path, out.stderr.strip()[-200:],
+        )
+        return None
+    text = out.stdout.strip()
+    try:
+        return float(text)
+    except ValueError:
+        logger.warning(
+            "duration probe: unparseable ffprobe duration %r for %s", text, path
+        )
         return None
 
 
@@ -209,8 +248,30 @@ def media_slideshow(
                 crossfade_seconds=crossfade_seconds, kenburns=kenburns,
             )
 
-        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        try:
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, check=False,
+                timeout=SLIDESHOW_RENDER_TIMEOUT,
+            )
+        except FileNotFoundError:
+            return missing_binary(
+                "ffmpeg",
+                "Install FFmpeg and ensure it is on PATH (apt install ffmpeg / "
+                "brew install ffmpeg / pacman -S ffmpeg).",
+            )
+        except subprocess.TimeoutExpired:
+            # A corrupt/undecodable image can wedge an -loop 1 input forever.
+            _cleanup_partial(output_path)
+            return operation_failed(
+                "FFmpeg slideshow timed out.",
+                suggestion=(
+                    "One of the images may be corrupt or unreadable, making "
+                    "ffmpeg spin on a looped input. Remove bad images from the "
+                    "folder and retry."
+                ),
+            )
         if proc.returncode != 0 or not output_path.exists():
+            _cleanup_partial(output_path)
             return operation_failed("FFmpeg slideshow failed", cause=proc.stderr[-400:], suggestion="The external command exited non-zero; the stderr tail is in 'cause'. Check the input media/codecs and that the tool's filters are supported by your ffmpeg/melt build.")
 
         expected = _ss.compute_total_duration(

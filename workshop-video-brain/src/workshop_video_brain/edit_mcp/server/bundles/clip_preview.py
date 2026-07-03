@@ -120,7 +120,7 @@ def clips_preview_gif(
         if not src.is_absolute():
             src = ws_path / source
         if not src.exists() or not src.is_file():
-            return _err(f"source clip not found: {src}")
+            return err(f"source clip not found: {src}", error_type=MISSING_FILE, suggestion="Check the source path; it resolves under the workspace root unless absolute.", path=str(src))
 
         previews = ws_path / "reports" / "previews"
         previews.mkdir(parents=True, exist_ok=True)

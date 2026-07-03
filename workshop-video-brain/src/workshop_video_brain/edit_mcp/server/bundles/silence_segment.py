@@ -9,12 +9,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    FFmpegNotFound,
+    FFmpegTimeout,
+)
 from workshop_video_brain.edit_mcp.pipelines.analysis_common import (
     resolve_under_workspace,
 )
 from workshop_video_brain.edit_mcp.pipelines.silence_segment import (
     segment_at_silence,
     takes_dir,
+)
+from workshop_video_brain.edit_mcp.server.bundles._pipeline_errors import (
+    error_from_pipeline_result,
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
@@ -81,14 +88,22 @@ def media_segment_at_silence(
         if str(out_dir.resolve()).startswith(str(raw_dir)):
             return _err("Refusing to write takes into media/raw.")
 
-        result = segment_at_silence(
-            src, out_dir,
-            noise_db=noise_db,
-            min_silence=min_silence,
-            min_segment=min_segment,
-        )
+        try:
+            result = segment_at_silence(
+                src, out_dir,
+                noise_db=noise_db,
+                min_silence=min_silence,
+                min_segment=min_segment,
+            )
+        except FFmpegNotFound as exc:
+            return missing_binary("ffmpeg", str(exc))
+        except FFmpegTimeout as exc:
+            return operation_failed(
+                "Silence detection timed out.", cause=exc,
+                suggestion="The recording may be very long or ffmpeg wedged; try a shorter file.",
+            )
         if not result["success"]:
-            return _err(result.get("error", "Segmenting failed"))
+            return error_from_pipeline_result(result, "Segmenting failed", path=str(src))
 
         return _ok({
             "input": str(src),

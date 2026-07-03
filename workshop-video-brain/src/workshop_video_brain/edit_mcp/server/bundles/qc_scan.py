@@ -92,7 +92,7 @@ def clips_qc_scan(
 
         clips = iter_media_files(target)
         if not clips:
-            return _err(f"No media files found at: {target}")
+            return err(f"No media files found at: {target}", error_type="not_found", suggestion="Point source_or_dir at an existing clip or a folder that contains media files.", path=str(target))
 
         thresholds = {
             "black_min": black_min,

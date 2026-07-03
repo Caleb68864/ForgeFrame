@@ -9,9 +9,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    FFmpegNotFound,
+    FFmpegTimeout,
+)
 from workshop_video_brain.edit_mcp.pipelines.denoise_video import (
     denoise_video_file,
     denoised_output_path,
+)
+from workshop_video_brain.edit_mcp.server.bundles._pipeline_errors import (
+    cleanup_partial_output as _cleanup_partial,
+    error_from_pipeline_result,
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
@@ -117,14 +125,23 @@ def media_denoise_video(
                 "Refusing to overwrite media/raw source; choose an output_name."
             )
 
-        result = denoise_video_file(
-            src,
-            output,
-            strength=strength,
-            method=method,
-        )
+        try:
+            result = denoise_video_file(
+                src,
+                output,
+                strength=strength,
+                method=method,
+            )
+        except FFmpegNotFound as exc:
+            return missing_binary("ffmpeg", str(exc))
+        except FFmpegTimeout as exc:
+            return operation_failed(
+                "Denoise timed out.", cause=exc,
+                suggestion="The clip may be very large or ffmpeg wedged; try a shorter clip.",
+            )
         if not result["success"]:
-            return _err(result.get("error", "Denoise failed"))
+            _cleanup_partial(output)
+            return error_from_pipeline_result(result, "Denoise failed", path=str(src))
 
         return _ok({
             "input": str(src),

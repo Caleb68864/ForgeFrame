@@ -16,6 +16,9 @@ from workshop_video_brain.edit_mcp.pipelines.thumbnail_sheet import (
     generate_thumbnail_sheet,
     sheet_output_dir,
 )
+from workshop_video_brain.edit_mcp.server.bundles._pipeline_errors import (
+    error_from_pipeline_result,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
     _ok,
@@ -80,11 +83,21 @@ def media_thumbnail_sheet(
             return err(f"File not found: {src}", error_type=MISSING_FILE, suggestion="Check the source path; it is resolved relative to the workspace root unless absolute.", path=str(src))
 
         out_dir = sheet_output_dir(ws_path, src)
-        result = generate_thumbnail_sheet(
-            src, out_dir, frames=frames, grid=grid, width=width
-        )
+        try:
+            result = generate_thumbnail_sheet(
+                src, out_dir, frames=frames, grid=grid, width=width
+            )
+        except FileNotFoundError as exc:
+            # ffmpeg binary itself missing (the source was checked above).
+            return missing_binary(
+                "ffmpeg",
+                "Install FFmpeg and ensure it is on PATH (apt install ffmpeg / "
+                "brew install ffmpeg / pacman -S ffmpeg).",
+            )
         if not result["success"]:
-            return _err(result.get("error", "Thumbnail extraction failed"))
+            return error_from_pipeline_result(
+                result, "Thumbnail extraction failed", path=str(src),
+            )
 
         data = {
             "input": str(src),

@@ -220,7 +220,8 @@ def render_review_frames(
     if not project_path.is_absolute():
         project_path = workspace_path / project_file
     if not project_path.exists():
-        return {"success": False, "error": f"Project file not found: {project_path}"}
+        return {"success": False, "error": f"Project file not found: {project_path}",
+                "error_type": "missing_file"}
 
     out_dir = review_output_dir(workspace_path)
     frames_dir = out_dir / "frames"
@@ -232,7 +233,8 @@ def render_review_frames(
     try:
         profile = load_profile("preview")
     except Exception as exc:  # noqa: BLE001
-        return {"success": False, "error": f"could not load preview profile: {exc}"}
+        return {"success": False, "error": f"could not load preview profile: {exc}",
+                "error_type": "operation_failed"}
 
     job = _build_review_job(workspace_path, project_path, render_path, log_path)
     done = execute_render(job, profile)
@@ -240,6 +242,7 @@ def render_review_frames(
         return {
             "success": False,
             "error": "preview render failed",
+            "error_type": "operation_failed",
             "log_path": str(log_path),
             "output_dir": str(out_dir),
         }
@@ -504,12 +507,13 @@ def thumbnail_generate(
     if not src.is_absolute():
         src = workspace_path / source_or_project
     if not src.exists():
-        return {"success": False, "error": f"Source not found: {src}"}
+        return {"success": False, "error": f"Source not found: {src}",
+                "error_type": "missing_file"}
 
     try:
         style_data = load_thumbnail_style(style)
     except ValueError as exc:
-        return {"success": False, "error": str(exc)}
+        return {"success": False, "error": str(exc), "error_type": "invalid_input"}
 
     out_dir = workspace_path / "reports" / "thumbnails"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -518,9 +522,11 @@ def thumbnail_generate(
     try:
         ok = _extract_base_frame(src, float(at_seconds), tmp_frame)
     except Exception as exc:  # noqa: BLE001
-        return {"success": False, "error": f"frame extraction error: {exc}"}
+        return {"success": False, "error": f"frame extraction error: {exc}",
+                "error_type": "media_unreadable"}
     if not ok:
-        return {"success": False, "error": "frame extraction failed"}
+        return {"success": False, "error": "frame extraction failed",
+                "error_type": "media_unreadable"}
 
     img = Image.open(tmp_frame).convert("RGBA")
     if width and img.width != int(width):

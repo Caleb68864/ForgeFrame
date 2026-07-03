@@ -14,6 +14,7 @@ import.
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import subprocess
 import tempfile
@@ -40,6 +41,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     CORRUPT_PROJECT,
     MISSING_DEPENDENCY,
     BAD_JSON_PARAM,
+    NOT_FOUND,
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
@@ -48,6 +50,8 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 )
 from workshop_video_brain.edit_mcp.pipelines import clip_dupes as _cd
 
+logger = logging.getLogger("workshop_video_brain.edit_mcp.tools")
+
 #: Video extensions considered for duplicate detection.
 _VIDEO_EXTENSIONS: frozenset[str] = frozenset(
     {".mp4", ".mkv", ".mov", ".avi", ".webm", ".mts", ".m2ts"}
@@ -55,6 +59,15 @@ _VIDEO_EXTENSIONS: frozenset[str] = frozenset(
 
 
 def _probe_duration(path: Path) -> float | None:
+    """Best-effort ffprobe duration for a candidate clip (None on failure).
+
+    A ``None`` return skips the clip from phash comparison, so a silent swallow
+    would make a corrupt file indistinguishable from an empty one. We log loudly
+    and distinguish a missing file from an unparseable/undecodable probe result.
+    """
+    if not Path(path).exists():
+        logger.warning("dupe-scan duration probe: clip missing: %s", path)
+        return None
     try:
         out = subprocess.run(
             [
@@ -65,8 +78,25 @@ def _probe_duration(path: Path) -> float | None:
             ],
             capture_output=True, text=True, check=False,
         )
-        return float(out.stdout.strip()) if out.returncode == 0 else None
-    except (ValueError, OSError):
+    except FileNotFoundError:
+        logger.warning("dupe-scan duration probe: ffprobe binary not on PATH")
+        return None
+    except OSError as exc:
+        logger.warning("dupe-scan duration probe: ffprobe failed on %s: %s", path, exc)
+        return None
+    if out.returncode != 0:
+        logger.warning(
+            "dupe-scan duration probe: ffprobe exited %d on %s: %s",
+            out.returncode, path, out.stderr.strip()[-200:],
+        )
+        return None
+    text = out.stdout.strip()
+    try:
+        return float(text)
+    except ValueError:
+        logger.warning(
+            "dupe-scan duration probe: unparseable duration %r for %s", text, path
+        )
         return None
 
 
@@ -225,7 +255,7 @@ def clips_find_duplicates(
         if not source.is_absolute():
             source = ws_path / source_dir
         if not source.exists() or not source.is_dir():
-            return _err(f"source_dir not found or not a directory: {source}")
+            return err(f"source_dir not found or not a directory: {source}", error_type=MISSING_FILE, suggestion="Pass an existing directory containing at least two video clips.", path=str(source))
 
         method = (method or "phash").lower()
         if method not in {"phash", "signature"}:
@@ -237,9 +267,16 @@ def clips_find_duplicates(
 
         clips = _list_clips(source)
         if len(clips) < 2:
-            return _err(
+            return err(
                 f"need at least 2 video clips to compare; found {len(clips)} "
-                f"in {source}."
+                f"in {source}.",
+                error_type=NOT_FOUND,
+                suggestion=(
+                    "Point source_dir at a folder holding at least two video "
+                    "files (recursively). Supported: "
+                    + ", ".join(sorted(_VIDEO_EXTENSIONS)) + "."
+                ),
+                given=str(source),
             )
 
         if method == "signature":

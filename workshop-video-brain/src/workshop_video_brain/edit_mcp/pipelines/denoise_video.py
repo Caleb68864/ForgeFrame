@@ -185,6 +185,10 @@ def denoise_video_file(
             "steps": [s.model_dump() for s in steps],
             "final_output": None,
             "error": f"Denoise failed: {result.stderr[-300:]}",
+            # Stable machine key (server/errors.py taxonomy) the bundle passes
+            # through. A nonzero ffmpeg exit on a decode/encode is an operation
+            # failure the caller can inspect via the stderr tail above.
+            "error_type": "operation_failed",
         }
 
     return {

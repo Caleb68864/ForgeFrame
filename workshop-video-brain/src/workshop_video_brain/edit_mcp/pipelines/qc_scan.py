@@ -223,6 +223,13 @@ def scan_clip(
         stderr = proc.stderr
         stats_text = stats_file.read_text(encoding="utf-8") if stats_file.exists() else ""
 
+    # A clip ffmpeg could not decode (nonzero exit, no stats, no probed
+    # duration) must NOT be silently rated a perfect 5 -- that is a false
+    # all-clear. Flag it loudly as unreadable instead.
+    unreadable = (
+        proc.returncode != 0 and not stats_text.strip() and duration <= 0
+    )
+
     black = parse_black_regions(stderr)
     freeze = parse_freeze_regions(stderr)
     sig = parse_signalstats(stats_text)
@@ -237,6 +244,9 @@ def scan_clip(
         "silence_ratio": parse_silence_ratio(stderr, duration),
     }
     verdict, reasons = classify(metrics, th)
+    if unreadable:
+        verdict = "flagged"
+        reasons = ["unreadable", *reasons]
 
     return {
         "clip": str(source),
@@ -244,6 +254,7 @@ def scan_clip(
         "reasons": reasons,
         "rating": verdict_to_rating(verdict),
         "metrics": metrics,
+        "unreadable": unreadable,
         "success": True,
     }
 

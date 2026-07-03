@@ -16,6 +16,9 @@ Analysis-only: writes into ``reports/`` and never mutates project files or
 from __future__ import annotations
 
 from workshop_video_brain.edit_mcp.pipelines import review_loop
+from workshop_video_brain.edit_mcp.server.bundles._pipeline_errors import (
+    error_from_pipeline_result,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
     _ok,
@@ -87,7 +90,7 @@ def render_review_frames(
             keep_render=keep_render,
         )
         if not result.get("success"):
-            return _err(result.get("error", "review render failed"))
+            return error_from_pipeline_result(result, "review render failed")
         result.pop("success", None)
         return _ok(result)
     except Exception as exc:  # noqa: BLE001
@@ -139,7 +142,7 @@ def thumbnail_generate(
             width=width,
         )
         if not result.get("success"):
-            return _err(result.get("error", "thumbnail generation failed"))
+            return error_from_pipeline_result(result, "thumbnail generation failed")
         result.pop("success", None)
         return _ok(result)
     except Exception as exc:  # noqa: BLE001

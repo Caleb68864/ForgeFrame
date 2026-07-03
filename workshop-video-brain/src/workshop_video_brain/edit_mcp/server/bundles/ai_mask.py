@@ -38,6 +38,10 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     MISSING_DEPENDENCY,
     BAD_JSON_PARAM,
 )
+from workshop_video_brain.edit_mcp.server.bundles._pipeline_errors import (
+    cleanup_partial_output as _cleanup_partial,
+    error_from_pipeline_result,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
     _ok,
@@ -104,7 +108,13 @@ def _generate(
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     if not result.get("success"):
-        return _err(result.get("error", "matte generation failed"))
+        # generate_matte writes into a TemporaryDirectory and only moves the
+        # final matte out on success, but if encode half-wrote the destination,
+        # clear it so no partial matte is left behind.
+        _cleanup_partial(ai_mask.derived_mask_path(src, out_dir, output_name or None))
+        return error_from_pipeline_result(
+            result, "matte generation failed", path=str(src),
+        )
     return _ok({"input": str(src), **{k: v for k, v in result.items() if k != "success"}})
 
 

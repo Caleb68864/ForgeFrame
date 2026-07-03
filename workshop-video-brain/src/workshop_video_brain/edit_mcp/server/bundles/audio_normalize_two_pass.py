@@ -14,9 +14,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    FFmpegNotFound,
+    FFmpegTimeout,
+)
 from workshop_video_brain.edit_mcp.pipelines.loudnorm_two_pass import (
     normalize_two_pass_file,
     normalized_output_path,
+)
+from workshop_video_brain.edit_mcp.server.bundles._pipeline_errors import (
+    cleanup_partial_output as _cleanup_partial,
+    error_from_pipeline_result,
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
@@ -130,15 +138,26 @@ def audio_normalize_two_pass(
                 "Refusing to overwrite media/raw source; choose an output_name."
             )
 
-        result = normalize_two_pass_file(
-            src,
-            output,
-            target_i=target_i,
-            target_tp=target_tp,
-            target_lra=target_lra,
-        )
+        try:
+            result = normalize_two_pass_file(
+                src,
+                output,
+                target_i=target_i,
+                target_tp=target_tp,
+                target_lra=target_lra,
+            )
+        except FFmpegNotFound as exc:
+            return missing_binary("ffmpeg", str(exc))
+        except FFmpegTimeout as exc:
+            return operation_failed(
+                "Two-pass normalization timed out.", cause=exc,
+                suggestion="The file may be very large or ffmpeg wedged; try a shorter clip.",
+            )
         if not result["success"]:
-            return _err(result.get("error", "Two-pass normalization failed"))
+            _cleanup_partial(output)
+            return error_from_pipeline_result(
+                result, "Two-pass normalization failed", path=str(src),
+            )
 
         data = {
             "input": str(src),

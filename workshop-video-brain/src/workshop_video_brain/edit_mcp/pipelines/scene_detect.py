@@ -77,8 +77,33 @@ def detect_scenes(
             return {"success": True, "source": str(source),
                     "threshold": threshold, "command": cmd, "cuts": []}
 
-        subprocess.run(cmd, capture_output=True, text=True, check=False)
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        except FileNotFoundError:
+            # ffmpeg binary itself missing -- an environment error, not "no cuts".
+            return {
+                "success": False,
+                "source": str(source),
+                "threshold": threshold,
+                "error": "ffmpeg binary not found on PATH.",
+                "error_type": "missing_binary",
+            }
         stats_text = stats_file.read_text(encoding="utf-8") if stats_file.exists() else ""
+
+        # A nonzero ffmpeg exit means the source could not be decoded -- do NOT
+        # report a false success with zero cuts. Only treat rc==0 (or rc!=0 but
+        # scores were still emitted, which ffmpeg can do at EOF) as analysable.
+        if proc.returncode != 0 and not stats_text.strip():
+            return {
+                "success": False,
+                "source": str(source),
+                "threshold": threshold,
+                "error": (
+                    "scene detection failed to decode the source "
+                    f"(ffmpeg rc={proc.returncode}): {_stderr_tail(proc.stderr)}"
+                ),
+                "error_type": "media_unreadable",
+            }
 
     cuts = parse_scene_scores(stats_text)
     return {
@@ -88,3 +113,8 @@ def detect_scenes(
         "cut_count": len(cuts),
         "cuts": cuts,
     }
+
+
+def _stderr_tail(stderr: str, max_lines: int = 6) -> str:
+    lines = [ln for ln in (stderr or "").splitlines() if ln.strip()]
+    return "\n".join(lines[-max_lines:])

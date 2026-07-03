@@ -266,7 +266,16 @@ def stabilize_file(
     }
 
 
-def _fail(steps: list[FFmpegResult], method: str, params: dict, error: str) -> dict:
+def _fail(
+    steps: list[FFmpegResult],
+    method: str,
+    params: dict,
+    error: str,
+    error_type: str = "operation_failed",
+) -> dict:
+    # ``error_type`` is a stable machine key (matching server/errors.py taxonomy)
+    # the bundle layer passes straight through to its error contract, so an
+    # ffmpeg command failure here is classified rather than re-wrapped untyped.
     return {
         "success": False,
         "method": method,
@@ -274,4 +283,5 @@ def _fail(steps: list[FFmpegResult], method: str, params: dict, error: str) -> d
         "final_output": None,
         "params": params,
         "error": error,
+        "error_type": error_type,
     }

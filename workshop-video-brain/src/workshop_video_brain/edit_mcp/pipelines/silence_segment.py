@@ -117,7 +117,10 @@ def segment_at_silence(
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         return {**base, "success": False,
-                "error": f"segment muxer failed: {proc.stderr[-400:]}"}
+                "error": f"segment muxer failed: {proc.stderr[-400:]}",
+                # Stable machine key (server/errors.py taxonomy) passed through
+                # by the bundle layer.
+                "error_type": "operation_failed"}
 
     segment_paths = sorted(str(p) for p in out_dir.glob(f"{source.stem}_*{source.suffix}"))
     base["segment_paths"] = segment_paths

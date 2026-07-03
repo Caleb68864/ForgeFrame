@@ -278,12 +278,14 @@ def normalize_two_pass_file(
         return _fail(
             [], target, has_video, linear,
             "Pass-1 loudness measurement failed (measure_loudness returned None)",
+            error_type="media_unreadable",
         )
     thresh = _measure_thresh(input_path)
     if thresh is None:
         return _fail(
             [], target, has_video, linear,
             "Pass-1 threshold measurement failed",
+            error_type="media_unreadable",
         )
 
     measured = {
@@ -313,6 +315,7 @@ def normalize_two_pass_file(
             steps, target, has_video, linear,
             f"Pass-2 loudnorm apply failed: {apply_result.stderr[-300:]}",
             measured=measured,
+            error_type="operation_failed",
         )
 
     parsed = parse_pass2_result(apply_result.stderr)
@@ -350,7 +353,11 @@ def _fail(
     linear: bool,
     error: str,
     measured: dict | None = None,
+    error_type: str = "operation_failed",
 ) -> dict:
+    # ``error_type``: stable machine key (server/errors.py taxonomy) the bundle
+    # passes through -- measurement failures are media_unreadable, an apply-pass
+    # nonzero exit is operation_failed.
     return {
         "success": False,
         "measured": measured,
@@ -364,4 +371,5 @@ def _fail(
         "steps": [s.model_dump() for s in steps],
         "final_output": None,
         "error": error,
+        "error_type": error_type,
     }

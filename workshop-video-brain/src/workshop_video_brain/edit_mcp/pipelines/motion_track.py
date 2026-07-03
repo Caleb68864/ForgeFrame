@@ -98,6 +98,24 @@ class TrackerUnavailable(RuntimeError):
     """
 
 
+class FfmpegUnavailable(RuntimeError):
+    """Raised when the ``ffmpeg`` binary needed for frame extraction is missing.
+
+    Distinct from a *decode* failure (:class:`FrameExtractionError`): this is an
+    environment problem the user fixes by installing FFmpeg. The message carries
+    an install hint so the tool layer maps it to ``missing_binary``.
+    """
+
+
+class FrameExtractionError(RuntimeError):
+    """Raised when ffmpeg ran but produced no frame (unreadable/undecodable input).
+
+    Distinct from :class:`FfmpegUnavailable` (binary missing): here ffmpeg is
+    present but could not decode the requested timestamp -- a truncated, corrupt,
+    or wrong-format source -- so the tool layer maps it to ``media_unreadable``.
+    """
+
+
 def engine_available(name: str) -> bool:
     """Return True if *name*'s backing binary/module is present."""
     spec = ENGINES.get(name)
@@ -722,23 +740,38 @@ def extract_locator_frames(
 ) -> list[str]:
     """Extract one PNG per timestamp in *times*; return written paths.
 
-    Frames land in *out_dir* named ``{stem}_{ms}.png``. Raises ``RuntimeError``
-    if ffmpeg produces no output for any requested timestamp.
+    Frames land in *out_dir* named ``{stem}_{ms}.png``.
+
+    Raises:
+        FfmpegUnavailable: the ``ffmpeg`` binary is not on PATH (environment
+            error; carries an install hint) -- maps to ``missing_binary``.
+        FrameExtractionError: ffmpeg ran but decoded no frame for a requested
+            timestamp (unreadable/corrupt/wrong-format source) -- maps to
+            ``media_unreadable``.
     """
     source = Path(source)
     out_dir = Path(out_dir)
+    if not source.exists():
+        raise FileNotFoundError(f"locator source media not found: {source}")
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[str] = []
     for t in times:
         ms = int(round(max(0.0, float(t)) * 1000))
         out = out_dir / f"{stem}_{ms:07d}.png"
         cmd = build_extract_frame_cmd(source, t, out, ffmpeg=ffmpeg)
-        proc = subprocess.run(
-            cmd, capture_output=True, text=True, check=False
-        )
+        try:
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, check=False
+            )
+        except FileNotFoundError as exc:
+            raise FfmpegUnavailable(
+                f"'{ffmpeg}' binary not found on PATH; install FFmpeg "
+                "(e.g. `sudo pacman -S ffmpeg` / `apt install ffmpeg`)."
+            ) from exc
         if not out.exists():
-            raise RuntimeError(
-                f"frame extraction failed at t={t}s.\n"
+            raise FrameExtractionError(
+                f"frame extraction failed at t={t}s (ffmpeg decoded no frame -- "
+                f"source may be truncated/corrupt/unsupported).\n"
                 f"returncode={proc.returncode}\nstderr tail:\n{proc.stderr[-800:]}"
             )
         written.append(str(out))

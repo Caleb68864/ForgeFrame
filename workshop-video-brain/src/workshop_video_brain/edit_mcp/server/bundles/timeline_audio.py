@@ -87,10 +87,21 @@ def _apply(project, project_path, ws_path, intents, description):
     return snap.snapshot_id
 
 
-def _validate_track(project, track: int) -> str | None:
-    if track < 0 or track >= len(project.playlists):
-        return (
-            f"track {track} out of range (project has {len(project.playlists)} tracks)"
+def _validate_track(project, track: int) -> dict | None:
+    """Return a structured invalid_index error dict, or None when in range."""
+    n = len(project.playlists)
+    if track < 0 or track >= n:
+        # Preserve the legacy message text (existing substring assertions) while
+        # attaching the machine-readable error_type + valid_range.
+        return err(
+            f"track {track} out of range (project has {n} tracks)",
+            error_type=INVALID_INDEX,
+            suggestion=(
+                f"Pass a track index within 0-{max(0, n - 1)}. Use project_summary "
+                "to see how many tracks the project has."
+            ),
+            given=track,
+            valid_range=f"0-{max(0, n - 1)}",
         )
     return None
 
@@ -132,15 +143,23 @@ def track_volume(
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     project = parse_project(project_path)
-    err = _validate_track(project, track)
-    if err:
-        return _err(err)
+    verr = _validate_track(project, track)
+    if verr:
+        return verr
     fps = project.profile.fps or 25.0
 
     try:
         kf = ta.parse_volume_keyframes(keyframes, fps) if keyframes else ""
     except Exception as exc:  # noqa: BLE001 - value + json errors
-        return _err(f"invalid keyframes: {exc}")
+        return err(
+            f"invalid keyframes: {exc}",
+            error_type=INVALID_INPUT,
+            suggestion=(
+                "Provide dB keyframes as an MLT 'frame=db;frame=db' string or a "
+                'JSON array like [{"at_seconds": 0, "gain_db": -6}].'
+            ),
+            given=keyframes,
+        )
 
     level = kf if kf else ta.fmt_db(gain_db)
     intent = AddTrackFilter(
@@ -194,9 +213,9 @@ def track_pan(
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     project = parse_project(project_path)
-    err = _validate_track(project, track)
-    if err:
-        return _err(err)
+    verr = _validate_track(project, track)
+    if verr:
+        return verr
 
     try:
         start = ta.pan_to_start(pan)
@@ -255,14 +274,22 @@ def track_eq(
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     project = parse_project(project_path)
-    err = _validate_track(project, track)
-    if err:
-        return _err(err)
+    verr = _validate_track(project, track)
+    if verr:
+        return verr
 
     try:
         resolved = ta.eq_bands(preset=preset, bands=bands or None)
     except Exception as exc:  # noqa: BLE001 - value + json errors
-        return _err(f"invalid EQ spec: {exc}")
+        return err(
+            f"invalid EQ spec: {exc}",
+            error_type=BAD_JSON_PARAM,
+            suggestion=(
+                "Provide EQ bands as a JSON array, e.g. "
+                '[{"f": 200, "g": -3, "q": 1.0}], or use a named preset.'
+            ),
+            given=bands,
+        )
 
     prefix = f"eq{track}_"
     intents = [

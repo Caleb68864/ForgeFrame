@@ -168,7 +168,7 @@ def subject_locate_frames(
 
     source = _producer_resource(ws_path, producer)
     if source is None or not source.exists():
-        return _err(f"Clip source media not found: {source}")
+        return missing_file(str(source), what="clip source media")
 
     fps = project.profile.fps or 25.0
     # Convert the clip-relative offset to a source timestamp (clip in_point).
@@ -179,8 +179,14 @@ def subject_locate_frames(
             source, [source_seconds], out_dir,
             stem=f"{source.stem}_t{track}_c{clip_index}",
         )
+    except mt.FfmpegUnavailable as exc:
+        return missing_binary("ffmpeg", str(exc))
+    except mt.FrameExtractionError as exc:
+        return media_unreadable(str(source), cause=exc)
+    except FileNotFoundError as exc:
+        return missing_file(str(source), what="clip source media")
     except RuntimeError as exc:
-        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
+        return operation_failed(str(exc), cause=exc)
 
     clip_frames = entry.out_point - entry.in_point + 1
     return _ok({
@@ -252,7 +258,7 @@ def subject_track(
 
     source = _producer_resource(ws_path, producer)
     if source is None or not source.exists():
-        return _err(f"Clip source media not found: {source}")
+        return missing_file(str(source), what="clip source media")
 
     try:
         seed = tuple(float(v) for v in rect.split())

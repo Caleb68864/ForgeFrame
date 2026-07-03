@@ -143,7 +143,11 @@ def generate_thumbnail_sheet(
     proc = subprocess.run(frames_cmd, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         return {**base, "success": False,
-                "error": f"frame extraction failed: {proc.stderr[-400:]}"}
+                "error": f"frame extraction failed: {proc.stderr[-400:]}",
+                # Stable machine key (server/errors.py taxonomy) passed through
+                # by the bundle. A failed extraction usually means the source
+                # is unreadable/unsupported rather than a code fault.
+                "error_type": "media_unreadable"}
 
     frame_paths = sorted(str(p) for p in out_dir.glob("frame_*.png"))
 

@@ -15,6 +15,9 @@ from workshop_video_brain.edit_mcp.pipelines.audio_sync import (
     DEFAULT_WINDOW_SECONDS,
     sync_by_audio,
 )
+from workshop_video_brain.edit_mcp.server.bundles._pipeline_errors import (
+    error_from_pipeline_result,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
     _ok,
@@ -109,7 +112,7 @@ def media_sync_by_audio(
         window_seconds=window_seconds,
     )
     if not result.get("success"):
-        return _err(result.get("error", "Audio sync failed"))
+        return error_from_pipeline_result(result, "Audio sync failed")
 
     data = {k: v for k, v in result.items() if k != "success"}
     return _ok(data)

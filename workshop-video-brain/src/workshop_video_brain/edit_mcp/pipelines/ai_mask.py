@@ -461,7 +461,8 @@ def generate_matte(
     source = Path(source)
     output_dir = Path(output_dir)
     if not source.exists():
-        return {"success": False, "error": f"Source not found: {source}"}
+        return {"success": False, "error": f"Source not found: {source}",
+                "error_type": "missing_file"}
 
     plan = plan_matte(
         source, output_dir,
@@ -487,18 +488,23 @@ def generate_matte(
             max_frames=plan.max_frames, ffmpeg=ffmpeg,
         ))
         if extract.returncode != 0:
-            return {"success": False, "error": f"frame extraction failed: {extract.stderr[-500:]}"}
+            return {"success": False,
+                    "error": f"frame extraction failed: {extract.stderr[-500:]}",
+                    "error_type": "media_unreadable"}
 
         frames = sorted(frames_dir.glob("f_*.png"))
         if not frames:
-            return {"success": False, "error": "no frames extracted from source"}
+            return {"success": False, "error": "no frames extracted from source",
+                    "error_type": "media_unreadable"}
 
         # 2. Segment each frame -> matte PNG.
         for i, fp in enumerate(frames):
             try:
                 matte_bytes = eng.mask_png_bytes(fp.read_bytes())
             except Exception as exc:  # noqa: BLE001 -- surface engine errors cleanly
-                return {"success": False, "error": f"segmenter failed on frame {i}: {exc}"}
+                return {"success": False,
+                        "error": f"segmenter failed on frame {i}: {exc}",
+                        "error_type": "operation_failed"}
             (masks_dir / f"m_{i:06d}.png").write_bytes(matte_bytes)
 
         # 3. Encode matte video.
@@ -511,7 +517,9 @@ def generate_matte(
             ffmpeg=ffmpeg,
         ))
         if encode.returncode != 0:
-            return {"success": False, "error": f"matte encode failed: {encode.stderr[-500:]}"}
+            return {"success": False,
+                    "error": f"matte encode failed: {encode.stderr[-500:]}",
+                    "error_type": "operation_failed"}
 
     return {
         "success": True,

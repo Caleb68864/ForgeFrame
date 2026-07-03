@@ -356,10 +356,12 @@ def sync_by_audio(
     method = (method or "correlate").lower()
 
     if not ffmpeg_available():
-        return {"success": False, "error": "ffmpeg not found on PATH", "method": method}
+        return {"success": False, "error": "ffmpeg not found on PATH",
+                "method": method, "error_type": "missing_binary"}
     for src in (source_a, source_b):
         if not src.exists():
-            return {"success": False, "error": f"File not found: {src}", "method": method}
+            return {"success": False, "error": f"File not found: {src}",
+                    "method": method, "error_type": "missing_file"}
 
     try:
         if method == "correlate":
@@ -371,6 +373,7 @@ def sync_by_audio(
                 return {
                     "success": False,
                     "method": "chromaprint",
+                    "error_type": "missing_binary",
                     "error": (
                         "ffmpeg 'chromaprint' muxer is not available in this build. "
                         "Install a chromaprint-enabled ffmpeg (libchromaprint) or call "
@@ -382,10 +385,14 @@ def sync_by_audio(
             return {
                 "success": False,
                 "method": method,
+                "error_type": "invalid_input",
                 "error": f"Unknown method {method!r}; use 'correlate' or 'chromaprint'.",
             }
     except Exception as exc:  # noqa: BLE001 -- surface as an error dict
-        return {"success": False, "method": method, "error": str(exc)}
+        # decode_mono_pcm / chromaprint_raw raise RuntimeError for an unreadable
+        # or silent source; classify as media_unreadable so the bundle maps it.
+        return {"success": False, "method": method, "error": str(exc),
+                "error_type": "media_unreadable"}
 
     data = result.as_dict()
     data["success"] = True

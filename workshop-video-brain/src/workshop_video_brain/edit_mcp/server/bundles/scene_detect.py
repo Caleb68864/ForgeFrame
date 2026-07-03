@@ -11,6 +11,9 @@ from workshop_video_brain.edit_mcp.pipelines.analysis_common import (
     write_json_report,
 )
 from workshop_video_brain.edit_mcp.pipelines.scene_detect import detect_scenes
+from workshop_video_brain.edit_mcp.server.bundles._pipeline_errors import (
+    error_from_pipeline_result,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
     _ok,
@@ -67,6 +70,10 @@ def clips_detect_scenes(
             return err(f"File not found: {src}", error_type=MISSING_FILE, suggestion="Check the source path; it is resolved relative to the workspace root unless absolute.", path=str(src))
 
         result = detect_scenes(src, threshold=threshold)
+        if not result.get("success"):
+            return error_from_pipeline_result(
+                result, "Scene detection failed", path=str(src),
+            )
         report_path = write_json_report(
             ws_path, f"scenes_{src.stem}_{timestamp_slug()}.json", result
         )

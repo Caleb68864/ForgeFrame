@@ -154,15 +154,22 @@ def speed_ramp(
 
     project = parse_project(project_path)
 
-    if track < 0 or track >= len(project.playlists):
-        return _err(
-            f"track {track} out of range (project has {len(project.playlists)} tracks)"
+    n_tracks = len(project.playlists)
+    if track < 0 or track >= n_tracks:
+        return err(
+            f"track {track} out of range (project has {n_tracks} tracks)",
+            error_type=INVALID_INDEX,
+            suggestion=f"Pass a track index within 0-{max(0, n_tracks - 1)}.",
+            given=track, valid_range=f"0-{max(0, n_tracks - 1)}",
         )
     playlist = project.playlists[track]
     real_entries = [e for e in playlist.entries if e.producer_id]
     if clip_index < 0 or clip_index >= len(real_entries):
-        return _err(
-            f"clip_index {clip_index} out of range (track has {len(real_entries)} clips)"
+        return err(
+            f"clip_index {clip_index} out of range (track has {len(real_entries)} clips)",
+            error_type=INVALID_INDEX,
+            suggestion=f"Pass a clip_index within 0-{max(0, len(real_entries) - 1)}.",
+            given=clip_index, valid_range=f"0-{max(0, len(real_entries) - 1)}",
         )
     entry = real_entries[clip_index]
     clip_frames = entry.out_point - entry.in_point + 1
