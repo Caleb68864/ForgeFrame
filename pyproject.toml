@@ -30,3 +30,6 @@ packages = ["workshop-video-brain/src/workshop_video_brain"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["workshop-video-brain/src"]
+markers = [
+    "external: tests that shell out to real melt/ffprobe/ffmpeg (skipped when the tools are absent). Non-self-referential oracle suite -- see tests/integration/external/.",
+]
