@@ -106,12 +106,14 @@ def _pip_hint(name: str) -> str:
     return spec["pip"] if spec else f"install the '{name}' package"
 
 
-def resolve_engine(requested: str = "auto") -> str:
+def resolve_engine(requested: str = "auto", require_available: bool = True) -> str:
     """Resolve an engine name, validating it is known, implemented, installed.
 
     ``"auto"`` picks the lightest available engine (rembg). Raises
     ``ValueError`` for an unknown name and ``EngineUnavailable`` (with a
     ``pip install`` hint) for a known-but-missing/unimplemented engine.
+    ``require_available=False`` skips the installed check (used when a
+    concrete engine implementation is injected).
     """
     requested = (requested or "auto").strip().lower()
 
@@ -119,6 +121,8 @@ def resolve_engine(requested: str = "auto") -> str:
         for name in _AUTO_ORDER:
             if engine_available(name):
                 return name
+        if not require_available:
+            return _AUTO_ORDER[0]
         raise EngineUnavailable(
             "No local mask engine is installed. Install the default engine: "
             f"{_pip_hint('rembg')}"
@@ -135,7 +139,7 @@ def resolve_engine(requested: str = "auto") -> str:
             f"Engine '{requested}' is a documented second-tier engine not yet "
             f"wired up here. Use engine='rembg' (default), or see: {spec['pip']}"
         )
-    if not engine_available(requested):
+    if require_available and not engine_available(requested):
         raise EngineUnavailable(
             f"Engine '{requested}' is selected but not installed. "
             f"Install it: {spec['pip']}"
@@ -381,15 +385,17 @@ def plan_matte(
     output_name: str = "",
     max_frames: int = 0,
     probe: bool = True,
+    require_available: bool = True,
 ) -> MattePlan:
     """Build a validated :class:`MattePlan` without running ffmpeg/segmenter.
 
-    Resolves the engine (raising ``EngineUnavailable`` early if missing), the
-    rembg model, the box, and the output path; optionally probes the source for
-    resolution/fps/duration. Pure enough to unit-test the whole decision layer.
+    Resolves the engine (raising ``EngineUnavailable`` early if missing, unless
+    ``require_available=False`` for injected engines), the rembg model, the box,
+    and the output path; optionally probes the source for resolution/fps/
+    duration. Pure enough to unit-test the whole decision layer.
     """
     source = Path(source)
-    name = resolve_engine(engine)
+    name = resolve_engine(engine, require_available=require_available)
     resolved_model = resolve_model(subject, model) if name == "rembg" else ""
     parsed_box = parse_box(box)
     if feather_px < 0:
@@ -462,6 +468,7 @@ def generate_matte(
         subject=subject, engine=engine, box=box, invert=invert,
         feather_px=feather_px, model=model, output_name=output_name,
         max_frames=max_frames, probe=True,
+        require_available=engine_impl is None,
     )
     eng = engine_impl if engine_impl is not None else make_engine(engine, subject, model)
 

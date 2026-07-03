@@ -20,3 +20,9 @@ tests/smoke-test/output/
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated smoke-test workspace trees (29M of media/renders)
+smoke-test/
+
+# Stray yt-dlp transcript dumps at repo root (real transcripts live in vault/)
+transcripts/
