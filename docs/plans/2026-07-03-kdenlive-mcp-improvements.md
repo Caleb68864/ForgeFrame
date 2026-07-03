@@ -366,6 +366,46 @@ subject description ("the guitar")
   the subject region of the source frame (the zoom actually zoomed).
 - Pure-function tests for padding/clamping/smoothing at 23.976/25/30 fps.
 
+### §5 feasibility findings 2026-07-03
+
+Spike ran on this machine (MLT 7.40.0, melt on PATH). **Verdict: melt is the
+primary route -- no OpenCV Python dep needed for the core path.**
+
+- **`opencv.tracker` present?** YES. `melt -query filter=opencv.tracker` returns
+  schema v3 (OpenCV Motion Tracker, algo default KCF; CSRT/MIL/BOOSTING/TLD
+  available). The distro's MLT is built with the opencv module.
+- **Headless `results` persistence?** YES, with a caveat. The invocation from
+  the filter's own notes works:
+  `melt <clip> -filter opencv.tracker rect="x y w h" algo=CSRT steps=5
+  -consumer xml:out.mlt all=1 real_time=-1`
+  persists a keyframed `results` property (`0~=x y w h op;5~=...`, source-
+  absolute frame indices). **Deterministic** (identical md5 across 3 runs).
+  **Caveat:** setting `shape_width=0` empirically *suppresses* persistence
+  (0 results) -- leave `shape_width` at default. `real_time=-1` (single thread)
+  is required for the analysis pass. `in=/out=` restrict the window; result
+  frames stay source-absolute.
+- **Accuracy:** on a textured `testsrc2` patch moving a known linear path, CSRT
+  tracked within **max deviation 2.0 px** (start seed exact). Solid, untextured
+  shapes track poorly (CSRT needs interior texture) -- a content property, not a
+  melt limit; the synthetic fixture uses a textured patch accordingly.
+- **Fallback (implemented as a secondary engine):** OpenCV CSRT via
+  `opencv-contrib-python-headless` (new optional group `motion-track`, subproject
+  pyproject only). Verified real on the same fixture: **max deviation 2.0 px**.
+  Base `opencv-python-headless` lacks CSRT/KCF (contrib-only); missing package
+  raises `TrackerUnavailable` with the exact install command. `engine="auto"`
+  prefers melt, then opencv.
+- **Render wiring gotcha (found + fixed in build):** the MLT `affine` filter
+  reads its keyframed rect from **`transition.rect`** (not a bare `rect`
+  property) and that rect is a **destination placement**, not a source-region
+  crop. To zoom *into* source region `R=(rx,ry,rw,rh)` you emit
+  `dest = (-rx*s, -ry*s, W*s, H*s)`, `s=W/rw`. Verified against a real melt
+  render (frame-25 centre channel-spread 4.8 grey -> 18.9 with the subject
+  centred). `pipelines/motion_track.region_to_transform_rect` does this
+  conversion at emit time; geometry stays in intuitive source-region space.
+  (Note: `pipelines/pan_zoom.py` emits a bare `rect` source-region string and
+  has no render test -- its render correctness is unverified and out of scope
+  here.)
+
 ---
 
 ## 6. Title cards: detailed plan
