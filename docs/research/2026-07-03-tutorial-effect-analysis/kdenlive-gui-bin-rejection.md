@@ -2,7 +2,182 @@
 
 Date: 2026-07-03
 Author: investigation agent (read-only; no source under `workshop-video-brain/src/` modified)
-Status: root cause identified, fix specified, 3 candidate repaired files produced
+Status: round 1 (below) partly wrong on the mechanism; **round 2 (top section) found the true
+root cause and produced candidates D/E.** Read the round-2 section first.
+
+---
+
+# ROUND 2 — true root cause of the persistent bin rejection
+
+## TL;DR (round 2)
+
+The persistent "Clip producerN (uuid) not found in project bin" ×3 is caused by round 1
+adding **`kdenlive:uuid` to the media producers**. In `loadBinPlaylist`, any bin entry whose
+producer carries `kdenlive:uuid` is routed into the *sequence* branch; if it is not an MLT
+tractor (media producers are `avformat-novalidate`, not tractors) it is declared an
+"INCORRECT SEQUENCE FOUND IN PROJECT BIN" and **`continue`d — never registered in
+`binIdCorresp`**. The timeline side then looks the clip up by `control_uuid`, misses, and
+strips it. The fix is to **remove `kdenlive:uuid` from every media/AV bin producer** (only
+*sequence tractors* may carry `kdenlive:uuid`). This corrects round 1's FIX-1, which was based
+on a misread of the correlation mechanism.
+
+### Cited root cause
+
+`kdenlive/src/bin/projectitemmodel.cpp` (release/26.04), `ProjectItemModel::loadBinPlaylist`:
+
+- L1392: the bin is **not** read from the `<playlist id="main_bin">` directly — it is read from
+  `documentTractor->get_data("xml_retain")` (the MLT retained-data bag). So the *project tractor*
+  must be the resolved MLT root, with `main_bin` attached as `xml_retain`. `<mlt producer="main_bin">`
+  + `<property name="xml_retain">1</property>` on `main_bin` + a `kdenlive:projectTractor="1"` tractor
+  achieves this (both empty_from_user and the corpus rely on it; confirmed `melt` resolves the
+  project tractor as render root).
+- L1463: `if (prod->parent().property_exists("kdenlive:uuid")) { ... }` — **the fatal gate.**
+- L1503: non-tractor producers with a uuid hit `qDebug() << "/// INCORRECT SEQUENCE FOUND IN PROJECT BIN"`
+  then `continue` (skipped).
+- L1510-1526: the *normal* media path (only reached when the producer has **no** `kdenlive:uuid`):
+  reads `kdenlive:id`, inserts into `binProducers`.
+- L1565-1571: registration loop — `prod->set("_kdenlive_processed", 1)` then
+  `binIdCorresp[kdenlive:control_uuid] = newId`.
+
+Correlation on the timeline side (`meltBuilder.cpp`, `constructTrackFromMelt`): if the producer
+object was processed (`_kdenlive_processed==1`, set by the loop above and shared by MLT id) it
+resolves via `kdenlive:id`; otherwise it falls back to `binIdCorresp[control_uuid]`. Because the
+media producers were skipped, neither path resolves → removal.
+
+### What the correlation actually needs (corrected)
+
+- Media/AV bin clips need **`kdenlive:id`** (unique, non-zero) and must be referenced by the same
+  MLT producer id from both the `main_bin` entry and the timeline playlists (MLT shares the object;
+  `_kdenlive_processed` then carries the match). **`kdenlive:control_uuid` is optional** and
+  **`kdenlive:uuid` must be absent.**
+- Ground-truth corpus (below): real modern (doc version 1.1) projects give media clips **neither**
+  `kdenlive:uuid` **nor** `kdenlive:control_uuid` — only `kdenlive:id`, `kdenlive:clip_type`,
+  `kdenlive:folderid`, `kdenlive:file_hash`, resource/meta. Only **sequence tractors**
+  (`kdenlive:producer_type=17`) carry `kdenlive:uuid` (== `kdenlive:control_uuid` == element id).
+
+## Reference corpus (ground truth for a POPULATED bin)
+
+`empty_from_user.kdenlive` has no media clips, so it cannot show how a populated bin is wired.
+Fetched Kdenlive's own test fixtures from `invent.kde.org/multimedia/kdenlive`, branch
+**release/26.04**, path `tests/dataset/`, saved under
+`docs/research/2026-07-03-tutorial-effect-analysis/reference-projects/` (GPL, KDE e.V.):
+
+| file | provenance URL (release/26.04) | value |
+|---|---|---|
+| `clip-ids.kdenlive` | `.../tests/dataset/clip-ids.kdenlive` | modern v1.1, 16 media **`<chain>`** clips + sequence (pt=17); media chains have **no** uuid/control_uuid |
+| `test-nesting-effects.kdenlive` | `.../tests/dataset/test-nesting-effects.kdenlive` | modern v1.1, media chains + **two** sequences + timeline effects; shows main_bin entry shape + programmatic active-sequence add |
+| `test-mix.kdenlive` | `.../tests/dataset/test-mix.kdenlive` | modern v1.1, mixes |
+| `av.kdenlive` | `.../tests/dataset/av.kdenlive` | **legacy** v1.04 (pre-sequence) — upgraded on load; shows old single-tractor shape only |
+
+Invariant B (and A) violated, confirmed by diff: **media bin producers must not carry
+`kdenlive:uuid`.** Corpus media clips are `<chain>` with only `kdenlive:id`; our serializer emits
+`<producer>` and (post round 1) stamped `kdenlive:uuid`+`control_uuid` on them.
+
+## Headless oracle verdict: PARTIAL — do NOT rely on it for the bin defect
+
+`xvfb`/`Xvfb` is **not installed**; `QT_QPA_PLATFORM=offscreen` works. Findings:
+
+- `kdenlive --render <proj> <out>` runs headless (exit 0, writes a file) but **renders exactly 1
+  frame for every project** (empty_from_user, candA, candB all → 0.042 s / 1 video frame), while
+  `melt` renders the same candA timeline fully (18319 frames). So `--render` does **not** render the
+  timeline here and **does not exercise/emit the bin-loader messages** — even at `--mlt-log debug`
+  + `QT_LOGGING_RULES="*=true"` stderr contains only the 3 benign `dlopen` warnings. It **bypasses**
+  `updateTimeline`/`loadBinPlaylist` (separate render path). It is therefore **blind to bin stripping,
+  exactly like `melt`.**
+- Headless `kdenlive --no-welcome <proj>` (real load path) opens the GUI event loop (offscreen) and
+  blocks; kdenlive's `qCDebug` bin-loader traces are compiled/category-filtered out of the release
+  build, so stderr stays silent. No bin diagnostics recoverable.
+- The **one** signal `--render` does give: a hard structural crash. **candC segfaults (exit 139)**,
+  matching the user's GUI "Could not recover corrupted file." candA/B/D/E all exit 0 (no crash).
+
+Conclusion: there is **no** headless oracle for the bin-model defect on this machine. Root cause was
+therefore nailed by reading verified release/26.04 source + diffing the corpus. Candidates D/E must
+still be **user-tested in the GUI**; they are sharply discriminating (see below). All candidates pass
+`melt out=824 -consumer null:` (exit 0) and the `--render` no-crash gate.
+
+## Transform effect asset-id verdict: `transform` → **`qtblend`**
+
+There is **no** installed asset with `id="transform"` (`/usr/share/kdenlive/effects/`). Our
+serializer emitted `mlt_service="affine"` + `kdenlive_id="transform"` with a **5-value** `rect`
+keyframe (`x y w h opacity`). The Kdenlive **"Transform"** effect is `qtblend.xml`
+(`<effect tag="qtblend" id="qtblend" version="2"><name>Transform</name>`), param
+`name="rect"` (animatedrect, 5 values) — an exact match for our emitted geometry. `pan_zoom`
+(tag `affine`, id `pan_zoom`, "Position and Zoom") uses `name="transition.rect"` (4 values) and is
+**not** the match. Verdict: emit `mlt_service="qtblend"`, `kdenlive_id="qtblend"`, param `rect`.
+Verified `melt` registers `qtblend` as a filter and renders it (exit 0). (This is the one effect the
+user still saw "Fixed" in candA/B; the other five already resolve via the round-1 dot-form ids.)
+
+## Winning document shape (media producer, corrected)
+
+```xml
+<!-- media/AV bin clip: kdenlive:id + clip_type + folderid; NO kdenlive:uuid -->
+<producer id="producer0" in="0" out="249">
+  <property name="length">250</property>
+  <property name="eof">pause</property>
+  <property name="resource">.../clip_intro.mp4</property>
+  <property name="mlt_service">avformat-novalidate</property>
+  <property name="kdenlive:clip_type">2</property>
+  <property name="kdenlive:id">2</property>
+  <property name="kdenlive:folderid">-1</property>
+  <!-- kdenlive:control_uuid OPTIONAL; kdenlive:uuid MUST be absent -->
+</producer>
+```
+
+Everything else in candB (sequence tractor with `producer_type=17` + its own `kdenlive:uuid`
+== `control_uuid`; two track-tractors of two lanes; `qtblend` internal compositors;
+`main_bin` with `xml_retain=1` + Sequences folder + sequence entry + `opensequences`/`activetimeline`;
+`kdenlive:projectTractor` render root) is correct and unchanged.
+
+## Candidates D / E (round 2), in `candidates/`
+
+- **D — `smoke_test_full_candD_no_media_uuid.kdenlive`** (recommended): candB minus `kdenlive:uuid`
+  on the 3 media producers (keeps `control_uuid`), plus transform→qtblend. Tests "removing the fatal
+  `kdenlive:uuid` alone fixes it." `melt out=824` exit 0; `--render` exit 0 (no crash).
+- **E — `smoke_test_full_candE_corpus_match.kdenlive`** (discriminator / strict ground-truth): candB
+  minus **both** `kdenlive:uuid` and `kdenlive:control_uuid` on media producers (mirrors the corpus,
+  where media clips carry neither), plus transform→qtblend. `melt out=824` exit 0; `--render` exit 0.
+
+Discrimination: if **D loads clean** → removing `kdenlive:uuid` is sufficient and `control_uuid` on
+media is harmless (belt-and-suspenders). If **D still shows the effect flagged but bin OK** → only
+the qtblend detail remains. If **D fails but E loads clean** → `control_uuid` on media must ALSO be
+dropped. Expectation from source: **both** load clean and retain 3 clips + effects; D is preferred
+because it is the smaller serializer change.
+
+## Final serializer fix spec (round 2 — supersedes round 1 FIX-1)
+
+serializer.py is owned by another agent; do NOT edit `src/`. Spec:
+
+1. **FIX-1' (required, corrects round-1 FIX-1): never emit `kdenlive:uuid` on media/AV bin producers.**
+   Only sequence tractors get `kdenlive:uuid`. In the producer loop, drop `kdenlive:uuid` for
+   clip producers (keep `kdenlive:id`, `kdenlive:clip_type`, `kdenlive:folderid`). `kdenlive:control_uuid`
+   on media producers is optional and safe to keep OR drop — matching the corpus means dropping it.
+   Remove `kdenlive:uuid` from `_MANAGED_PROPS` for producers if it was added there.
+2. **FIX-2 (unchanged from round 1): dot-form effect/transition `kdenlive_id`** — already correct in
+   candB (`avfilter.exposure`, `frei0r.*`, `rotoscoping`).
+3. **FIX-2b (new): the Transform effect must be `qtblend`, not `affine`/`transform`.** Emit
+   `mlt_service="qtblend"`, `kdenlive_id="qtblend"`, param `name="rect"` (5-value `x y w h opacity`),
+   not `mlt_service="affine"` + `kdenlive_id="transform"`.
+4. **FIX-3 (unchanged): the sequence architecture** (project tractor + sequence tractor pt=17 +
+   track-tractors + `main_bin xml_retain=1`) — candB already has it; keep it. The bin is loaded from
+   `documentTractor->get_data("xml_retain")`, so `main_bin` MUST carry `xml_retain=1` and the document
+   MUST have a `kdenlive:projectTractor="1"` tractor whose track 0 is the active sequence uuid.
+5. **Parser symmetry:** on read, a media producer will have no `kdenlive:uuid`; do not synthesise one.
+   Round-trip `kdenlive:id`. Only sequence tractors round-trip `kdenlive:uuid`/`control_uuid`.
+
+### Regression guard for the test suite (structural, since no headless GUI oracle exists)
+
+Assert, for any serialized project: **no `<producer>`/`<chain>` referenced by a `main_bin` media
+entry carries `kdenlive:uuid`**; exactly the sequence tractors (`kdenlive:producer_type=17`) carry it;
+`main_bin` has `xml_retain=1`; a `kdenlive:projectTractor=1` tractor exists; every emitted
+effect/transition `kdenlive_id` exists in `/usr/share/kdenlive/{effects,transitions}/*.xml` (dot form),
+and `qtblend`/`rect` is used for Transform. Keep the `melt out=<len> -consumer null:` render gate.
+(Note the `--render` headless path is NOT a bin oracle — do not add it as one.)
+
+---
+
+# ROUND 1 (superseded on the mechanism; kept for the audit trail)
+
+
 
 ## TL;DR
 
