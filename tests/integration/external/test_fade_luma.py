@@ -15,7 +15,7 @@ from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
 
 from . import builders
-from ._oracle import audio_stats, mean_color, render_frame, render_video
+from ._oracle import mean_color, render_frame, render_video
 
 pytestmark = pytest.mark.external
 
@@ -24,11 +24,6 @@ FRAMES = 50
 FADE_FRAMES = 24
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="§1.1: root-placed fade (brightness/affine) filter is a no-op -- the "
-    "first frame is not darkened. Flips to pass with the placement fix.",
-)
 def test_video_fade_in_darkens_first_frame(melt_bin, render_dir: Path):
     # White clip: without a fade the first frame is bright; a working fade-in
     # from black makes frame 0 near-black.
@@ -47,14 +42,47 @@ def test_video_fade_in_darkens_first_frame(melt_bin, render_dir: Path):
     assert luma < 40.0, f"fade-in first frame not dark (luma={luma:.1f})"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="§1.1: AudioFade emits <filter type=\"volume\"> with no mlt_service "
-    "-- melt fails to load it, so audio is not ramped. Flips to pass with the "
-    "proper volume-filter fix.",
-)
+def _window_rms_db(ffmpeg_bin: str, media, start: float, dur: float | None) -> float:
+    """Overall RMS level (dB) of a time window of *media* via ffmpeg astats."""
+    import subprocess
+
+    cmd = [ffmpeg_bin, "-hide_banner", "-ss", str(start)]
+    if dur is not None:
+        cmd += ["-t", str(dur)]
+    cmd += ["-i", str(media), "-af", "astats=metadata=1:reset=0", "-f", "null", "-"]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    val = None
+    for line in proc.stderr.splitlines():
+        if "RMS level dB:" in line:
+            try:
+                val = float(line.split("RMS level dB:", 1)[1].strip())
+            except ValueError:
+                pass
+    return val if val is not None else float("-inf")
+
+
 def test_audio_fade_in_ramps_level(melt_bin, ffmpeg_bin, render_dir: Path):
+    """A fade-in must leave the clip's start much quieter than its end.
+
+    builders' ``color`` producer is silent, so the audio track is re-pointed at
+    an MLT ``tone`` producer (an audible source) to make the ramp observable.
+    The AudioFade code path (patcher volume filter, entry-nested by the
+    serializer) is exercised exactly as in production.
+    """
+    from workshop_video_brain.core.models.kdenlive import Producer
+
     proj = builders.solid_color_project(color=builders.RED, frames=FRAMES, fps=FPS)
+    # Give the audio track an audible source (a tone) so the fade is measurable.
+    proj.producers.append(
+        Producer(
+            id="tone_0",
+            resource="",
+            properties={"mlt_service": "tone", "length": str(FRAMES + 10)},
+        )
+    )
+    audio_pl = next(p for p in proj.playlists if p.id == builders.AUDIO_TRACK)
+    audio_pl.entries[0].producer_id = "tone_0"
+
     proj = patcher.patch_project(
         proj,
         [AudioFade(track_ref=builders.AUDIO_TRACK, clip_index=0,
@@ -63,15 +91,13 @@ def test_audio_fade_in_ramps_level(melt_bin, ffmpeg_bin, render_dir: Path):
     project_path = render_dir / "afade.kdenlive"
     serialize_project(proj, project_path)
 
-    # A silent color clip has no audio energy, so a working fade is best shown
-    # by the render simply succeeding AND astats reporting a non-flat RMS. The
-    # color producer emits silence, so today this asserts the fade produced a
-    # measurable ramp -- which it cannot while the filter fails to load.
     out = render_video(project_path, render_dir / "afade.mp4", frames=FRAMES, melt_bin=melt_bin)
-    stats = audio_stats(out, ffmpeg_bin=ffmpeg_bin)
-    # RMS peak must be meaningfully above the overall RMS for a ramp to exist.
-    rms = stats.get("RMS level dB")
-    peak = stats.get("RMS peak dB")
-    assert rms is not None and peak is not None and (peak - rms) > 3.0, (
-        f"no audio ramp detected (rms={rms}, peak={peak})"
+
+    fade_secs = FADE_FRAMES / FPS
+    early = _window_rms_db(ffmpeg_bin, out, 0.0, fade_secs * 0.4)
+    late = _window_rms_db(ffmpeg_bin, out, fade_secs + 0.1, None)
+    # A working fade-in leaves the opening near-silent and the tail at full
+    # level -- a large, unmistakable ramp.
+    assert late - early > 6.0, (
+        f"no audio ramp detected (early={early:.1f} dB, late={late:.1f} dB)"
     )

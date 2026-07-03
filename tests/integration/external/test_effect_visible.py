@@ -72,12 +72,6 @@ def test_nested_filter_is_visible(melt_bin, render_dir: Path):
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="§1.1: clip filters land at the MLT root, detached from the clip -- "
-    "no-op in melt. Flips to pass when the placement fix nests filters in the "
-    "<entry>.",
-)
 def test_effect_changes_pixels(melt_bin, render_dir: Path):
     base = _render(builders.solid_color_project(color=builders.RED), "eff_base", render_dir, melt_bin=melt_bin)
 

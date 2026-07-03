@@ -567,8 +567,9 @@ class TestAudioFade:
             AudioFade(track_ref="pl_video", clip_index=0, fade_type="in", duration_frames=12)
         ])
         xml = patched.opaque_elements[0].xml_string
-        # fade-in: starts at 0, ends at 1
-        assert "0=0" in xml
+        # fade-in: a real MLT volume filter with a dB level ramp from silence.
+        assert 'mlt_service="volume"' in xml
+        assert "-60" in xml  # dB floor => start near-silent
 
     def test_fade_does_not_mutate_original(self):
         from workshop_video_brain.core.models.timeline import AudioFade
@@ -595,8 +596,10 @@ class TestSetTrackMute:
 
         assert len(patched.opaque_elements) == 1
         elem = patched.opaque_elements[0]
-        assert "kdenlive:audio_mute" in elem.xml_string
-        assert ">1<" in elem.xml_string
+        # Mute is a hide directive the serializer applies to the tractor entry.
+        assert elem.tag == "kdenlive:hide"
+        assert 'track="pl_video"' in elem.xml_string
+        assert 'hide="audio"' in elem.xml_string  # video track: mute hides audio
 
     def test_unmute_track_adds_opaque_element_with_zero(self):
         from workshop_video_brain.core.models.timeline import SetTrackMute
@@ -608,8 +611,9 @@ class TestSetTrackMute:
 
         assert len(patched.opaque_elements) == 1
         elem = patched.opaque_elements[0]
-        assert "kdenlive:audio_mute" in elem.xml_string
-        assert ">0<" in elem.xml_string
+        assert elem.tag == "kdenlive:hide"
+        assert 'track="pl_video"' in elem.xml_string
+        assert 'hide=""' in elem.xml_string  # video track: unmute clears audio hide
 
     def test_mute_unknown_track_is_skipped(self):
         from workshop_video_brain.core.models.timeline import SetTrackMute
@@ -675,10 +679,14 @@ class TestSetClipSpeed:
         intent = SetClipSpeed(track_ref="pl_video", clip_index=0, speed=2.0)
         patched = patch_project(project, [intent])
 
-        assert len(patched.opaque_elements) == 1
-        elem = patched.opaque_elements[0]
-        assert "speed" in elem.xml_string
-        assert "2.0" in elem.xml_string
+        # Speed is now a timewarp producer swap (no opaque filter).
+        tw = [p for p in patched.producers if p.properties.get("mlt_service") == "timewarp"]
+        assert len(tw) == 1
+        assert tw[0].resource.startswith("2:")
+        # The clip entry now references the timewarp producer, at half duration.
+        entry = patched.playlists[0].entries[0]
+        assert entry.producer_id == tw[0].id
+        assert entry.out_point == 49  # 100-frame clip -> 50 frames at 2x
 
     def test_speed_invalid_index_skipped(self):
         from workshop_video_brain.core.models.timeline import SetClipSpeed

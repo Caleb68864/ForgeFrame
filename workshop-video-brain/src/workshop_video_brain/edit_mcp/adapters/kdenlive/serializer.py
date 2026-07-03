@@ -106,6 +106,91 @@ def _set_prop(elem: ET.Element, name: str, value: str) -> None:
     prop.text = value
 
 
+def _entry_length(entry) -> int:
+    """Timeline length in frames of a playlist entry (real clip or blank)."""
+    return max(0, entry.out_point - entry.in_point + 1)
+
+
+def _content_out(project: KdenliveProject) -> int:
+    """Return the last frame index of the longest content playlist.
+
+    Used to bound the ``black_track`` background so a render/`-consumer null`
+    stops at the actual timeline length instead of the ~2e9-frame maximum.
+    """
+    max_len = 0
+    for playlist in project.playlists:
+        total = sum(_entry_length(e) for e in playlist.entries)
+        max_len = max(max_len, total)
+    return max_len - 1 if max_len > 0 else 0
+
+
+def _extract_clip_filters(
+    project: KdenliveProject,
+) -> tuple[dict[tuple[int, int], list[ET.Element]], set[int]]:
+    """Pull clip filters out of ``opaque_elements`` keyed by (track, clip).
+
+    Clip effects are stored internally as ``<filter>`` OpaqueElements carrying
+    custom ``track=``/``clip_index=`` association attributes.  Real Kdenlive/MLT
+    only applies filters that are *nested inside the clip ``<entry>``*, so the
+    serializer relocates them there (§1.1 fix).  The association attributes are
+    stripped from the emitted element (they are not MLT vocabulary); the parser
+    reconstructs them on read.
+
+    Returns ``(filters_by_clip, consumed_ids)`` where ``consumed_ids`` are the
+    ``id()``s of the OpaqueElements that were relocated (so the generic opaque
+    loop skips them).
+    """
+    by_clip: dict[tuple[int, int], list[ET.Element]] = {}
+    consumed: set[int] = set()
+    for opaque in project.opaque_elements:
+        if opaque.tag != "filter":
+            continue
+        try:
+            felem = ET.fromstring(opaque.xml_string)
+        except ET.ParseError:
+            continue
+        track = felem.get("track")
+        clip = felem.get("clip_index")
+        if track is None or clip is None:
+            continue
+        try:
+            key = (int(track), int(clip))
+        except ValueError:
+            continue
+        felem.attrib.pop("track", None)
+        felem.attrib.pop("clip_index", None)
+        by_clip.setdefault(key, []).append(felem)
+        consumed.add(id(opaque))
+    return by_clip, consumed
+
+
+def _hide_directives(
+    project: KdenliveProject,
+) -> tuple[dict[str, str], set[int]]:
+    """Collect track hide/mute directives keyed by track id.
+
+    Mute/visibility are represented as ``<kdenlive:hide>`` OpaqueElements
+    (produced by the patcher).  The serializer applies them as the ``hide``
+    attribute on the track's tractor entry -- the only place MLT honours track
+    muting/visibility (§1.1 fix).  Returns ``(hide_by_track, consumed_ids)``.
+    """
+    hide_by_track: dict[str, str] = {}
+    consumed: set[int] = set()
+    for opaque in project.opaque_elements:
+        if opaque.tag != "kdenlive:hide":
+            continue
+        try:
+            helem = ET.fromstring(opaque.xml_string)
+        except ET.ParseError:
+            continue
+        track = helem.get("track")
+        if track is None:
+            continue
+        hide_by_track[track] = helem.get("hide", "")
+        consumed.add(id(opaque))
+    return hide_by_track, consumed
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -200,10 +285,15 @@ def serialize_project(
     # ------------------------------------------------------------------
     # Sub-spec 3: black_track background producer
     # ------------------------------------------------------------------
+    # Bound the background to the actual timeline length so that a render or
+    # `-consumer null` stops at the content instead of ~2e9 frames.  A clip
+    # that has been sped up (timewarp) shortens the timeline, and this is what
+    # makes the shorter duration observable to a fixed-`out` render.
+    content_out = _content_out(project)
     bt_elem = ET.SubElement(root, "producer")
     bt_elem.set("id", "black_track")
     bt_elem.set("in", "0")
-    bt_elem.set("out", "2147483646")
+    bt_elem.set("out", str(content_out))
     _set_prop(bt_elem, "mlt_service", "color")
     _set_prop(bt_elem, "resource", "black")
     _set_prop(bt_elem, "length", "2147483647")
@@ -221,6 +311,20 @@ def serialize_project(
     _set_prop(main_bin, "kdenlive:docproperties.version", "1.1")
     _set_prop(main_bin, "kdenlive:docproperties.profile", profile_name)
     _set_prop(main_bin, "kdenlive:docproperties.uuid", proj_uuid)
+    # Modern Kdenlive (24.x/25.x) reads guides from a JSON docproperties/
+    # sequenceproperties property, not the legacy top-level <guide> elements.
+    # Emit the JSON here (main_bin) for pre-sequence docs; the tractor also gets
+    # kdenlive:sequenceproperties.guides below.  Legacy <guide> elements are
+    # still written (harmless) for our own round-trip.
+    if project.guides:
+        try:
+            from workshop_video_brain.edit_mcp.pipelines.guides import (
+                guides_docproperties_json,
+            )
+            guides_json = guides_docproperties_json(project)
+            _set_prop(main_bin, "kdenlive:docproperties.guides", guides_json)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Could not serialise guides JSON: %s", exc)
     for producer in project.producers:
         entry = ET.SubElement(main_bin, "entry")
         entry.set("producer", producer.id)
@@ -230,15 +334,22 @@ def serialize_project(
     # ------------------------------------------------------------------
     # Content playlists + sub-spec 3: paired empty playlists
     # ------------------------------------------------------------------
-    for playlist in project.playlists:
+    # Clip effects are relocated from the flat opaque store into the clip
+    # <entry> they target (§1.1 filter-placement fix).
+    clip_filters, consumed_filter_ids = _extract_clip_filters(project)
+    for track_index, playlist in enumerate(project.playlists):
         pl_elem = ET.SubElement(root, "playlist")
         pl_elem.set("id", playlist.id)
+        real_index = 0
         for entry in playlist.entries:
             if entry.producer_id:
                 e_elem = ET.SubElement(pl_elem, "entry")
                 e_elem.set("producer", entry.producer_id)
                 e_elem.set("in", str(entry.in_point))
                 e_elem.set("out", str(entry.out_point))
+                for felem in clip_filters.get((track_index, real_index), []):
+                    e_elem.append(felem)
+                real_index += 1
             else:
                 blank_elem = ET.SubElement(pl_elem, "blank")
                 blank_elem.set("length", str(entry.out_point + 1))
@@ -253,6 +364,10 @@ def serialize_project(
     # Determine which tracks to include and their types
     track_type_map: dict[str, str] = {t.id: t.track_type for t in project.tracks}
 
+    # Track mute/visibility directives override the default hide attribute.
+    hide_by_track, consumed_hide_ids = _hide_directives(project)
+
+    tractor_elem: ET.Element | None = None
     if project.tractor is not None or project.playlists:
         tractor_elem = ET.SubElement(root, "tractor")
 
@@ -301,7 +416,11 @@ def serialize_project(
             # Content track
             t_content = ET.SubElement(tractor_elem, "track")
             t_content.set("producer", track.id)
-            if track.track_type == "audio":
+            if track.id in hide_by_track:
+                hide_val = hide_by_track[track.id]
+                if hide_val:
+                    t_content.set("hide", hide_val)
+            elif track.track_type == "audio":
                 t_content.set("hide", "video")
 
             # Paired empty track
@@ -310,26 +429,45 @@ def serialize_project(
             if track.track_type == "audio":
                 t_pair.set("hide", "video")
 
-            # Internal transition for this track pair (Kdenlive-managed)
-            trans_elem = ET.SubElement(tractor_elem, "transition")
-            if track.track_type == "audio":
-                _set_prop(trans_elem, "mlt_service", "mix")
-                _set_prop(trans_elem, "a_track", "0")
-                _set_prop(trans_elem, "b_track", str(track_index))
-                _set_prop(trans_elem, "always_active", "1")
-                _set_prop(trans_elem, "sum", "1")
-                _set_prop(trans_elem, "internal_added", "237")
-            else:
-                _set_prop(trans_elem, "mlt_service", "frei0r.cairoblend")
-                _set_prop(trans_elem, "a_track", "0")
-                _set_prop(trans_elem, "b_track", str(track_index))
-                _set_prop(trans_elem, "always_active", "1")
-                _set_prop(trans_elem, "internal_added", "237")
+            # Internal transition for this track pair (Kdenlive-managed).
+            # Crossfade overlay tracks (created by AddTransition) deliberately
+            # get NO always_active compositor: their compositing is driven by
+            # the explicit luma mix transition instead, so the dissolve animates
+            # instead of being flattened to a fixed blend.
+            if "_xfade" not in track.id:
+                trans_elem = ET.SubElement(tractor_elem, "transition")
+                if track.track_type == "audio":
+                    _set_prop(trans_elem, "mlt_service", "mix")
+                    _set_prop(trans_elem, "a_track", "0")
+                    _set_prop(trans_elem, "b_track", str(track_index))
+                    _set_prop(trans_elem, "always_active", "1")
+                    _set_prop(trans_elem, "sum", "1")
+                    _set_prop(trans_elem, "internal_added", "237")
+                else:
+                    _set_prop(trans_elem, "mlt_service", "frei0r.cairoblend")
+                    _set_prop(trans_elem, "a_track", "0")
+                    _set_prop(trans_elem, "b_track", str(track_index))
+                    _set_prop(trans_elem, "always_active", "1")
+                    _set_prop(trans_elem, "internal_added", "237")
 
             track_index += 2  # content + pair occupy two slots each
 
+        # Modern Kdenlive stores guides as JSON on the active sequence tractor.
+        if project.guides:
+            try:
+                from workshop_video_brain.edit_mcp.pipelines.guides import (
+                    guides_docproperties_json,
+                )
+                _set_prop(
+                    tractor_elem,
+                    "kdenlive:sequenceproperties.guides",
+                    guides_docproperties_json(project),
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("Could not serialise sequence guides JSON: %s", exc)
+
     # ------------------------------------------------------------------
-    # Guides
+    # Guides (legacy top-level elements; harmless, kept for round-trip)
     # ------------------------------------------------------------------
     for guide in project.guides:
         g_elem = ET.SubElement(root, "guide")
@@ -339,16 +477,26 @@ def serialize_project(
             g_elem.set("type", guide.category)
 
     # ------------------------------------------------------------------
-    # Opaque elements – re-insert verbatim
+    # Opaque elements – re-insert, honouring position_hint.  Clip filters and
+    # hide directives have already been consumed above; tractor-hinted content
+    # (transitions/filters) is nested back inside the <tractor> so MLT applies
+    # it, everything else goes to the document root.
     # ------------------------------------------------------------------
+    consumed_ids = consumed_filter_ids | consumed_hide_ids
     for opaque in project.opaque_elements:
+        if id(opaque) in consumed_ids:
+            continue
         try:
             elem = ET.fromstring(opaque.xml_string)
-            root.append(elem)
         except ET.ParseError as exc:
             logger.warning(
                 "Could not re-insert opaque element <%s>: %s", opaque.tag, exc
             )
+            continue
+        if opaque.position_hint == "tractor" and tractor_elem is not None:
+            tractor_elem.append(elem)
+        else:
+            root.append(elem)
 
     # Validate well-formedness by serialising to a string first
     try:

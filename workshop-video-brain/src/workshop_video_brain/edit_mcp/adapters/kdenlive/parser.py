@@ -74,10 +74,13 @@ def _parse_producer(elem: ET.Element) -> Producer:
     return Producer(id=producer_id, resource=resource, properties=props)
 
 
-def _parse_playlist(elem: ET.Element) -> tuple[Playlist, list[OpaqueElement]]:
+def _parse_playlist(
+    elem: ET.Element, track_index: int = 0
+) -> tuple[Playlist, list[OpaqueElement]]:
     playlist_id = elem.get("id", "")
     entries: list[PlaylistEntry] = []
     opaques: list[OpaqueElement] = []
+    real_index = 0
     for child in elem:
         if child.tag == "entry":
             entries.append(
@@ -87,6 +90,24 @@ def _parse_playlist(elem: ET.Element) -> tuple[Playlist, list[OpaqueElement]]:
                     out_point=int(child.get("out", "0")),
                 )
             )
+            # Clip effects are stored by real Kdenlive as <filter> children of
+            # the <entry> (§1.2).  Read them into the flat opaque store, tagged
+            # with the (track, clip) association attributes the effect-stack API
+            # and serializer use so they round-trip back into the entry.
+            for sub in child:
+                if sub.tag != "filter":
+                    continue
+                felem = ET.fromstring(ET.tostring(sub, encoding="unicode"))
+                felem.set("track", str(track_index))
+                felem.set("clip_index", str(real_index))
+                opaques.append(
+                    OpaqueElement(
+                        tag="filter",
+                        xml_string=ET.tostring(felem, encoding="unicode"),
+                        position_hint="after_tractor",
+                    )
+                )
+            real_index += 1
         elif child.tag == "blank":
             # Represent gaps as PlaylistEntry with empty producer_id
             length = int(child.get("length", "0"))
@@ -190,7 +211,10 @@ def parse_project(path: Path) -> KdenliveProject:
             if playlist_id == "main_bin" or playlist_id.endswith("_kdpair"):
                 continue
             try:
-                playlist, child_opaques = _parse_playlist(elem)
+                # track_index = the position this playlist will occupy in the
+                # project's playlist list, matching the effect-stack / serializer
+                # convention (index into project.playlists).
+                playlist, child_opaques = _parse_playlist(elem, track_index=len(playlists))
                 playlists.append(playlist)
                 opaque_elements.extend(child_opaques)
             except Exception as exc:

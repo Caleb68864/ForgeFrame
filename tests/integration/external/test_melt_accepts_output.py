@@ -49,15 +49,11 @@ def _with_intents(proj, intents):
     return patcher.patch_project(proj, intents)
 
 
-# §1.1 known-broken: these tools emit XML that MLT rejects at load time
-# (transition/filter without mlt_service, invalid custom "type" attr). Marked
-# xfail(strict=True) so the suite is green today and fails loudly the moment
-# the correctness wave makes melt accept them.
-KNOWN_BROKEN = {
-    "transitions_apply": '§1.1 transition pseudo-XML has no mlt_service -- melt fails to load it',
-    "clip_speed": '§1.1 <filter type="speed"> has no mlt_service (needs timewarp producer) -- melt fails to load it',
-    "audio_fade": '§1.1 <filter type="volume"> uses custom "type" attr, no mlt_service -- melt fails to load it',
-}
+# §1.1 correctness wave landed: transitions now emit a real tractor luma mix,
+# clip_speed swaps in a timewarp producer, and audio_fade emits a proper
+# entry-nested volume filter -- all load cleanly in melt.  Nothing remains
+# known-broken at the acceptance tier.
+KNOWN_BROKEN: dict[str, str] = {}
 
 
 # Each scenario returns a fully-built KdenliveProject ready to serialize.

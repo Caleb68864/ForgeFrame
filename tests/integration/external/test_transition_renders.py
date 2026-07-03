@@ -33,12 +33,6 @@ def _render(proj, name, frame, render_dir, melt_bin):
     return render_frame(path, frame, render_dir, melt_bin=melt_bin, name=f"{name}_f{frame}.png")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="§1.1: transition pseudo-XML (no mlt_service, not in tractor) is "
-    "ignored by MLT -- the cut is hard, no blend. Flips to pass with a real "
-    "tractor mix transition.",
-)
 def test_transition_blends_at_cut(melt_bin, render_dir: Path):
     # Reference solids.
     red_ref = _render(

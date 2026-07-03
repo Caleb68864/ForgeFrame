@@ -214,6 +214,18 @@ def _find_playlist(project: KdenliveProject, track_ref: str) -> Playlist | None:
     return None
 
 
+def _playlist_index(project: KdenliveProject, track_ref: str) -> int | None:
+    """Return the index of the playlist with the given id, or None.
+
+    This index is the ``track`` value the effect-stack and serializer use to
+    associate a clip filter with its <entry> (index into project.playlists).
+    """
+    for i, playlist in enumerate(project.playlists):
+        if playlist.id == track_ref:
+            return i
+    return None
+
+
 def _apply_add_guide(project: KdenliveProject, intent: AddGuide) -> None:
     guide = Guide(
         position=intent.position_frames,
@@ -543,8 +555,32 @@ def _apply_ripple_delete(project: KdenliveProject, intent: RippleDelete) -> None
     )
 
 
+def _timewarp_resource(producer: Producer, speed: float) -> str:
+    """Build the MLT ``timewarp`` producer resource ``speed:<inner url>``.
+
+    A color producer's inner URL is ``color:<value>``; a file-backed producer's
+    is simply its resource path.  MLT's timewarp producer plays the wrapped
+    producer at ``speed`` (2.0 = double speed / half duration).
+    """
+    resource = producer.resource or producer.properties.get("resource", "")
+    service = producer.properties.get("mlt_service", "")
+    if service and ":" not in resource and "/" not in resource and "." not in resource:
+        inner = f"{service}:{resource}"
+    else:
+        inner = resource
+    speed_str = f"{speed:g}"
+    return f"{speed_str}:{inner}"
+
+
 def _apply_set_clip_speed(project: KdenliveProject, intent: SetClipSpeed) -> None:
-    """Add a speed-change opaque element for the clip at clip_index."""
+    """Change a clip's playback speed via an MLT ``timewarp`` producer swap.
+
+    The old ``<filter type="speed">`` was a no-op in MLT (§1.1); real speed
+    changes require wrapping the source in a ``timewarp:`` producer and scaling
+    the entry's in/out so the timeline duration reflects the new speed.  Any
+    linked entries (same producer at the same clip index on other tracks, e.g.
+    the paired audio) are swapped too so the timeline stays in sync.
+    """
     playlist = _find_playlist(project, intent.track_ref)
     if playlist is None:
         logger.warning(
@@ -559,25 +595,73 @@ def _apply_set_clip_speed(project: KdenliveProject, intent: SetClipSpeed) -> Non
         )
         return
 
+    if intent.speed <= 0:
+        logger.warning("SetClipSpeed: speed must be > 0 – skipped.")
+        return
+
     entry = real_entries[intent.clip_index]
-    xml = (
-        f'<filter id="speed_{intent.track_ref}_{intent.clip_index}" '
-        f'type="speed" '
-        f'producer="{entry.producer_id}" '
-        f'track="{intent.track_ref}" '
-        f'clip_index="{intent.clip_index}">'
-        f'<property name="speed">{intent.speed}</property>'
-        f'</filter>'
-    )
-    element = OpaqueElement(
-        tag="filter",
-        xml_string=xml,
-        position_hint="after_tractor",
-    )
-    project.opaque_elements.append(element)
+    source = next((p for p in project.producers if p.id == entry.producer_id), None)
+    if source is None:
+        logger.warning(
+            "SetClipSpeed: producer '%s' not found – skipped.", entry.producer_id
+        )
+        return
+
+    tw_id = f"{entry.producer_id}_tw{intent.speed:g}"
+    if not any(p.id == tw_id for p in project.producers):
+        tw_resource = _timewarp_resource(source, intent.speed)
+        props = {
+            "mlt_service": "timewarp",
+            "resource": tw_resource,
+            "warp_speed": f"{intent.speed:g}",
+            "warp_resource": source.resource
+            or source.properties.get("resource", ""),
+        }
+        if "length" in source.properties:
+            try:
+                src_len = int(source.properties["length"])
+                props["length"] = str(max(1, round(src_len / intent.speed)))
+            except ValueError:
+                pass
+        project.producers.append(
+            Producer(id=tw_id, resource=tw_resource, properties=props)
+        )
+
+    def _rescale(e: PlaylistEntry) -> None:
+        new_in = int(round(e.in_point / intent.speed))
+        duration = e.out_point - e.in_point + 1
+        new_len = max(1, int(round(duration / intent.speed)))
+        e.producer_id = tw_id
+        e.in_point = new_in
+        e.out_point = new_in + new_len - 1
+
+    # Swap the target entry and any linked copies (same original producer at the
+    # same real-clip index on other playlists, e.g. the paired audio track).
+    orig_producer = entry.producer_id
+    _rescale(entry)
+    for other in project.playlists:
+        if other is playlist:
+            continue
+        other_real = [e for e in other.entries if e.producer_id]
+        if intent.clip_index < len(other_real):
+            candidate = other_real[intent.clip_index]
+            if candidate.producer_id == orig_producer:
+                _rescale(candidate)
+
+    # Keep the tractor length in sync with the (now shorter) content.
+    if project.tractor is not None:
+        max_len = 0
+        for pl in project.playlists:
+            total = sum(
+                (e.out_point - e.in_point + 1) for e in pl.entries
+            )
+            max_len = max(max_len, total)
+        if max_len > 0:
+            project.tractor["out"] = str(max_len - 1)
+
     logger.info(
-        "SetClipSpeed: added speed=%.2f filter for clip %d in playlist '%s'",
-        intent.speed, intent.clip_index, intent.track_ref,
+        "SetClipSpeed: timewarp %.2fx for clip %d in playlist '%s' (producer %s)",
+        intent.speed, intent.clip_index, intent.track_ref, tw_id,
     )
 
 
@@ -599,23 +683,35 @@ def _apply_audio_fade(project: KdenliveProject, intent: AudioFade) -> None:
 
     entry = real_entries[intent.clip_index]
     fade_type = intent.fade_type
+    dur = max(1, intent.duration_frames)
+    clip_len = max(1, entry.out_point - entry.in_point + 1)
 
+    # MLT's ``volume`` filter animates ``level`` in **decibels** (0 = unity,
+    # -60 ≈ silence).  Keyframe positions are relative to the clip start.
+    _FLOOR = "-60"
     if fade_type == "in":
-        # Volume ramps from 0 → 1 over duration_frames
-        from_level = "0"
-        to_level = "1"
+        level = f"0={_FLOOR};{min(dur, clip_len - 1)}=0"
     else:
-        # Volume ramps from 1 → 0 over duration_frames
-        from_level = "1"
-        to_level = "0"
+        start = max(0, clip_len - 1 - dur)
+        level = f"{start}=0;{clip_len - 1}={_FLOOR}"
 
+    track_index = _playlist_index(project, intent.track_ref)
+    if track_index is None:
+        logger.warning(
+            "AudioFade: playlist '%s' not indexable – skipped.", intent.track_ref
+        )
+        return
+
+    # A real MLT ``volume`` filter with a keyframed ``level`` (gain), nested in
+    # the clip <entry> by the serializer (§1.1).  The old ``type="volume"`` had
+    # no mlt_service and melt failed to load it.
     xml = (
         f'<filter id="audiofade_{fade_type}_{intent.track_ref}_{intent.clip_index}" '
-        f'type="volume" '
-        f'producer="{entry.producer_id}" '
-        f'track="{intent.track_ref}" '
+        f'mlt_service="volume" '
+        f'track="{track_index}" '
         f'clip_index="{intent.clip_index}">'
-        f'<property name="level">{from_level}=0;{to_level}={intent.duration_frames}</property>'
+        f'<property name="mlt_service">volume</property>'
+        f'<property name="level">{level}</property>'
         f'<property name="kdenlive:fade_type">{fade_type}</property>'
         f'</filter>'
     )
@@ -631,9 +727,27 @@ def _apply_audio_fade(project: KdenliveProject, intent: AudioFade) -> None:
     )
 
 
+def _set_hide_directive(project: KdenliveProject, track_ref: str, hide: str) -> None:
+    """Record a ``hide`` value for a track's tractor entry.
+
+    Represented as a ``<kdenlive:hide>`` OpaqueElement that the serializer
+    consumes to set the ``hide`` attribute on the track (the only place MLT
+    honours mute/visibility).  A later directive for the same track supersedes
+    an earlier one.
+    """
+    project.opaque_elements = [
+        el
+        for el in project.opaque_elements
+        if not (el.tag == "kdenlive:hide" and f'track="{track_ref}"' in el.xml_string)
+    ]
+    xml = f'<kdenlive:hide track="{track_ref}" hide="{hide}" />'
+    project.opaque_elements.append(
+        OpaqueElement(tag="kdenlive:hide", xml_string=xml, position_hint="tractor")
+    )
+
+
 def _apply_set_track_mute(project: KdenliveProject, intent: SetTrackMute) -> None:
-    """Add a mute property element for the track."""
-    # Verify track exists
+    """Mute/unmute a track by setting ``hide`` on its tractor entry."""
     track = next((t for t in project.tracks if t.id == intent.track_ref), None)
     if track is None:
         logger.warning(
@@ -641,26 +755,17 @@ def _apply_set_track_mute(project: KdenliveProject, intent: SetTrackMute) -> Non
         )
         return
 
-    mute_value = "1" if intent.muted else "0"
-    xml = (
-        f'<property name="kdenlive:audio_mute" track="{intent.track_ref}">'
-        f'{mute_value}'
-        f'</property>'
-    )
-    element = OpaqueElement(
-        tag="property",
-        xml_string=xml,
-        position_hint="after_tractor",
-    )
-    project.opaque_elements.append(element)
-    logger.info(
-        "SetTrackMute: track '%s' muted=%s",
-        intent.track_ref, intent.muted,
-    )
+    if track.track_type == "audio":
+        # Audio tracks default to hide="video"; muting also hides audio.
+        hide = "both" if intent.muted else "video"
+    else:
+        hide = "audio" if intent.muted else ""
+    _set_hide_directive(project, intent.track_ref, hide)
+    logger.info("SetTrackMute: track '%s' muted=%s", intent.track_ref, intent.muted)
 
 
 def _apply_set_track_visibility(project: KdenliveProject, intent: SetTrackVisibility) -> None:
-    """Add a visibility property element for the track."""
+    """Show/hide a track by setting ``hide`` on its tractor entry."""
     track = next((t for t in project.tracks if t.id == intent.track_ref), None)
     if track is None:
         logger.warning(
@@ -668,24 +773,13 @@ def _apply_set_track_visibility(project: KdenliveProject, intent: SetTrackVisibi
         )
         return
 
-    if intent.visible:
-        # Remove the hide=video property (store as empty value to signal removal)
-        xml = (
-            f'<property name="hide" track="{intent.track_ref}"></property>'
-        )
+    if track.track_type == "audio":
+        hide = "video" if intent.visible else "both"
     else:
-        xml = (
-            f'<property name="hide" track="{intent.track_ref}">video</property>'
-        )
-    element = OpaqueElement(
-        tag="property",
-        xml_string=xml,
-        position_hint="after_tractor",
-    )
-    project.opaque_elements.append(element)
+        hide = "" if intent.visible else "video"
+    _set_hide_directive(project, intent.track_ref, hide)
     logger.info(
-        "SetTrackVisibility: track '%s' visible=%s",
-        intent.track_ref, intent.visible,
+        "SetTrackVisibility: track '%s' visible=%s", intent.track_ref, intent.visible
     )
 
 
@@ -773,7 +867,7 @@ def _apply_add_composition(project: KdenliveProject, intent: AddComposition) -> 
     element = OpaqueElement(
         tag="transition",
         xml_string=xml,
-        position_hint="after_tractor",
+        position_hint="tractor",
     )
     project.opaque_elements.append(element)
     logger.info(
@@ -783,40 +877,171 @@ def _apply_add_composition(project: KdenliveProject, intent: AddComposition) -> 
     )
 
 
-def _apply_add_transition(project: KdenliveProject, intent: AddTransition) -> None:
-    """Apply an AddTransition intent by appending a transition XML element.
+def _resolve_clip_index(real_entries: list, ref: str, default: int = 0) -> int:
+    """Resolve a clip reference to a real-entry index.
 
-    The transition is represented as an OpaqueElement so that the serializer
-    can round-trip it verbatim.  The XML follows the MLT/Kdenlive convention
-    for a mix (dissolve/crossfade) transition.
+    ``ref`` may be an integer index (as a string) or a producer id.
     """
-    t_type = intent.type or "luma"
-    track = intent.track_ref or "0"
-    left_ref = intent.left_clip_ref or ""
-    right_ref = intent.right_clip_ref or ""
-    duration = intent.duration_frames
+    if ref is None or ref == "":
+        return default
+    try:
+        idx = int(ref)
+        if 0 <= idx < len(real_entries):
+            return idx
+    except (TypeError, ValueError):
+        pass
+    for i, e in enumerate(real_entries):
+        if e.producer_id == ref:
+            return i
+    return default
 
-    # Build a minimal MLT transition XML element
+
+def _tractor_index(project: KdenliveProject, position: int) -> int:
+    """Tractor track index for the track at ``position`` in the tracks source.
+
+    Mirrors the serializer: black_track occupies index 0, then each content
+    track + its pair occupy two slots, so position ``p`` maps to ``1 + 2*p``.
+    """
+    return 1 + 2 * position
+
+
+def _emit_simple_transition(project: KdenliveProject, intent: AddTransition) -> None:
+    """Fallback: emit a standalone luma transition into the tractor.
+
+    Used when the target clips cannot be resolved (e.g. an empty project).
+    """
+    service = "luma"
+    duration = max(1, intent.duration_frames)
     xml = (
-        f'<transition id="transition_{len(project.opaque_elements)}" '
-        f'type="{t_type}" '
-        f'track="{track}" '
-        f'left="{left_ref}" '
-        f'right="{right_ref}" '
-        f'duration="{duration}" />'
+        f'<transition id="transition_{len(project.opaque_elements)}">'
+        f'<property name="mlt_service">{service}</property>'
+        f'<property name="a_track">0</property>'
+        f'<property name="b_track">1</property>'
+        f'<property name="in">0</property>'
+        f'<property name="out">{duration - 1}</property>'
+        f'</transition>'
+    )
+    project.opaque_elements.append(
+        OpaqueElement(tag="transition", xml_string=xml, position_hint="tractor")
+    )
+    logger.info(
+        "Applied fallback %s transition on track '%s' (%d frames)",
+        service, intent.track_ref or "0", duration,
     )
 
-    element = OpaqueElement(
-        tag="transition",
-        xml_string=xml,
-        position_hint="after_tractor",
+
+def _apply_add_transition(project: KdenliveProject, intent: AddTransition) -> None:
+    """Apply a crossfade between two adjacent clips as a real MLT mix.
+
+    The pseudo ``<transition type="crossfade">`` MLT rejected (§1.1) is replaced
+    by a genuine ``luma`` transition in the tractor between two overlapping
+    video tracks: the right clip is moved onto a new top video track, pulled
+    earlier so it overlaps the (extended) left clip, and a ``luma`` transition
+    dissolves the lower track into the upper one over the overlap.  The cut is
+    the visual midpoint of the transition.
+    """
+    duration = max(1, intent.duration_frames)
+    playlist = _find_playlist(project, intent.track_ref)
+    vindex = _playlist_index(project, intent.track_ref)
+    if playlist is None or vindex is None:
+        _emit_simple_transition(project, intent)
+        return
+
+    real = [e for e in playlist.entries if e.producer_id]
+    left_idx = _resolve_clip_index(real, intent.left_clip_ref, default=0)
+    right_idx = left_idx + 1
+    if left_idx < 0 or right_idx >= len(real):
+        logger.warning(
+            "AddTransition: no adjacent clip pair for ref '%s' in '%s' -- "
+            "emitting standalone transition.",
+            intent.left_clip_ref, intent.track_ref,
+        )
+        _emit_simple_transition(project, intent)
+        return
+
+    left_entry = real[left_idx]
+    right_entry = real[right_idx]
+
+    # Timeline start frames (sum of entry lengths, including blanks, before the
+    # target entry in the source playlist).
+    left_start = 0
+    cut = 0
+    seen_left = False
+    for e in playlist.entries:
+        if e is left_entry:
+            seen_left = True
+        if e is right_entry:
+            break
+        if not seen_left:
+            left_start += max(0, e.out_point - e.in_point + 1)
+        cut += max(0, e.out_point - e.in_point + 1)
+
+    half1 = duration // 2
+    half2 = duration - half1
+
+    # Extend the left clip forward by half2 (clamped to the producer length).
+    src = next((p for p in project.producers if p.id == left_entry.producer_id), None)
+    max_out = left_entry.out_point + half2
+    if src is not None and "length" in src.properties:
+        try:
+            plen = int(src.properties["length"])
+            max_out = min(max_out, left_entry.in_point + plen - 1)
+        except ValueError:
+            pass
+    left_entry.out_point = max_out
+    left_timeline_end = left_start + (left_entry.out_point - left_entry.in_point + 1) - 1
+
+    lead = max(0, cut - half1)
+
+    # Build the new top video track carrying the right clip (+ any clips that
+    # followed it on the source track), preceded by a lead-in blank.
+    moved = real[right_idx:]
+    moved_ids = {id(e) for e in moved}
+    top_entries: list[PlaylistEntry] = []
+    if lead > 0:
+        top_entries.append(PlaylistEntry(producer_id="", in_point=0, out_point=lead - 1))
+    for e in moved:
+        top_entries.append(e.model_copy(deep=True))
+
+    # Remove the moved clips from the source playlist.
+    playlist.entries = [e for e in playlist.entries if id(e) not in moved_ids]
+
+    top_id = f"{playlist.id}_xfade{len([t for t in project.tracks if 'xfade' in t.id])}"
+    project.playlists.append(Playlist(id=top_id, entries=top_entries))
+
+    # Register a matching video track so the serializer builds a tractor slot.
+    if project.tracks:
+        source_positions = {t.id: i for i, t in enumerate(project.tracks)}
+        src_pos = source_positions.get(intent.track_ref, vindex)
+        project.tracks.append(Track(id=top_id, track_type="video", name="Crossfade"))
+        top_pos = len(project.tracks) - 1
+    else:
+        # Serializer falls back to playlists-as-tracks; positions are playlist
+        # indices.  The new playlist was appended last.
+        src_pos = vindex
+        top_pos = len(project.playlists) - 1
+
+    a_track = _tractor_index(project, src_pos)
+    b_track = _tractor_index(project, top_pos)
+    t_in = max(0, cut - half1)
+    t_out = left_timeline_end  # end of the (extended) left clip on the timeline
+
+    xml = (
+        f'<transition id="transition_{len(project.opaque_elements)}">'
+        f'<property name="mlt_service">luma</property>'
+        f'<property name="a_track">{a_track}</property>'
+        f'<property name="b_track">{b_track}</property>'
+        f'<property name="in">{t_in}</property>'
+        f'<property name="out">{t_out}</property>'
+        f'</transition>'
     )
-    project.opaque_elements.append(element)
+    project.opaque_elements.append(
+        OpaqueElement(tag="transition", xml_string=xml, position_hint="tractor")
+    )
     logger.info(
-        "Applied %s transition on track '%s' (%d frames)",
-        t_type,
-        track,
-        duration,
+        "AddTransition: luma crossfade a_track=%d b_track=%d in=%d out=%d "
+        "(cut=%d, %d frames) on '%s'",
+        a_track, b_track, t_in, t_out, cut, duration, intent.track_ref,
     )
 
 

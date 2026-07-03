@@ -184,3 +184,68 @@ class TestParserGracefulFailure:
         p.write_text("", encoding="utf-8")
         project = parse_project(p)
         assert isinstance(project, KdenliveProject)
+
+
+# ---------------------------------------------------------------------------
+# §1.2 round-trip: entry-nested clip filters must survive parse -> serialize
+# ---------------------------------------------------------------------------
+
+_ENTRY_NESTED_FILTER_XML = textwrap.dedent("""\
+    <?xml version="1.0" encoding="utf-8"?>
+    <mlt title="Nested" version="7">
+      <profile width="1920" height="1080" frame_rate_num="25" frame_rate_den="1"/>
+      <producer id="prod0" in="0" out="99">
+        <property name="resource">/tmp/clip.mp4</property>
+        <property name="length">100</property>
+      </producer>
+      <playlist id="pl_video">
+        <entry producer="prod0" in="0" out="99">
+          <filter id="fx1" mlt_service="frei0r.scanline0r">
+            <property name="mlt_service">frei0r.scanline0r</property>
+          </filter>
+        </entry>
+      </playlist>
+      <tractor id="tractor0" in="0" out="99">
+        <track producer="pl_video"/>
+      </tractor>
+    </mlt>
+""")
+
+
+class TestEntryNestedFilterRoundTrip:
+    def test_parser_reads_entry_nested_filter(self, tmp_path):
+        from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
+
+        p = tmp_path / "nested.kdenlive"
+        p.write_text(_ENTRY_NESTED_FILTER_XML, encoding="utf-8")
+        project = parse_project(p)
+
+        effects = patcher.list_effects(project, (0, 0))
+        assert len(effects) == 1
+        assert effects[0]["mlt_service"] == "frei0r.scanline0r"
+
+    def test_roundtrip_preserves_entry_nested_filter(self, tmp_path):
+        import xml.etree.ElementTree as ET
+
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
+            serialize_project,
+        )
+
+        src = tmp_path / "nested.kdenlive"
+        src.write_text(_ENTRY_NESTED_FILTER_XML, encoding="utf-8")
+        project = parse_project(src)
+
+        out = tmp_path / "roundtrip.kdenlive"
+        serialize_project(project, out)
+
+        root = ET.fromstring(out.read_text(encoding="utf-8"))
+        content_pl = next(
+            pl for pl in root.findall("playlist") if pl.get("id") == "pl_video"
+        )
+        entry = content_pl.find("entry")
+        nested = entry.findall("filter")
+        assert len(nested) == 1
+        svc = nested[0].find("property[@name='mlt_service']")
+        assert svc is not None and svc.text == "frei0r.scanline0r"
+        # No stray filters left at the document root.
+        assert root.find("filter") is None

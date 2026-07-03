@@ -27,12 +27,6 @@ FPS = 25.0
 SRC_FRAMES = 100  # 4 seconds
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason='§1.1: <filter type="speed"> is a no-op in MLT (needs a timewarp '
-    "producer). Rendered duration is unchanged. Flips to pass with the "
-    "timewarp fix.",
-)
 def test_2x_speed_halves_duration(melt_bin, ffprobe_bin, render_dir: Path):
     proj = builders.sequence_project(colors=[builders.RED], frames_each=SRC_FRAMES, fps=FPS)
     proj = patcher.patch_project(

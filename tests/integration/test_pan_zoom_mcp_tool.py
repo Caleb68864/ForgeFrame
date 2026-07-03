@@ -98,13 +98,19 @@ def test_preset_zoom_in_writes_keyframed_transform_filter(tmp_path):
     assert data["kdenlive_id"] == "transform"
     assert "i=" in data["keyframes_written"]  # cubic_in_out operator
 
-    # A new affine/transform filter must be on disk (fixture already had one).
-    filters = _filters(pf)
-    transforms = [f for f in filters if _props(f).get("kdenlive_id") == "transform"]
-    assert len(transforms) == 2
-    new = transforms[-1]
-    assert new.get("track") == str(CLIP_TRACK)
-    assert new.get("clip_index") == str(CLIP_INDEX)
+    # Effects are now nested inside the clip <entry> (the §1.1 placement fix),
+    # so the association track=/clip_index= attributes are gone -- the filter's
+    # position in the tree is what binds it to the clip.
+    root = ET.fromstring(pf.read_text(encoding="utf-8"))
+    nested_transforms = [
+        f
+        for e in root.iter("entry")
+        for f in e.findall("filter")
+        if _props(f).get("kdenlive_id") == "transform"
+    ]
+    # fixture already had one transform filter; the tool adds a second.
+    assert len(nested_transforms) == 2
+    new = nested_transforms[-1]
     parsed = parse_keyframe_string("rect", _props(new)["rect"], fps=30.0)
     assert [k.frame for k in parsed] == [0, 300]
 
