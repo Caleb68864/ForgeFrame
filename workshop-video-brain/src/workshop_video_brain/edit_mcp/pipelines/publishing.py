@@ -7,6 +7,7 @@ and full publish bundles saved to workspace reports.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections import Counter
 from pathlib import Path
@@ -16,6 +17,8 @@ from workshop_video_brain.core.models.publishing import (
     TitleVariants,
     VideoSummary,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -63,8 +66,13 @@ def _read_transcripts(workspace_root: Path) -> list[dict]:
             try:
                 data = json.loads(json_path.read_text(encoding="utf-8"))
                 results.append(data)
-            except Exception:
-                pass
+            except (OSError, ValueError) as exc:
+                # Best-effort: skip an unreadable transcript, but log it -- this
+                # corpus feeds description/tag/summary generation, so a silent
+                # drop degrades the primary output.
+                logger.warning(
+                    "Skipping unreadable transcript %s: %s", json_path, exc
+                )
     return results
 
 

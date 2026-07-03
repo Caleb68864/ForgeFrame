@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
 from pathlib import Path
 
 from workshop_video_brain.core.models.social import ClipCandidate, ClipExport, SocialPost
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -574,8 +577,13 @@ def generate_social_package(
                         "text": seg.text,
                     })
                     all_text_parts.append(seg.text)
-            except Exception:
-                pass
+            except (OSError, ValueError) as exc:
+                # Best-effort: skip an unreadable transcript so one bad file
+                # does not abort clip-finding, but log it -- silently dropping
+                # transcripts degrades the primary output (clip candidates).
+                logger.warning(
+                    "Skipping unreadable transcript %s: %s", json_path, exc
+                )
 
     # Try to get project title from manifest
     manifest_path = workspace_root / "workspace.yaml"
@@ -584,8 +592,10 @@ def generate_social_package(
             import yaml
             manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
             video_title = manifest.get("project_title", video_title)
-        except Exception:
-            pass
+        except (OSError, ValueError) as exc:
+            logger.warning(
+                "Could not read project_title from %s: %s", manifest_path, exc
+            )
 
     transcript_text = " ".join(all_text_parts)
 

@@ -155,13 +155,20 @@ def save_preset(
     raise ValueError(f"Unknown scope: {scope!r}")
 
 
-def _parse_markdown_frontmatter(text: str) -> dict:
+def _parse_markdown_frontmatter(text: str, source: Path | str | None = None) -> dict:
+    where = f" in {source}" if source is not None else ""
     match = _FRONTMATTER_RE.match(text)
     if not match:
-        raise ValueError("Markdown file has no YAML frontmatter block")
+        raise ValueError(
+            f"Markdown preset file has no YAML frontmatter block{where}. "
+            "Expected a leading '---\\n...\\n---' block."
+        )
     data = yaml.safe_load(match.group(1))
     if not isinstance(data, dict):
-        raise ValueError("Frontmatter did not parse to a mapping")
+        raise ValueError(
+            f"Preset frontmatter{where} did not parse to a mapping "
+            f"(got {type(data).__name__})."
+        )
     return data
 
 
@@ -179,7 +186,9 @@ def load_preset(
         return Preset.model_validate(data)
 
     if vault_path is not None and vault_path.is_file():
-        data = _parse_markdown_frontmatter(vault_path.read_text(encoding="utf-8"))
+        data = _parse_markdown_frontmatter(
+            vault_path.read_text(encoding="utf-8"), source=vault_path
+        )
         return Preset.model_validate(data)
 
     raise FileNotFoundError(
@@ -224,7 +233,9 @@ def list_presets(
         if vault_dir.is_dir():
             for f in sorted(vault_dir.glob("*.md")):
                 try:
-                    data = _parse_markdown_frontmatter(f.read_text(encoding="utf-8"))
+                    data = _parse_markdown_frontmatter(
+                        f.read_text(encoding="utf-8"), source=f
+                    )
                     preset = Preset.model_validate(data)
                     presets.append(_summarize(preset, "vault", f))
                 except Exception as exc:  # noqa: BLE001

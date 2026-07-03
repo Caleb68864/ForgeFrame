@@ -20,6 +20,10 @@ from workshop_video_brain.edit_mcp.adapters.render.profiles import (
 
 logger = logging.getLogger(__name__)
 
+# Final renders can run for many minutes on long timelines; generous ceiling
+# so a wedged ffmpeg cannot hang the server forever.
+_RENDER_TIMEOUT_SECONDS = 3600.0
+
 
 @dataclass
 class RenderResult:
@@ -121,12 +125,33 @@ def render_final(
     cmd = _build_render_command(project_path, output_path, profile)
     logger.info("Render command: %s", " ".join(str(c) for c in cmd))
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    binary = cmd[0] if cmd else "ffmpeg"
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=_RENDER_TIMEOUT_SECONDS,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            f"Render binary {binary!r} not found on PATH. Install it "
+            f"(e.g. 'apt install ffmpeg' / 'brew install ffmpeg') and retry."
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise TimeoutError(
+            f"Render timed out after {_RENDER_TIMEOUT_SECONDS:.0f}s for "
+            f"{output_path.name} (project {project_path.name})."
+        ) from exc
 
     if result.returncode != 0:
+        # Surface the stderr TAIL -- the last lines carry the actual ffmpeg error.
+        tail = "\n".join(
+            ln for ln in result.stderr.splitlines() if ln.strip()
+        )[-800:]
         raise RuntimeError(
-            f"Render failed (exit {result.returncode}): "
-            f"{result.stderr[:500]}"
+            f"Render failed (exit {result.returncode}) for {output_path.name}. "
+            f"stderr tail:\n{tail}"
         )
 
     # 6. Gather result metadata

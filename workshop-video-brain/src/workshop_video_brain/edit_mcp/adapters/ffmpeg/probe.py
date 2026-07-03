@@ -10,8 +10,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from workshop_video_brain.core.models import MediaAsset
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    FFmpegCommandError,
+    FFmpegNotFound,
+    FFmpegTimeout,
+    _FFMPEG_INSTALL_HINT,
+    _stderr_tail,
+)
 
 logger = logging.getLogger(__name__)
+
+# A probe should be near-instant; this only guards against a wedged ffprobe.
+_PROBE_TIMEOUT_SECONDS = 120.0
 
 DEFAULT_EXTENSIONS: set[str] = {
     ".mp4", ".mkv", ".mov", ".avi", ".webm",
@@ -32,24 +42,46 @@ def probe_media(path: Path) -> MediaAsset:
     """Run ffprobe on *path* and return a populated MediaAsset.
 
     Raises:
-        subprocess.CalledProcessError: if ffprobe fails.
+        FileNotFoundError: if *path* does not exist.
+        FFmpegNotFound: if the ffprobe binary is missing (carries install hint).
+        FFmpegTimeout: if ffprobe hangs past the probe timeout.
+        FFmpegCommandError: if ffprobe exits nonzero (carries the stderr tail).
         json.JSONDecodeError: if ffprobe output is not valid JSON.
     """
     path = Path(path)
 
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v", "quiet",
-            "-print_format", "json",
-            "-show_format",
-            "-show_streams",
-            str(path),
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
+    if not path.exists():
+        raise FileNotFoundError(f"Media file does not exist: {path}")
+
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v", "quiet",
+                "-print_format", "json",
+                "-show_format",
+                "-show_streams",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=_PROBE_TIMEOUT_SECONDS,
+        )
+    except FileNotFoundError as exc:
+        raise FFmpegNotFound(
+            f"ffprobe binary not found on PATH (probing {path}). "
+            f"{_FFMPEG_INSTALL_HINT}"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise FFmpegTimeout(
+            f"ffprobe timed out after {_PROBE_TIMEOUT_SECONDS:.0f}s on {path}."
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        raise FFmpegCommandError(
+            f"ffprobe failed (rc={exc.returncode}) on {path}.\n"
+            f"stderr tail:\n{_stderr_tail(exc.stderr or '')}"
+        ) from exc
 
     data = json.loads(result.stdout)
     fmt = data.get("format", {})
@@ -152,7 +184,10 @@ def scan_directory(
 ) -> list[MediaAsset]:
     """Recursively scan *dir* for media files and probe each one.
 
-    Per-file errors are logged as warnings; the scan continues.
+    Per-file probe errors (corrupt/unreadable media) are logged as warnings and
+    the scan continues -- this is a deliberate best-effort scan. A *missing
+    ffprobe binary* is an environment error, not a per-file problem, so it is
+    re-raised loudly instead of being swallowed for every file.
 
     Args:
         dir: Directory to scan.
@@ -161,6 +196,9 @@ def scan_directory(
 
     Returns:
         List of successfully probed :class:`MediaAsset` objects.
+
+    Raises:
+        FFmpegNotFound: if the ffprobe binary is missing.
     """
     if extensions is None:
         extensions = DEFAULT_EXTENSIONS
@@ -176,7 +214,10 @@ def scan_directory(
         try:
             asset = probe_media(path)
             assets.append(asset)
-        except Exception as exc:  # noqa: BLE001
+        except (FFmpegNotFound, FFmpegTimeout):
+            # Environment/hang failures are not per-file; don't bury them.
+            raise
+        except Exception as exc:  # noqa: BLE001 -- best-effort per-file skip
             logger.warning("Failed to probe %s: %s", path, exc)
 
     return assets
@@ -194,7 +235,10 @@ def measure_loudness(path: Path) -> LoudnessResult | None:
     """Measure integrated loudness, true peak, and loudness range using FFmpeg loudnorm filter.
 
     Returns LoudnessResult with input_i (LUFS), input_tp (dBTP), input_lra (LU).
-    Returns None on failure.
+
+    Best-effort: returns ``None`` (with a WARNING naming the path and cause) if
+    ffmpeg is missing, times out, or the loudnorm JSON cannot be parsed. Callers
+    treat ``None`` as "loudness unknown" rather than a hard failure.
     """
     try:
         result = subprocess.run(
@@ -207,16 +251,36 @@ def measure_loudness(path: Path) -> LoudnessResult | None:
             text=True,
             timeout=120,
         )
-        # loudnorm JSON is in stderr
-        match = re.search(r'\{[^}]*"input_i"[^}]*\}', result.stderr, re.DOTALL)
-        if match:
-            data = json.loads(match.group())
-            return LoudnessResult(
-                input_i=float(data.get("input_i", 0)),
-                input_tp=float(data.get("input_tp", 0)),
-                input_lra=float(data.get("input_lra", 0)),
-            )
+    except FileNotFoundError:
+        logger.warning(
+            "Loudness measurement skipped for %s: ffmpeg not found on PATH", path
+        )
         return None
-    except Exception:
-        logger.warning("Loudness measurement failed for %s", path)
+    except subprocess.TimeoutExpired:
+        logger.warning("Loudness measurement timed out (120s) for %s", path)
+        return None
+    except Exception as exc:  # noqa: BLE001 -- documented best-effort: None on any failure
+        logger.warning("Loudness measurement failed for %s: %s", path, exc)
+        return None
+
+    # loudnorm JSON is in stderr
+    match = re.search(r'\{[^}]*"input_i"[^}]*\}', result.stderr, re.DOTALL)
+    if not match:
+        logger.warning(
+            "Loudness measurement failed for %s: no loudnorm JSON in ffmpeg "
+            "output (rc=%d)", path, result.returncode
+        )
+        return None
+    try:
+        data = json.loads(match.group())
+        return LoudnessResult(
+            input_i=float(data.get("input_i", 0)),
+            input_tp=float(data.get("input_tp", 0)),
+            input_lra=float(data.get("input_lra", 0)),
+        )
+    except (ValueError, json.JSONDecodeError) as exc:
+        logger.warning(
+            "Loudness measurement failed for %s: unparseable loudnorm data (%s)",
+            path, exc,
+        )
         return None

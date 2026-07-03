@@ -7,8 +7,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from workshop_video_brain.core.models import MediaAsset
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    FFmpegCommandError,
+    FFmpegNotFound,
+    FFmpegTimeout,
+    _FFMPEG_INSTALL_HINT,
+    _stderr_tail,
+)
 
 logger = logging.getLogger(__name__)
+
+# Proxies re-encode the whole clip; allow a generous ceiling but never hang.
+_PROXY_TIMEOUT_SECONDS = 1800.0
 
 
 @dataclass
@@ -77,7 +87,9 @@ def generate_proxy(
         Path to the proxy file.
 
     Raises:
-        subprocess.CalledProcessError: if ffmpeg fails.
+        FFmpegNotFound: if the ffmpeg binary is missing (carries install hint).
+        FFmpegTimeout: if encoding exceeds the proxy timeout.
+        FFmpegCommandError: if ffmpeg exits nonzero (carries the stderr tail).
     """
     if policy is None:
         policy = ProxyPolicy()
@@ -88,6 +100,11 @@ def generate_proxy(
     output_path = proxy_path_for(asset, output_dir)
     source_path = Path(asset.path)
 
+    if not source_path.exists():
+        raise FileNotFoundError(
+            f"Proxy source media does not exist: {source_path}"
+        )
+
     # Skip if proxy already exists and is newer than source
     if output_path.exists():
         if output_path.stat().st_mtime >= source_path.stat().st_mtime:
@@ -97,22 +114,42 @@ def generate_proxy(
 
     logger.info("Generating proxy %s -> %s", source_path, output_path)
 
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-i", str(source_path),
-            "-vf", "scale=-2:720",
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "23",
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-y",
-            str(output_path),
-        ],
-        check=True,
-        capture_output=True,
-    )
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-i", str(source_path),
+                "-vf", "scale=-2:720",
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "23",
+                "-c:a", "aac",
+                "-b:a", "128k",
+                "-y",
+                str(output_path),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=_PROXY_TIMEOUT_SECONDS,
+        )
+    except FileNotFoundError as exc:
+        raise FFmpegNotFound(
+            f"ffmpeg binary not found on PATH (proxy of {source_path}). "
+            f"{_FFMPEG_INSTALL_HINT}"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise FFmpegTimeout(
+            f"ffmpeg proxy encode timed out after "
+            f"{_PROXY_TIMEOUT_SECONDS:.0f}s on {source_path}."
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", "replace")
+        raise FFmpegCommandError(
+            f"ffmpeg proxy encode failed (rc={exc.returncode}) on {source_path}.\n"
+            f"stderr tail:\n{_stderr_tail(stderr or '')}"
+        ) from exc
 
     logger.info("Proxy created: %s", output_path)
     return output_path

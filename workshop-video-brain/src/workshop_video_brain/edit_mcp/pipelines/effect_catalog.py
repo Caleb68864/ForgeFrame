@@ -4490,6 +4490,21 @@ CATALOG: dict[str, EffectDef] = {
             ParamDef(name='deformY', display_name='Vertical', type=ParamType.BOOL, default='0', min=None, max=None, decimals=None, values=(), value_labels=(), keyframable=False),
         ),
     ),
+    'qtblend': EffectDef(
+        kdenlive_id='qtblend',
+        mlt_service='qtblend',
+        display_name='Transform',
+        description='Position, scale and rotate a clip (Composite and Transform). '
+                    'Modern Kdenlive Transform effect; supersedes the legacy '
+                    'affine "transform".',
+        category='custom',
+        params=(
+            ParamDef(name='rect', display_name='Rectangle', type=ParamType.ANIMATED, default='0 0 %width %height 1', min=None, max=None, decimals=None, values=(), value_labels=(), keyframable=True),
+            ParamDef(name='rotation', display_name='Rotation', type=ParamType.ANIMATED, default='0', min=-3600.0, max=3600.0, decimals=1, values=(), value_labels=(), keyframable=True),
+            ParamDef(name='compositing', display_name='Compositing', type=ParamType.LIST, default='0', min=None, max=None, decimals=None, values=('0', '1', '2', '3', '4', '5', '6'), value_labels=('Alpha blend', 'Over', 'Add', 'Screen', 'Multiply', 'Overlay', 'Difference'), keyframable=False),
+            ParamDef(name='distort', display_name='Distort', type=ParamType.BOOL, default='0', min=None, max=None, decimals=None, values=(), value_labels=(), keyframable=False),
+        ),
+    ),
 }
 
 

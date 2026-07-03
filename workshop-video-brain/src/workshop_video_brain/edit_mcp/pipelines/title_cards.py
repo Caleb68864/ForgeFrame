@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -9,6 +10,8 @@ from workshop_video_brain.core.models.enums import MarkerCategory
 from workshop_video_brain.core.models.kdenlive import Guide, KdenliveProject
 from workshop_video_brain.core.models.markers import Marker
 from workshop_video_brain.core.models.title_cards import TitleCard
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -67,15 +70,24 @@ def generate_title_cards(workspace_root: Path) -> list[TitleCard]:
         for marker_file in sorted(markers_dir.glob("*.json")):
             try:
                 raw = json.loads(marker_file.read_text(encoding="utf-8"))
-                for item in raw:
-                    try:
-                        marker = Marker(**item)
-                        if MarkerCategory(marker.category) == MarkerCategory.chapter_candidate:
-                            chapter_markers.append(marker)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+            except (OSError, ValueError) as exc:
+                # Best-effort: a corrupt/unreadable marker file is skipped, but
+                # logged so it is never a silent zero-title-cards surprise.
+                logger.warning(
+                    "Skipping unreadable marker file %s: %s", marker_file, exc
+                )
+                continue
+            for item in raw:
+                try:
+                    marker = Marker(**item)
+                    if MarkerCategory(marker.category) == MarkerCategory.chapter_candidate:
+                        chapter_markers.append(marker)
+                except (TypeError, ValueError) as exc:
+                    # Skip a single malformed marker entry (bad schema/category),
+                    # but record it rather than dropping chapters silently.
+                    logger.warning(
+                        "Skipping malformed marker in %s: %s", marker_file, exc
+                    )
 
     cards: list[TitleCard] = []
     for marker in chapter_markers:

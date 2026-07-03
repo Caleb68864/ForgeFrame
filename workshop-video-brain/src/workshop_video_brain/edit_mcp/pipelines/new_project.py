@@ -6,6 +6,7 @@ video planning process: outline, script, and shot plan.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import warnings
 from datetime import date
@@ -15,6 +16,8 @@ from pydantic import BaseModel
 
 from workshop_video_brain.core.utils.naming import slugify
 from workshop_video_brain.workspace.manager import WorkspaceManager
+
+logger = logging.getLogger(__name__)
 
 
 class NewProjectResult(BaseModel):
@@ -37,8 +40,13 @@ def _read_config() -> dict:
     if config_path.exists():
         try:
             return json.loads(config_path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+        except (OSError, ValueError) as exc:
+            # Best-effort: fall back to defaults, but do not hide a corrupt
+            # config file -- the user's settings are being silently ignored.
+            logger.warning(
+                "Ignoring unreadable config %s (using defaults): %s",
+                config_path, exc,
+            )
     return {}
 
 

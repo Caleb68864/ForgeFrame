@@ -48,8 +48,20 @@ def check_codec_available(codec_name: str) -> bool:
                 if codec_name in parts:
                     return True
         return False
-    except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
-        logger.warning("Could not check codec availability for '%s'", codec_name)
+    except FileNotFoundError:
+        logger.warning(
+            "Cannot check codec '%s': ffmpeg not found on PATH", codec_name
+        )
+        return False
+    except subprocess.TimeoutExpired:
+        logger.warning(
+            "Cannot check codec '%s': ffmpeg -codecs timed out", codec_name
+        )
+        return False
+    except OSError as exc:  # noqa: BLE001 -- best-effort availability probe
+        logger.warning(
+            "Could not check codec availability for '%s': %s", codec_name, exc
+        )
         return False
 
 
@@ -108,9 +120,9 @@ def execute_render(
             return update_job_status(running_job, JobStatus.succeeded)
         else:
             logger.error(
-                "Render failed (exit %d): %s",
+                "Render failed (exit %d): ...%s",
                 result.returncode,
-                result.stderr[:500],
+                result.stderr[-500:],
             )
             return update_job_status(running_job, JobStatus.failed)
 
@@ -126,7 +138,12 @@ def execute_render(
         return update_job_status(running_job, JobStatus.failed)
 
     except FileNotFoundError as exc:
-        msg = f"Render command not found: {exc}"
+        binary = cmd[0] if cmd else "render binary"
+        msg = (
+            f"Render binary '{binary}' not found on PATH ({exc}). "
+            f"Install it (e.g. 'apt install melt ffmpeg' / "
+            f"'brew install mlt ffmpeg') and ensure it is on PATH."
+        )
         logger.error(msg)
         if log_path:
             log_path.write_text(

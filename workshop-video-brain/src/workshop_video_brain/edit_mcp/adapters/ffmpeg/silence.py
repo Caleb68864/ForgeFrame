@@ -6,7 +6,16 @@ import re
 import subprocess
 from pathlib import Path
 
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    FFmpegNotFound,
+    FFmpegTimeout,
+    _FFMPEG_INSTALL_HINT,
+)
+
 logger = logging.getLogger(__name__)
+
+# Full-decode silence scan; generous ceiling so a wedged ffmpeg can't hang.
+_SILENCE_TIMEOUT_SECONDS = 1800.0
 
 _SILENCE_START_RE = re.compile(r"silence_start:\s*([\d.]+)")
 _SILENCE_END_RE = re.compile(r"silence_end:\s*([\d.]+)")
@@ -32,19 +41,31 @@ def detect_silence(
     """
     path = Path(path)
 
-    result = subprocess.run(
-        [
-            "ffmpeg",
-            "-i", str(path),
-            "-af", f"silencedetect=noise={threshold_db}dB:d={min_duration}",
-            "-f", "null",
-            "-",
-        ],
-        capture_output=True,
-        text=True,
-        # ffmpeg returns non-zero when writing to /dev/null equivalent; ignore
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-i", str(path),
+                "-af", f"silencedetect=noise={threshold_db}dB:d={min_duration}",
+                "-f", "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+            # ffmpeg returns non-zero when writing to /dev/null equivalent; ignore
+            check=False,
+            timeout=_SILENCE_TIMEOUT_SECONDS,
+        )
+    except FileNotFoundError as exc:
+        raise FFmpegNotFound(
+            f"ffmpeg binary not found on PATH (silence scan of {path}). "
+            f"{_FFMPEG_INSTALL_HINT}"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise FFmpegTimeout(
+            f"ffmpeg silencedetect timed out after "
+            f"{_SILENCE_TIMEOUT_SECONDS:.0f}s on {path}."
+        ) from exc
 
     # ffmpeg writes filter output to stderr
     stderr = result.stderr

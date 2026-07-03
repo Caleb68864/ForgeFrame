@@ -159,8 +159,15 @@ def _build_review_job(
         from workshop_video_brain.workspace.manifest import read_manifest
 
         workspace_id = read_manifest(workspace_path).workspace_id
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as exc:  # noqa: BLE001 -- best-effort manifest read
+        # Fall back to a fresh id so a preview render can still proceed, but log
+        # it: a random id breaks render<->workspace correlation, so a missing/
+        # unreadable manifest should not vanish silently.
+        logger.warning(
+            "Could not read workspace_id from manifest at %s; using a fresh id "
+            "(render/workspace correlation will be lost): %s",
+            workspace_path, exc,
+        )
     return RenderJob(
         workspace_id=workspace_id,
         project_path=str(project_path.resolve()),
