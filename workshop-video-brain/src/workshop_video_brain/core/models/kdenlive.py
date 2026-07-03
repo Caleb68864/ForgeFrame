@@ -45,6 +45,24 @@ class Guide(SerializableMixin):
     comment: str | None = None
 
 
+class SubtitleTrack(SerializableMixin):
+    """A real project subtitle track.
+
+    Attached by ``subtitles_attach`` and serialised as an
+    ``avfilter.subtitles`` filter on the timeline tractor plus the
+    ``subtitlesList`` / ``activeSubtitleIndex`` doc/sequence properties that
+    modern Kdenlive (24/25/26) reads.  ``file`` is the path to the sidecar
+    subtitle document (``.ass`` preferred, ``.srt`` accepted); ``style`` is an
+    optional libass ``av.force_style`` override string (styling is normally
+    baked into the ``.ass`` sidecar instead).
+    """
+
+    id: int = 0
+    name: str = "Subtitle"
+    file: str = ""
+    style: str | None = None
+
+
 class OpaqueElement(SerializableMixin):
     """An XML element that the parser did not recognise.  Stored verbatim for
     round-trip safety."""
@@ -63,4 +81,5 @@ class KdenliveProject(SerializableMixin):
     playlists: list[Playlist] = Field(default_factory=list)
     tractor: dict | None = None
     guides: list[Guide] = Field(default_factory=list)
+    subtitles: list[SubtitleTrack] = Field(default_factory=list)
     opaque_elements: list[OpaqueElement] = Field(default_factory=list)

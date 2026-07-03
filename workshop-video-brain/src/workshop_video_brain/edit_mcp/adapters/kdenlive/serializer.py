@@ -325,6 +325,28 @@ def serialize_project(
             _set_prop(main_bin, "kdenlive:docproperties.guides", guides_json)
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Could not serialise guides JSON: %s", exc)
+    # Subtitle tracks: modern Kdenlive reads the Subtitles panel from a
+    # docproperties.subtitlesList JSON (mirrored on the sequence tractor below)
+    # plus an activeSubtitleIndex.  The rendered pixels come from the
+    # avfilter.subtitles filter emitted on the tractor.
+    if project.subtitles:
+        try:
+            from workshop_video_brain.edit_mcp.pipelines.subtitle_track import (
+                active_subtitle_index,
+                subtitles_list_json,
+            )
+            _set_prop(
+                main_bin,
+                "kdenlive:docproperties.subtitlesList",
+                subtitles_list_json(project),
+            )
+            _set_prop(
+                main_bin,
+                "kdenlive:docproperties.activeSubtitleIndex",
+                active_subtitle_index(project),
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Could not serialise subtitlesList JSON: %s", exc)
     for producer in project.producers:
         entry = ET.SubElement(main_bin, "entry")
         entry.set("producer", producer.id)
@@ -465,6 +487,35 @@ def serialize_project(
                 )
             except Exception as exc:  # pragma: no cover - defensive
                 logger.warning("Could not serialise sequence guides JSON: %s", exc)
+
+        # Subtitle tracks: one avfilter.subtitles filter per track attached to
+        # the timeline tractor (the only place MLT/melt render subtitle pixels
+        # -- proven headless), plus the sequenceproperties mirror of the list.
+        if project.subtitles:
+            try:
+                from workshop_video_brain.edit_mcp.pipelines.subtitle_track import (
+                    subtitles_list_json,
+                )
+                _set_prop(
+                    tractor_elem,
+                    "kdenlive:sequenceproperties.subtitlesList",
+                    subtitles_list_json(project),
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("Could not serialise sequence subtitles JSON: %s", exc)
+            for sub in project.subtitles:
+                if not sub.file:
+                    continue
+                sub_filter = ET.SubElement(tractor_elem, "filter")
+                sub_filter.set("id", f"subtitle_{sub.id}")
+                _set_prop(sub_filter, "mlt_service", "avfilter.subtitles")
+                _set_prop(sub_filter, "av.filename", sub.file)
+                _set_prop(sub_filter, "av.alpha", "1")
+                if sub.style:
+                    _set_prop(sub_filter, "av.force_style", sub.style)
+                _set_prop(sub_filter, "disable", "0")
+                _set_prop(sub_filter, "internal_added", "237")
+                _set_prop(sub_filter, "kdenlive:id", str(sub.id))
 
     # ------------------------------------------------------------------
     # Guides (legacy top-level elements; harmless, kept for round-trip)

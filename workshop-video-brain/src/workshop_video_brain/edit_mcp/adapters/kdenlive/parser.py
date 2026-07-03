@@ -17,6 +17,7 @@ from workshop_video_brain.core.models.kdenlive import (
     PlaylistEntry,
     Producer,
     ProjectProfile,
+    SubtitleTrack,
     Track,
 )
 
@@ -118,10 +119,50 @@ def _parse_playlist(
     return Playlist(id=playlist_id, entries=entries), opaques
 
 
-def _parse_tractor(elem: ET.Element) -> tuple[dict, list[Track], list[OpaqueElement]]:
+# Tractor <property> keys the serializer regenerates from KdenliveProject state.
+# Skipping them on parse prevents a duplicate on the next serialize.
+_REGENERATED_TRACTOR_PROPS = frozenset(
+    {
+        "kdenlive:sequenceproperties.guides",
+        "kdenlive:sequenceproperties.subtitlesList",
+    }
+)
+
+
+def _filter_props(elem: ET.Element) -> dict[str, str]:
+    """Return the ``<property name=...>`` map of a filter/transition element."""
+    props: dict[str, str] = {}
+    for prop in elem:
+        if prop.tag == "property":
+            props[prop.get("name", "")] = prop.text or ""
+    return props
+
+
+def _subtitle_from_filter(elem: ET.Element) -> SubtitleTrack | None:
+    """Build a SubtitleTrack from an ``avfilter.subtitles`` tractor filter."""
+    props = _filter_props(elem)
+    if props.get("mlt_service") != "avfilter.subtitles":
+        return None
+    kid = props.get("kdenlive:id") or elem.get("id", "").replace("subtitle_", "")
+    try:
+        sub_id = int(kid)
+    except (TypeError, ValueError):
+        sub_id = 0
+    return SubtitleTrack(
+        id=sub_id,
+        name="Subtitle",
+        file=props.get("av.filename", ""),
+        style=props.get("av.force_style") or None,
+    )
+
+
+def _parse_tractor(
+    elem: ET.Element,
+) -> tuple[dict, list[Track], list[OpaqueElement], list[SubtitleTrack]]:
     tractor_dict: dict = {k: v for k, v in elem.attrib.items()}
     tracks: list[Track] = []
     opaques: list[OpaqueElement] = []
+    subtitles: list[SubtitleTrack] = []
     for child in elem:
         if child.tag == "track":
             producer_ref = child.get("producer", "")
@@ -137,12 +178,29 @@ def _parse_tractor(elem: ET.Element) -> tuple[dict, list[Track], list[OpaqueElem
             else:
                 track_type = "video"
             tracks.append(Track(id=producer_ref, track_type=track_type))
-        elif child.tag in ("transition", "filter"):
+        elif child.tag == "filter":
+            # Real subtitle tracks are avfilter.subtitles filters on the tractor;
+            # read them into first-class SubtitleTrack objects (round-trip) rather
+            # than losing them into the opaque store.
+            sub = _subtitle_from_filter(child)
+            if sub is not None:
+                subtitles.append(sub)
+            else:
+                opaques.append(_elem_to_opaque(child, position_hint="tractor"))
+        elif child.tag == "transition":
+            opaques.append(_elem_to_opaque(child, position_hint="tractor"))
+        elif child.tag == "property":
+            # Tractor sequence properties.  The serializer regenerates the guides
+            # and subtitlesList JSON from model state, so dropping those two here
+            # avoids a duplicate property on the next write; any other sequence
+            # property (groups, activeTrack, ...) is preserved verbatim.
+            if child.get("name") in _REGENERATED_TRACTOR_PROPS:
+                continue
             opaques.append(_elem_to_opaque(child, position_hint="tractor"))
         else:
             opaques.append(_elem_to_opaque(child, position_hint="tractor"))
             logger.warning("Unsupported element <%s> inside tractor", child.tag)
-    return tractor_dict, tracks, opaques
+    return tractor_dict, tracks, opaques, subtitles
 
 
 def _parse_guide(elem: ET.Element) -> Guide | None:
@@ -186,6 +244,7 @@ def parse_project(path: Path) -> KdenliveProject:
     tracks: list[Track] = []
     tractor: dict | None = None
     guides: list[Guide] = []
+    subtitles: list[SubtitleTrack] = []
     opaque_elements: list[OpaqueElement] = []
 
     for elem in root:
@@ -223,10 +282,13 @@ def parse_project(path: Path) -> KdenliveProject:
 
         elif tag == "tractor":
             try:
-                tractor_dict, tractor_tracks, tractor_opaques = _parse_tractor(elem)
+                tractor_dict, tractor_tracks, tractor_opaques, tractor_subs = (
+                    _parse_tractor(elem)
+                )
                 tractor = tractor_dict
                 tracks.extend(tractor_tracks)
                 opaque_elements.extend(tractor_opaques)
+                subtitles.extend(tractor_subs)
             except Exception as exc:
                 logger.warning("Skipping malformed <tractor>: %s", exc)
                 opaque_elements.append(_elem_to_opaque(elem))
@@ -254,5 +316,6 @@ def parse_project(path: Path) -> KdenliveProject:
         playlists=playlists,
         tractor=tractor,
         guides=guides,
+        subtitles=subtitles,
         opaque_elements=opaque_elements,
     )
