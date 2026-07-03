@@ -9,6 +9,20 @@ import json
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    bad_json_param,
+    corrupt_project,
+    media_unreadable,
+    not_found,
+    invalid_input,
+    from_exception,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -21,6 +35,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 
 
 @mcp.tool()
+@tool_guard
 def color_analyze(file_path: str) -> dict:
     """Analyze color metadata of a media file.
 
@@ -31,13 +46,14 @@ def color_analyze(file_path: str) -> dict:
 
     p = Path(file_path)
     if not p.exists():
-        return _err(f"File not found: {file_path}")
+        return err(f"File not found: {file_path}", error_type="missing_file", suggestion="Check the file path is correct and the file exists.", path=str(file_path))
 
     analysis = analyze_color(p)
     return _ok(analysis.model_dump())
 
 
 @mcp.tool()
+@tool_guard
 def color_apply_lut(
     workspace_path: str,
     project_file: str,
@@ -64,11 +80,11 @@ def color_apply_lut(
     try:
         ws_path, workspace = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     lut = Path(lut_path)
     if not lut.exists():
@@ -96,6 +112,7 @@ def color_apply_lut(
 
 
 @mcp.tool()
+@tool_guard
 def effect_color_wash(
     workspace_path: str,
     project_file: str,
@@ -151,16 +168,16 @@ def effect_color_wash(
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     try:
         stack = color_wash_params(color=color, intensity=intensity, opacity=opacity)
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     # Verify every service is in the catalog up front.
     resolved: list[tuple[str, str, dict[str, str]]] = []
@@ -184,7 +201,7 @@ def effect_color_wash(
     try:
         existing = patcher.list_effects(project, (track, clip))
     except (IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     first_effect_index = len(existing)
 
     inserted = 0
@@ -216,6 +233,7 @@ def effect_color_wash(
 
 
 @mcp.tool()
+@tool_guard
 def effect_color_grade(
     workspace_path: str,
     project_file: str,
@@ -267,11 +285,11 @@ def effect_color_grade(
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     if lut_path:
         lut_p = Path(lut_path)
@@ -295,14 +313,14 @@ def effect_color_grade(
             lut_path=lut_path,
         )
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
     project = parse_project(project_path)
     try:
         existing = patcher.list_effects(project, (track, clip))
     except (IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     first_effect_index = len(existing)
 
     try:
@@ -336,6 +354,7 @@ def effect_color_grade(
 # Paper-cutout transition bundle (tutorial: Mint Visual "Paper Cutout Transition")
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def transition_paper_cutout(
     workspace_path: str,
     project_file: str,
@@ -390,7 +409,7 @@ def transition_paper_cutout(
         try:
             raw = json.loads(points)
         except json.JSONDecodeError as exc:
-            return _err(f"Invalid points JSON: {exc}")
+            return err(f"Invalid points JSON: {exc}", error_type="bad_json_param", suggestion='Provide a JSON list of [x, y] pairs, e.g. [[0, 0], [0.5, 0.5]].', cause=str(exc))
         if not isinstance(raw, list):
             return _err("points must be a JSON list of [x, y] pairs")
         try:
@@ -401,11 +420,11 @@ def transition_paper_cutout(
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     try:
         record = create_snapshot(
@@ -437,12 +456,12 @@ def transition_paper_cutout(
             shadow_color=shadow_color,
         )
     except (ValueError, TypeError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     try:
         existing = patcher.list_effects(project, (track, clip))
     except (IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     first_effect_index = len(existing)
 
     inserted = 0
@@ -467,6 +486,7 @@ def transition_paper_cutout(
 
 
 @mcp.tool()
+@tool_guard
 def effect_scifi_greenscreen(
     workspace_path: str,
     project_file: str,
@@ -578,7 +598,7 @@ def effect_scifi_greenscreen(
             else None
         )
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     services = _sg.scifi_greenscreen_services(
         spill_correction=spill_correction, despill=despill
@@ -592,11 +612,11 @@ def effect_scifi_greenscreen(
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     # Single snapshot before writing.
     try:
@@ -611,7 +631,7 @@ def effect_scifi_greenscreen(
     try:
         existing = patcher.list_effects(project, (track, clip))
     except (IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     first_effect_index = len(existing)
 
     # Build the ordered XML for each filter. The advanced key reuses the
@@ -630,7 +650,7 @@ def effect_scifi_greenscreen(
             (track, clip), key_color, tolerance_near, tolerance_far, edge_smooth,
         )
     except (ValueError, IndexError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     if despill_p is not None:
         xml_by_service[_sg.DESPILL_SERVICE] = _build_filter_xml(
             mlt_service=_sg.DESPILL_SERVICE,

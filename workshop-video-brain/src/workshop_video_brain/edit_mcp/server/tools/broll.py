@@ -8,6 +8,20 @@ from __future__ import annotations
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    bad_json_param,
+    corrupt_project,
+    media_unreadable,
+    not_found,
+    invalid_input,
+    from_exception,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -21,6 +35,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 # B-Roll tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def broll_suggest(workspace_path: str) -> dict:
     """Analyze transcript and suggest specific B-roll shots.
 
@@ -36,12 +51,12 @@ def broll_suggest(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         from workshop_video_brain.production_brain.skills.broll import extract_and_format
 
         markdown, suggestions = extract_and_format(ws_path)
@@ -55,7 +70,7 @@ def broll_suggest(workspace_path: str) -> dict:
             "markdown": markdown,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -70,6 +85,7 @@ def _resolve_broll_vault() -> Path | None:
 
 
 @mcp.tool()
+@tool_guard
 def broll_library_index(workspace_path: str = "") -> dict:
     """Add clips from a project to the B-roll library.
 
@@ -98,7 +114,7 @@ def broll_library_index(workspace_path: str = "") -> dict:
         if workspace_path and workspace_path.strip():
             ws = Path(workspace_path)
             if not ws.exists():
-                return _err(f"Workspace path does not exist: {workspace_path}")
+                return missing_file(workspace_path, "Workspace path")
             result = index_project(vault, ws)
         else:
             # Index all projects
@@ -116,10 +132,11 @@ def broll_library_index(workspace_path: str = "") -> dict:
 
         return _ok(result)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def broll_library_search(
     query: str,
     content_type: str = "",
@@ -160,10 +177,11 @@ def broll_library_search(
             "count": len(results),
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def broll_library_tag(
     source_path: str,
     tags: str = "",
@@ -197,10 +215,11 @@ def broll_library_tag(
         entry = tag_clip(vault, source_path, tags=tag_list, rating=rating, description=description)
         return _ok(entry.model_dump())
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def broll_library_stats() -> dict:
     """Get B-roll library statistics.
 
@@ -220,4 +239,4 @@ def broll_library_stats() -> dict:
         stats = get_library_stats(vault)
         return _ok(stats)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)

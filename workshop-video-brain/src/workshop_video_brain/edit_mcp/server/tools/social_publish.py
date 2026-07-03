@@ -9,6 +9,20 @@ import json
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    bad_json_param,
+    corrupt_project,
+    media_unreadable,
+    not_found,
+    invalid_input,
+    from_exception,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -23,6 +37,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 # Social clip tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def social_find_clips(
     workspace_path: str,
     max_clips: int = 5,
@@ -82,10 +97,11 @@ def social_find_clips(
             "candidates": [json.loads(c.to_json()) for c in candidates],
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def social_generate_package(
     workspace_path: str,
     max_clips: int = 5,
@@ -114,10 +130,11 @@ def social_generate_package(
         )
         return _ok(result)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def social_clip_post(
     workspace_path: str,
     clip_index: int = 0,
@@ -178,7 +195,7 @@ def social_clip_post(
             "clip_title": post.clip_title,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -187,6 +204,7 @@ def social_clip_post(
 # Publishing tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def publish_bundle(
     workspace_path: str,
     video_url: str = "",
@@ -221,10 +239,11 @@ def publish_bundle(
             "publish_dir": str(ws_path / "reports" / "publish"),
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def publish_description(workspace_path: str) -> dict:
     """Generate YouTube description from transcript and chapters.
 
@@ -250,10 +269,11 @@ def publish_description(workspace_path: str) -> dict:
 
         return _ok({"description": description, "title": title})
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def publish_titles(workspace_path: str) -> dict:
     """Generate 4 title variants (searchable, curiosity, how-to, short).
 
@@ -277,10 +297,11 @@ def publish_titles(workspace_path: str) -> dict:
 
         return _ok(variants.model_dump())
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def publish_tags(workspace_path: str) -> dict:
     """Generate SEO tags and hashtags from transcript.
 
@@ -306,10 +327,11 @@ def publish_tags(workspace_path: str) -> dict:
 
         return _ok({"tags": tags, "hashtags": hashtags})
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def publish_summary(workspace_path: str) -> dict:
     """Generate short, medium, and long video summaries.
 
@@ -333,10 +355,11 @@ def publish_summary(workspace_path: str) -> dict:
 
         return _ok(summary.model_dump())
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def publish_note(workspace_path: str, video_url: str = "") -> dict:
     """Create Obsidian publish note with full bundle in vault.
 
@@ -367,7 +390,7 @@ def publish_note(workspace_path: str, video_url: str = "") -> dict:
 
         return _ok({"note_path": str(note_path), "video_url": video_url})
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -376,6 +399,7 @@ def publish_note(workspace_path: str, video_url: str = "") -> dict:
 # YouTube analytics tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def youtube_fetch_channel(channel_url: str, max_videos: int = 50) -> dict:
     """Fetch video data from a YouTube channel. Requires yt-dlp.
 
@@ -403,10 +427,11 @@ def youtube_fetch_channel(channel_url: str, max_videos: int = 50) -> dict:
             "videos": [v.model_dump(mode="json") for v in videos],
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def youtube_fetch_video(video_url: str) -> dict:
     """Fetch data for a single YouTube video.
 
@@ -422,10 +447,11 @@ def youtube_fetch_video(video_url: str) -> dict:
         video = fetch_single_video(video_url)
         return _ok(video.model_dump(mode="json"))
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def youtube_analyze(channel_url: str, max_videos: int = 50) -> dict:
     """Fetch and analyze a YouTube channel with stats and insights.
 
@@ -442,10 +468,11 @@ def youtube_analyze(channel_url: str, max_videos: int = 50) -> dict:
         stats = analyze_channel(channel_url, max_videos=max_videos)
         return _ok(stats.model_dump(mode="json"))
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def youtube_save_to_vault(channel_url: str, max_videos: int = 50) -> dict:
     """Fetch channel data and save analytics to Obsidian vault.
 
@@ -480,4 +507,4 @@ def youtube_save_to_vault(channel_url: str, max_videos: int = 50) -> dict:
             "paths": [str(p) for p in created],
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)

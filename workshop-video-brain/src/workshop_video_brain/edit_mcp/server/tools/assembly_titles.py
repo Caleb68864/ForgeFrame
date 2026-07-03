@@ -9,6 +9,20 @@ import json
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    bad_json_param,
+    corrupt_project,
+    media_unreadable,
+    not_found,
+    invalid_input,
+    from_exception,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -22,6 +36,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 # Replay tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def replay_generate(workspace_path: str, target_duration: float = 60.0) -> dict:
     """Generate a highlight-reel replay .kdenlive project from workspace markers.
 
@@ -38,12 +53,12 @@ def replay_generate(workspace_path: str, target_duration: float = 60.0) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         # Coerce target_duration from string if needed
         try:
             target_duration = float(target_duration)
@@ -62,9 +77,9 @@ def replay_generate(workspace_path: str, target_duration: float = 60.0) -> dict:
             "target_duration": target_duration,
         })
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -73,6 +88,7 @@ def replay_generate(workspace_path: str, target_duration: float = 60.0) -> dict:
 # Title card tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def title_cards_generate(workspace_path: str) -> dict:
     """Generate title cards from chapter markers in the workspace.
 
@@ -88,12 +104,12 @@ def title_cards_generate(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         from workshop_video_brain.edit_mcp.pipelines.title_cards import (
             generate_title_cards,
             save_title_cards,
@@ -108,7 +124,7 @@ def title_cards_generate(workspace_path: str) -> dict:
             "saved_to": str(out_path),
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -117,6 +133,7 @@ def title_cards_generate(workspace_path: str) -> dict:
 # Pacing tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def pacing_analyze(workspace_path: str) -> dict:
     """Analyse pacing and energy for all transcripts in the workspace.
 
@@ -133,12 +150,12 @@ def pacing_analyze(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         from workshop_video_brain.core.models.transcript import Transcript
         from workshop_video_brain.edit_mcp.pipelines.pacing_analyzer import (
             analyze_pacing,
@@ -180,7 +197,7 @@ def pacing_analyze(workspace_path: str) -> dict:
             "errors": errors,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -189,6 +206,7 @@ def pacing_analyze(workspace_path: str) -> dict:
 # Pattern Brain tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def pattern_extract(workspace_path: str) -> dict:
     """Extract MYOG build data (materials, measurements, steps, tips) from workspace transcripts.
 
@@ -205,12 +223,12 @@ def pattern_extract(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         from workshop_video_brain.production_brain.skills.pattern import (
             extract_and_format,
             save_build_notes,
@@ -235,9 +253,9 @@ def pattern_extract(workspace_path: str) -> dict:
             "notes_path": str(notes_path),
         })
     except FileNotFoundError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -246,6 +264,7 @@ def pattern_extract(workspace_path: str) -> dict:
 # Assembly tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def assembly_plan(workspace_path: str) -> dict:
     """Generate an assembly plan matching clips to script steps.
 
@@ -260,12 +279,12 @@ def assembly_plan(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
 
         from workshop_video_brain.edit_mcp.pipelines.assembly import build_assembly_plan
 
@@ -294,10 +313,11 @@ def assembly_plan(workspace_path: str) -> dict:
             "assembly_report": plan.assembly_report,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def assembly_build(
     workspace_path: str,
     add_transitions: bool = True,
@@ -318,12 +338,12 @@ def assembly_build(
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
 
         from workshop_video_brain.edit_mcp.pipelines.assembly import (
             assemble_timeline,
@@ -347,4 +367,4 @@ def assembly_build(
             "assembly_plan_path": str(ws_path / "reports" / "assembly_plan.json"),
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)

@@ -8,6 +8,20 @@ from __future__ import annotations
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    bad_json_param,
+    corrupt_project,
+    media_unreadable,
+    not_found,
+    invalid_input,
+    from_exception,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -22,6 +36,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 # Transcript tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def transcript_generate(workspace_path: str) -> dict:
     """Generate transcripts for all media assets in the workspace.
 
@@ -58,10 +73,11 @@ def transcript_generate(workspace_path: str) -> dict:
             "errors": report.errors,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def transcript_export(workspace_path: str, format: str = "srt") -> dict:
     """Export transcripts in the specified format.
 
@@ -74,12 +90,12 @@ def transcript_export(workspace_path: str, format: str = "srt") -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         transcripts_dir = ws_path / "transcripts"
         if not transcripts_dir.exists():
             return _ok({"exported": [], "count": 0})
@@ -97,7 +113,7 @@ def transcript_export(workspace_path: str, format: str = "srt") -> dict:
             return _err(f"Unsupported export format: {format}")
         return _ok({"exported": exported, "count": len(exported), "format": format})
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -106,6 +122,7 @@ def transcript_export(workspace_path: str, format: str = "srt") -> dict:
 # Marker tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def markers_auto_generate(workspace_path: str) -> dict:
     """Auto-generate markers for all transcripts in the workspace.
 
@@ -120,12 +137,12 @@ def markers_auto_generate(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         import json as _json
         from workshop_video_brain.core.models.transcript import Transcript
         from workshop_video_brain.edit_mcp.pipelines.auto_mark import generate_markers
@@ -177,10 +194,11 @@ def markers_auto_generate(workspace_path: str) -> dict:
             "errors": errors,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def markers_list(workspace_path: str) -> dict:
     """List all marker files and their marker counts in the workspace.
 
@@ -192,12 +210,12 @@ def markers_list(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         import json as _json
         markers_dir = ws_path / "markers"
         if not markers_dir.exists():
@@ -214,7 +232,7 @@ def markers_list(workspace_path: str) -> dict:
                 files.append({"path": str(mf), "count": 0})
         return _ok({"marker_files": files, "total_markers": total})
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -223,6 +241,7 @@ def markers_list(workspace_path: str) -> dict:
 # Subtitle tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def subtitles_generate(workspace_path: str) -> dict:
     """Generate SRT subtitles from transcripts in the workspace.
 
@@ -234,12 +253,12 @@ def subtitles_generate(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         from workshop_video_brain.core.models.transcript import Transcript
         from workshop_video_brain.edit_mcp.pipelines.subtitle_pipeline import generate_srt, save_srt
 
@@ -261,10 +280,11 @@ def subtitles_generate(workspace_path: str) -> dict:
 
         return _ok({"generated": generated, "count": len(generated), "errors": errors})
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def subtitles_export(workspace_path: str, format: str = "srt") -> dict:
     """Export subtitle files in the specified format.
 
@@ -277,12 +297,12 @@ def subtitles_export(workspace_path: str, format: str = "srt") -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         reports_dir = ws_path / "reports"
         if not reports_dir.exists():
             return _ok({"files": [], "count": 0})
@@ -292,7 +312,7 @@ def subtitles_export(workspace_path: str, format: str = "srt") -> dict:
             return _err(f"Unsupported subtitle export format: {format}")
         return _ok({"files": files, "count": len(files), "format": format})
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -301,6 +321,7 @@ def subtitles_export(workspace_path: str, format: str = "srt") -> dict:
 # Voiceover tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def voiceover_extract_segments(workspace_path: str) -> dict:
     """Extract transcript segments flagged for voiceover fixes.
 
@@ -317,12 +338,12 @@ def voiceover_extract_segments(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         from workshop_video_brain.production_brain.skills.voiceover import (
             extract_fixable_segments,
         )
@@ -333,4 +354,4 @@ def voiceover_extract_segments(workspace_path: str) -> dict:
             "count": len(segments),
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)

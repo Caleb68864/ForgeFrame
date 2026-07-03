@@ -8,6 +8,20 @@ from __future__ import annotations
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    bad_json_param,
+    corrupt_project,
+    media_unreadable,
+    not_found,
+    invalid_input,
+    from_exception,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -25,6 +39,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 # Render tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def render_preview(workspace_path: str) -> dict:
     """Render the latest working copy project with the preview profile.
 
@@ -38,12 +53,12 @@ def render_preview(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         from workshop_video_brain.edit_mcp.pipelines.render_pipeline import run_render
 
         working_copies = ws_path / "projects" / "working_copies"
@@ -54,7 +69,7 @@ def render_preview(workspace_path: str) -> dict:
             )
         kdenlive_files = sorted(working_copies.glob("*.kdenlive"))
         if not kdenlive_files:
-            return _err("No .kdenlive files found in projects/working_copies/")
+            return err("No .kdenlive files found in projects/working_copies/", error_type="missing_file", suggestion="Create a working copy first with project_create_working_copy, or verify this workspace has been initialised.")
 
         latest = latest_project(kdenlive_files)
         job = run_render(
@@ -70,10 +85,11 @@ def render_preview(workspace_path: str) -> dict:
             "log_path": job.log_path,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def render_status(workspace_path: str) -> dict:
     """List all render jobs for the workspace.
 
@@ -85,12 +101,12 @@ def render_status(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         from workshop_video_brain.edit_mcp.pipelines.render_pipeline import list_renders
 
         jobs = list_renders(workspace_path)
@@ -109,7 +125,7 @@ def render_status(workspace_path: str) -> dict:
             "count": len(jobs),
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -118,6 +134,7 @@ def render_status(workspace_path: str) -> dict:
 # Render tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def render_final_tool(
     workspace_path: str,
     profile: str,
@@ -155,14 +172,15 @@ def render_final_tool(
         data["output_path"] = str(data["output_path"])
         return _ok(data)
     except FileNotFoundError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except RuntimeError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
         return _err(f"Render failed: {exc}")
 
 
 @mcp.tool()
+@tool_guard
 def render_list_profiles() -> dict:
     """List all available render profiles with their names.
 
@@ -202,6 +220,7 @@ def render_list_profiles() -> dict:
 # Project profile tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def project_setup_profile(
     workspace_path: str,
     width: int,
@@ -234,12 +253,13 @@ def project_setup_profile(
             "colorspace": colorspace,
         })
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def project_match_source(workspace_path: str, source_file: str) -> dict:
     """Probe a source file and return recommended project profile settings.
 
@@ -253,12 +273,13 @@ def project_match_source(workspace_path: str, source_file: str) -> dict:
         result = match_profile_to_source(source_path)
         return _ok(result)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def qc_check(file_path: str, checks: str = "") -> dict:
     """Run automated quality checks on a rendered media file.
 
@@ -269,7 +290,7 @@ def qc_check(file_path: str, checks: str = "") -> dict:
 
     p = Path(file_path)
     if not p.exists():
-        return _err(f"File not found: {file_path}")
+        return err(f"File not found: {file_path}", error_type="missing_file", suggestion="Check the file path is correct and the file exists.", path=str(file_path))
 
     check_list: list[str] | None = None
     if checks.strip():

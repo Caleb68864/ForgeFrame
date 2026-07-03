@@ -8,6 +8,20 @@ from __future__ import annotations
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    bad_json_param,
+    corrupt_project,
+    media_unreadable,
+    not_found,
+    invalid_input,
+    from_exception,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -20,6 +34,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 
 
 @mcp.tool()
+@tool_guard
 def clip_insert(
     workspace_path: str,
     media_path: str,
@@ -38,12 +53,12 @@ def clip_insert(
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         if not media_path or not media_path.strip():
             return _err("media_path must be a non-empty string")
         media_file = Path(media_path)
@@ -59,7 +74,7 @@ def clip_insert(
         working_copies = ws_path / "projects" / "working_copies"
         kdenlive_files = sorted(working_copies.glob("*.kdenlive"))
         if not kdenlive_files:
-            return _err("No .kdenlive files found in projects/working_copies/")
+            return err("No .kdenlive files found in projects/working_copies/", error_type="missing_file", suggestion="Create a working copy first with project_create_working_copy, or verify this workspace has been initialised.")
 
         latest = latest_project(kdenlive_files)
         project = parse_project(latest)
@@ -163,7 +178,7 @@ def clip_insert(
             "skipped_intents": report.skipped,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -172,6 +187,7 @@ def clip_insert(
 # Clip tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def clips_label(workspace_path: str) -> dict:
     """Auto-label all clips in workspace from transcript and marker data.
 
@@ -183,12 +199,12 @@ def clips_label(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         from workshop_video_brain.edit_mcp.pipelines.clip_labeler import generate_labels
 
         labels = generate_labels(ws_path)
@@ -214,10 +230,11 @@ def clips_label(workspace_path: str) -> dict:
             ],
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def clips_search(workspace_path: str, query: str) -> dict:
     """Search clips by content. Returns ranked matches.
 
@@ -230,14 +247,14 @@ def clips_search(workspace_path: str, query: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         if not query or not query.strip():
             return _err("query must be a non-empty string")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         from workshop_video_brain.edit_mcp.pipelines.clip_search import search_clips
 
         results = search_clips(ws_path, query)
@@ -247,7 +264,7 @@ def clips_search(workspace_path: str, query: str) -> dict:
             "query": query,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 def _validate_clip_index(playlist, clip_index: int) -> list:
@@ -268,6 +285,7 @@ def _validate_clip_index(playlist, clip_index: int) -> list:
 # NLE clip operations
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def clip_remove(workspace_path: str, clip_index: int, track: int = 0) -> dict:
     """Remove a clip from the timeline by index.
 
@@ -278,7 +296,7 @@ def clip_remove(workspace_path: str, clip_index: int, track: int = 0) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path, project, latest = _load_latest_project(workspace_path)
         playlist = _resolve_playlist(project, track)
         _validate_clip_index(playlist, clip_index)
@@ -300,12 +318,13 @@ def clip_remove(workspace_path: str, clip_index: int, track: int = 0) -> dict:
             "playlist_id": playlist.id,
         })
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def clip_move(workspace_path: str, from_index: int, to_index: int, track: int = 0) -> dict:
     """Move a clip from one position to another on the timeline.
 
@@ -317,7 +336,7 @@ def clip_move(workspace_path: str, from_index: int, to_index: int, track: int = 
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path, project, latest = _load_latest_project(workspace_path)
         playlist = _resolve_playlist(project, track)
         real = _validate_clip_index(playlist, from_index)
@@ -344,12 +363,13 @@ def clip_move(workspace_path: str, from_index: int, to_index: int, track: int = 
             "playlist_id": playlist.id,
         })
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def clip_split(workspace_path: str, clip_index: int, split_at_seconds: float = 0.0) -> dict:
     """Split a clip at a timestamp (razor tool).
 
@@ -360,7 +380,7 @@ def clip_split(workspace_path: str, clip_index: int, split_at_seconds: float = 0
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path, project, latest = _load_latest_project(workspace_path)
         # clip_split operates on the first video playlist
         playlist = _resolve_playlist(project, 0)
@@ -392,12 +412,13 @@ def clip_split(workspace_path: str, clip_index: int, split_at_seconds: float = 0
             "playlist_id": playlist.id,
         })
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def clip_trim(
     workspace_path: str,
     clip_index: int,
@@ -414,7 +435,7 @@ def clip_trim(
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path, project, latest = _load_latest_project(workspace_path)
         playlist = _resolve_playlist(project, 0)
         _validate_clip_index(playlist, clip_index)
@@ -443,12 +464,13 @@ def clip_trim(
             "playlist_id": playlist.id,
         })
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def clip_ripple_delete(workspace_path: str, clip_index: int, track: int = 0) -> dict:
     """Remove a clip and close the gap.
 
@@ -459,7 +481,7 @@ def clip_ripple_delete(workspace_path: str, clip_index: int, track: int = 0) -> 
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path, project, latest = _load_latest_project(workspace_path)
         playlist = _resolve_playlist(project, track)
         _validate_clip_index(playlist, clip_index)
@@ -481,12 +503,13 @@ def clip_ripple_delete(workspace_path: str, clip_index: int, track: int = 0) -> 
             "playlist_id": playlist.id,
         })
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def clip_speed(
     workspace_path: str,
     clip_index: int,
@@ -503,7 +526,7 @@ def clip_speed(
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         if speed <= 0:
             return _err(f"speed must be greater than 0, got: {speed}")
         ws_path, project, latest = _load_latest_project(workspace_path)
@@ -528,12 +551,13 @@ def clip_speed(
             "playlist_id": playlist.id,
         })
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def audio_fade(
     workspace_path: str,
     clip_index: int,
@@ -552,7 +576,7 @@ def audio_fade(
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         if fade_type not in ("in", "out"):
             return _err(f"fade_type must be 'in' or 'out', got: {fade_type!r}")
         ws_path, project, latest = _load_latest_project(workspace_path)
@@ -587,12 +611,13 @@ def audio_fade(
             "playlist_id": playlist.id,
         })
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def track_add(workspace_path: str, track_type: str = "video", name: str = "") -> dict:
     """Add a new video or audio track to the project.
 
@@ -603,7 +628,7 @@ def track_add(workspace_path: str, track_type: str = "video", name: str = "") ->
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         if track_type not in ("video", "audio"):
             return _err(f"track_type must be 'video' or 'audio', got: {track_type!r}")
         ws_path, project, latest = _load_latest_project(workspace_path)
@@ -623,12 +648,13 @@ def track_add(workspace_path: str, track_type: str = "video", name: str = "") ->
             "new_playlist_id": new_playlist_id,
         })
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def track_mute(workspace_path: str, track_index: int, muted: bool = True) -> dict:
     """Mute or unmute a track.
 
@@ -639,7 +665,7 @@ def track_mute(workspace_path: str, track_index: int, muted: bool = True) -> dic
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path, project, latest = _load_latest_project(workspace_path)
 
         if track_index < 0 or track_index >= len(project.tracks):
@@ -668,12 +694,13 @@ def track_mute(workspace_path: str, track_index: int, muted: bool = True) -> dic
             "muted": muted,
         })
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def track_visibility(workspace_path: str, track_index: int, visible: bool = True) -> dict:
     """Show or hide a video track.
 
@@ -684,7 +711,7 @@ def track_visibility(workspace_path: str, track_index: int, visible: bool = True
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path, project, latest = _load_latest_project(workspace_path)
 
         if track_index < 0 or track_index >= len(project.tracks):
@@ -713,12 +740,13 @@ def track_visibility(workspace_path: str, track_index: int, visible: bool = True
             "visible": visible,
         })
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def gap_insert(
     workspace_path: str,
     position: int,
@@ -735,7 +763,7 @@ def gap_insert(
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         if duration_seconds <= 0:
             return _err(f"duration_seconds must be positive, got: {duration_seconds}")
         ws_path, project, latest = _load_latest_project(workspace_path)
@@ -768,6 +796,6 @@ def gap_insert(
             "skipped_intents": _report.skipped,
         })
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)

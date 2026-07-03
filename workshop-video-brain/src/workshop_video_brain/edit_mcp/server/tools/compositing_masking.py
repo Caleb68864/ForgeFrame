@@ -8,6 +8,20 @@ from __future__ import annotations
 import json
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    bad_json_param,
+    corrupt_project,
+    media_unreadable,
+    not_found,
+    invalid_input,
+    from_exception,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -23,6 +37,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 # Compositing tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def composite_pip(
     workspace_path: str,
     project_file: str,
@@ -67,11 +82,11 @@ def composite_pip(
     try:
         ws_path, workspace = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     proj_path = ws_path / project_file
     if not proj_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     try:
         pip_preset = PipPreset(preset)
@@ -107,7 +122,7 @@ def composite_pip(
                 project, overlay_track, base_track, start_frame, end_frame, layout
             )
     except (ValueError, KeyError, IndexError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     serialize_project(updated, proj_path)
     result = {
@@ -127,6 +142,7 @@ def composite_pip(
 
 
 @mcp.tool()
+@tool_guard
 def composite_wipe(
     workspace_path: str,
     project_file: str,
@@ -145,11 +161,11 @@ def composite_wipe(
     try:
         ws_path, workspace = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     proj_path = ws_path / project_file
     if not proj_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     create_snapshot(ws_path, proj_path, description=f"before_wipe_{wipe_type}")
 
@@ -157,13 +173,14 @@ def composite_wipe(
     try:
         updated = apply_wipe(project, track_a, track_b, start_frame, end_frame, wipe_type)
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     serialize_project(updated, proj_path)
     return _ok({"wipe_type": wipe_type, "frames": [start_frame, end_frame]})
 
 
 @mcp.tool()
+@tool_guard
 def composite_set(
     workspace_path: str,
     project_file: str,
@@ -186,11 +203,11 @@ def composite_set(
     try:
         ws_path, _workspace = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     proj_path = ws_path / project_file
     if not proj_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     if blend_mode not in BLEND_MODES:
         return _err(
@@ -214,7 +231,7 @@ def composite_set(
             geometry=geom,
         )
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     serialize_project(updated, proj_path)
     return _ok({
@@ -249,11 +266,11 @@ def _masking_prelude(workspace_path: str, project_file: str, description: str):
     try:
         ws_path, _workspace = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     try:
         record = create_snapshot(ws_path, project_path, description=description)
@@ -266,6 +283,7 @@ def _masking_prelude(workspace_path: str, project_file: str, description: str):
 
 
 @mcp.tool()
+@tool_guard
 def mask_set(
     workspace_path: str,
     project_file: str,
@@ -295,7 +313,7 @@ def mask_set(
     try:
         param_dict = json.loads(params) if params and params.strip() else {}
     except json.JSONDecodeError as exc:
-        return _err(f"Invalid params JSON: {exc}")
+        return err(f"Invalid params JSON: {exc}", error_type="bad_json_param", suggestion='Provide a valid JSON object, e.g. {"opacity": 0.5}.', cause=str(exc))
     if not isinstance(param_dict, dict):
         return _err("params must decode to a JSON object")
 
@@ -309,17 +327,17 @@ def mask_set(
             try:
                 mask_params = masking.MaskParams(**param_dict)
             except Exception as exc:  # pydantic ValidationError et al
-                return _err(str(exc))
+                return from_exception(exc)
             xml = masking.build_rotoscoping_xml((track, clip), mask_params)
         else:  # object_mask
             xml = masking.build_object_mask_xml((track, clip), param_dict)
     except (ValueError, TypeError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     try:
         patcher.insert_effect_xml(project, (track, clip), xml, position=0)
     except (IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     serialize_project(project, project_path)
     return _ok({
@@ -330,6 +348,7 @@ def mask_set(
 
 
 @mcp.tool()
+@tool_guard
 def mask_set_shape(
     workspace_path: str,
     project_file: str,
@@ -376,7 +395,7 @@ def mask_set_shape(
         try:
             raw = json.loads(points)
         except json.JSONDecodeError as exc:
-            return _err(f"Invalid points JSON: {exc}")
+            return err(f"Invalid points JSON: {exc}", error_type="bad_json_param", suggestion='Provide a JSON list of [x, y] pairs, e.g. [[0, 0], [0.5, 0.5]].', cause=str(exc))
         if not isinstance(raw, list):
             return _err("points must be a JSON list of [x, y] pairs")
         try:
@@ -396,7 +415,7 @@ def mask_set_shape(
             alpha_operation=alpha_operation,
         )
     except Exception as exc:  # ValidationError, ValueError
-        return _err(str(exc))
+        return from_exception(exc)
 
     prelude = _masking_prelude(
         workspace_path, project_file, f"before_mask_set_shape_{shape}"
@@ -409,7 +428,7 @@ def mask_set_shape(
         xml = masking.build_rotoscoping_xml((track, clip), mask_params)
         patcher.insert_effect_xml(project, (track, clip), xml, position=0)
     except (IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     serialize_project(project, project_path)
     return _ok({
@@ -421,6 +440,7 @@ def mask_set_shape(
 
 
 @mcp.tool()
+@tool_guard
 def mask_apply(
     workspace_path: str,
     project_file: str,
@@ -447,7 +467,7 @@ def mask_apply(
     try:
         filters = patcher.list_effects(project, (track, clip))
     except (IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     if 0 <= target_effect_index < len(filters):
         svc = filters[target_effect_index]["mlt_service"]
         if svc in ("mask_start", "mask_apply"):
@@ -468,13 +488,14 @@ def mask_apply(
             f"{exc}. Current stack: {len(available)} filters: {available}"
         )
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     serialize_project(project, project_path)
     return _ok({**result, "snapshot_id": snapshot_id})
 
 
 @mcp.tool()
+@tool_guard
 def effect_chroma_key(
     workspace_path: str,
     project_file: str,
@@ -505,13 +526,14 @@ def effect_chroma_key(
         position = len(existing)
         patcher.insert_effect_xml(project, (track, clip), xml, position=position)
     except (IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     serialize_project(project, project_path)
     return _ok({"effect_index": position, "snapshot_id": snapshot_id})
 
 
 @mcp.tool()
+@tool_guard
 def effect_chroma_key_advanced(
     workspace_path: str,
     project_file: str,
@@ -551,13 +573,14 @@ def effect_chroma_key_advanced(
         position = len(existing)
         patcher.insert_effect_xml(project, (track, clip), xml, position=position)
     except (IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     serialize_project(project, project_path)
     return _ok({"effect_index": position, "snapshot_id": snapshot_id})
 
 
 @mcp.tool()
+@tool_guard
 def effect_object_mask(
     workspace_path: str,
     project_file: str,
@@ -592,7 +615,7 @@ def effect_object_mask(
         position = len(existing)
         patcher.insert_effect_xml(project, (track, clip), xml, position=position)
     except (IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     serialize_project(project, project_path)
     return _ok({"effect_index": position, "snapshot_id": snapshot_id})

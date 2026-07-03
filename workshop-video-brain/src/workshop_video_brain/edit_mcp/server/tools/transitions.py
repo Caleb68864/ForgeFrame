@@ -8,6 +8,20 @@ from __future__ import annotations
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    bad_json_param,
+    corrupt_project,
+    media_unreadable,
+    not_found,
+    invalid_input,
+    from_exception,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -22,6 +36,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 # Transitions tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def transitions_apply(
     workspace_path: str,
     transition_type: str = "crossfade",
@@ -39,12 +54,12 @@ def transitions_apply(
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
         from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_versioned
@@ -56,7 +71,7 @@ def transitions_apply(
         working_copies = ws_path / "projects" / "working_copies"
         kdenlive_files = sorted(working_copies.glob("*.kdenlive"))
         if not kdenlive_files:
-            return _err("No .kdenlive files found in projects/working_copies/")
+            return err("No .kdenlive files found in projects/working_copies/", error_type="missing_file", suggestion="Create a working copy first with project_create_working_copy, or verify this workspace has been initialised.")
 
         latest = latest_project(kdenlive_files)
         project = parse_project(latest)
@@ -113,10 +128,11 @@ def transitions_apply(
             "skipped_intents": report.skipped,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def transitions_apply_at(
     workspace_path: str,
     timestamp_seconds: float,
@@ -136,12 +152,12 @@ def transitions_apply_at(
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         if timestamp_seconds < 0:
             return _err("timestamp_seconds must be >= 0")
 
@@ -168,7 +184,7 @@ def transitions_apply_at(
         working_copies = ws_path / "projects" / "working_copies"
         kdenlive_files = sorted(working_copies.glob("*.kdenlive"))
         if not kdenlive_files:
-            return _err("No .kdenlive files found in projects/working_copies/")
+            return err("No .kdenlive files found in projects/working_copies/", error_type="missing_file", suggestion="Create a working copy first with project_create_working_copy, or verify this workspace has been initialised.")
 
         latest = latest_project(kdenlive_files)
         project = parse_project(latest)
@@ -241,10 +257,11 @@ def transitions_apply_at(
             "skipped_intents": report.skipped,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def transitions_apply_between(
     workspace_path: str,
     clip_index: int,
@@ -261,12 +278,12 @@ def transitions_apply_between(
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         if clip_index < 0:
             return _err("clip_index must be >= 0")
 
@@ -293,7 +310,7 @@ def transitions_apply_between(
         working_copies = ws_path / "projects" / "working_copies"
         kdenlive_files = sorted(working_copies.glob("*.kdenlive"))
         if not kdenlive_files:
-            return _err("No .kdenlive files found in projects/working_copies/")
+            return err("No .kdenlive files found in projects/working_copies/", error_type="missing_file", suggestion="Create a working copy first with project_create_working_copy, or verify this workspace has been initialised.")
 
         latest = latest_project(kdenlive_files)
         project = parse_project(latest)
@@ -356,4 +373,4 @@ def transitions_apply_between(
             "skipped_intents": report.skipped,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)

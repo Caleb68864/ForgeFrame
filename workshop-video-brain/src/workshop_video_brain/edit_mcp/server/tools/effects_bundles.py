@@ -6,6 +6,20 @@ registers with the shared FastMCP singleton via ``@mcp.tool()``.
 from __future__ import annotations
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    bad_json_param,
+    corrupt_project,
+    media_unreadable,
+    not_found,
+    invalid_input,
+    from_exception,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -29,6 +43,7 @@ def _playlist_clip_duration_frames(playlist, clip_index: int) -> int:
 
 
 @mcp.tool()
+@tool_guard
 def effect_glitch_stack(
     workspace_path: str,
     project_file: str,
@@ -55,16 +70,16 @@ def effect_glitch_stack(
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     try:
         stack = glitch_stack_params(intensity)
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     # Verify every service is in the catalog up front.
     resolved: list[tuple[str, str, dict[str, str]]] = []
@@ -89,7 +104,7 @@ def effect_glitch_stack(
     try:
         existing = patcher.list_effects(project, (track, clip))
     except (IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     first_effect_index = len(existing)
 
     inserted = 0
@@ -121,6 +136,7 @@ def effect_glitch_stack(
 
 
 @mcp.tool()
+@tool_guard
 def effect_hologram(
     workspace_path: str,
     project_file: str,
@@ -183,11 +199,11 @@ def effect_hologram(
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     project = parse_project(project_path)
     fps = project.profile.fps or 25.0
@@ -197,7 +213,7 @@ def effect_hologram(
         playlist = _resolve_playlist(project, track)
         duration = _playlist_clip_duration_frames(playlist, clip)
     except (ValueError, IndexError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     resolved_end = end_frame
     if resolved_end < 0:
         resolved_end = duration - 1
@@ -214,7 +230,7 @@ def effect_hologram(
             fps=fps,
         )
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     # Verify every service resolves in the catalog up front.
     resolved: list[tuple[str, str, dict[str, str]]] = []
@@ -236,7 +252,7 @@ def effect_hologram(
     try:
         existing = patcher.list_effects(project, (track, clip))
     except (IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     first_effect_index = len(existing)
 
     inserted = 0
@@ -269,6 +285,7 @@ def effect_hologram(
 
 
 @mcp.tool()
+@tool_guard
 def effect_fade(
     workspace_path: str,
     project_file: str,
@@ -300,16 +317,16 @@ def effect_fade(
     try:
         _kf.resolve_easing(easing)
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     # Snapshot first (single)
     try:
@@ -329,7 +346,7 @@ def effect_fade(
         playlist = _resolve_playlist(project, track)
         duration = _playlist_clip_duration_frames(playlist, clip)
     except (ValueError, IndexError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     try:
         raw_keyframes = build_fade_keyframes(
@@ -340,7 +357,7 @@ def effect_fade(
             easing=easing,
         )
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     # Rebuild with proper rect dimensions (0 0 W H opacity).
     rekeyed = [
@@ -354,7 +371,7 @@ def effect_fade(
     try:
         rect_str = _kf.build_keyframe_string("rect", rekeyed, fps=fps)
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     xml = _build_filter_xml(
         mlt_service="affine",
@@ -369,7 +386,7 @@ def effect_fade(
         position = len(existing)
         patcher.insert_effect_xml(project, (track, clip), xml, position=position)
     except (IndexError, ValueError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     serialize_project(project, project_path)
     return _ok({
@@ -383,6 +400,7 @@ def effect_fade(
 
 
 @mcp.tool()
+@tool_guard
 def flash_cut_montage(
     workspace_path: str,
     project_file: str,
@@ -412,11 +430,11 @@ def flash_cut_montage(
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     # Verify effects present in catalog
     blur_kid, _ = _lookup_catalog_by_service("avfilter.dblur")
@@ -441,12 +459,12 @@ def flash_cut_montage(
         playlist = _resolve_playlist(project, track)
         duration = _playlist_clip_duration_frames(playlist, clip)
     except (ValueError, IndexError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     try:
         offsets = montage_split_offsets(n_cuts, duration)
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     # Perform splits from the RIGHTMOST offset to the leftmost so that
     # the clip at index `clip` keeps the same index during successive splits.
@@ -552,17 +570,17 @@ def _reorder_impl(
     try:
         ws_path, _workspace = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     try:
         project = parse_project(project_path)
         stack_len = len(patcher.list_effects(project, (track, clip)))
     except (ValueError, IndexError, KeyError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     if effect_index < 0 or effect_index >= stack_len:
         return _err(
@@ -590,7 +608,7 @@ def _reorder_impl(
     try:
         patcher.reorder_effects(project, (track, clip), effect_index, new_index)
     except (ValueError, IndexError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     serialize_project(project, project_path)
     return _ok({
@@ -601,6 +619,7 @@ def _reorder_impl(
 
 
 @mcp.tool()
+@tool_guard
 def move_to_top(
     workspace_path: str,
     project_file: str,
@@ -618,6 +637,7 @@ def move_to_top(
 
 
 @mcp.tool()
+@tool_guard
 def move_to_bottom(
     workspace_path: str,
     project_file: str,
@@ -635,6 +655,7 @@ def move_to_bottom(
 
 
 @mcp.tool()
+@tool_guard
 def move_up(
     workspace_path: str,
     project_file: str,
@@ -652,6 +673,7 @@ def move_up(
 
 
 @mcp.tool()
+@tool_guard
 def move_down(
     workspace_path: str,
     project_file: str,

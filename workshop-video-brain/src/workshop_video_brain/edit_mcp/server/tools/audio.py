@@ -8,6 +8,20 @@ from __future__ import annotations
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    bad_json_param,
+    corrupt_project,
+    media_unreadable,
+    not_found,
+    invalid_input,
+    from_exception,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -49,6 +63,7 @@ def _ensure_processed_dir(workspace_path: Path) -> Path:
 
 
 @mcp.tool()
+@tool_guard
 def audio_normalize(
     workspace_path: str,
     file_path: str = "",
@@ -67,7 +82,7 @@ def audio_normalize(
         if source is None:
             return _err("No audio file found. Provide file_path or add files to media/raw/.")
         if not source.exists():
-            return _err(f"File not found: {source}")
+            return err(f"File not found: {source}", error_type="missing_file", suggestion="Check the media path is correct and the file exists.", path=str(source))
 
         processed_dir = _ensure_processed_dir(ws_path)
         output = processed_dir / source.name
@@ -83,10 +98,11 @@ def audio_normalize(
             "duration_ms": result.duration_ms,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def audio_compress(workspace_path: str, file_path: str = "") -> dict:
     """Reduce dynamic range for consistent volume.
 
@@ -100,7 +116,7 @@ def audio_compress(workspace_path: str, file_path: str = "") -> dict:
         if source is None:
             return _err("No audio file found. Provide file_path or add files to media/raw/.")
         if not source.exists():
-            return _err(f"File not found: {source}")
+            return err(f"File not found: {source}", error_type="missing_file", suggestion="Check the media path is correct and the file exists.", path=str(source))
 
         processed_dir = _ensure_processed_dir(ws_path)
         output = processed_dir / source.name
@@ -115,10 +131,11 @@ def audio_compress(workspace_path: str, file_path: str = "") -> dict:
             "duration_ms": result.duration_ms,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def audio_denoise(
     workspace_path: str,
     file_path: str = "",
@@ -137,7 +154,7 @@ def audio_denoise(
         if source is None:
             return _err("No audio file found. Provide file_path or add files to media/raw/.")
         if not source.exists():
-            return _err(f"File not found: {source}")
+            return err(f"File not found: {source}", error_type="missing_file", suggestion="Check the media path is correct and the file exists.", path=str(source))
 
         processed_dir = _ensure_processed_dir(ws_path)
         output = processed_dir / source.name
@@ -153,10 +170,11 @@ def audio_denoise(
             "duration_ms": result.duration_ms,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def audio_enhance(
     workspace_path: str,
     file_path: str = "",
@@ -177,7 +195,7 @@ def audio_enhance(
         if source is None:
             return _err("No audio file found. Provide file_path or add files to media/raw/.")
         if not source.exists():
-            return _err(f"File not found: {source}")
+            return err(f"File not found: {source}", error_type="missing_file", suggestion="Check the media path is correct and the file exists.", path=str(source))
 
         processed_dir = _ensure_processed_dir(ws_path)
         output = processed_dir / source.name
@@ -195,10 +213,11 @@ def audio_enhance(
             "steps_count": len(chain_result["steps"]),
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def audio_enhance_all(
     workspace_path: str,
     preset: str = "youtube_voice",
@@ -227,10 +246,11 @@ def audio_enhance_all(
             "files": list(batch_result["results"].keys()),
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def audio_analyze(workspace_path: str, file_path: str = "") -> dict:
     """Analyze audio levels (LUFS, peak, noise floor) without modifying.
 
@@ -248,7 +268,7 @@ def audio_analyze(workspace_path: str, file_path: str = "") -> dict:
         if source is None:
             return _err("No audio file found. Provide file_path or add files to media/raw/.")
         if not source.exists():
-            return _err(f"File not found: {source}")
+            return err(f"File not found: {source}", error_type="missing_file", suggestion="Check the media path is correct and the file exists.", path=str(source))
 
         result = subprocess.run(
             [
@@ -279,4 +299,4 @@ def audio_analyze(workspace_path: str, file_path: str = "") -> dict:
             "raw": loudnorm_data,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)

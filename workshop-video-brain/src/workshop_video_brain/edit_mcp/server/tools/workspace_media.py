@@ -8,6 +8,20 @@ from __future__ import annotations
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    bad_json_param,
+    corrupt_project,
+    media_unreadable,
+    not_found,
+    invalid_input,
+    from_exception,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -23,6 +37,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 # Workspace tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def workspace_create(title: str, media_root: str, vault_path: str = "") -> dict:
     """Create a new workspace with the given title and media root.
 
@@ -60,10 +75,11 @@ def workspace_create(title: str, media_root: str, vault_path: str = "") -> dict:
             "status": workspace.project.status,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def workspace_status(workspace_path: str) -> dict:
     """Return manifest data for an existing workspace.
 
@@ -75,7 +91,7 @@ def workspace_status(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         from workshop_video_brain.workspace.manifest import read_manifest
         manifest = read_manifest(workspace_path)
         return _ok({
@@ -90,7 +106,7 @@ def workspace_status(workspace_path: str) -> dict:
             "updated_at": manifest.updated_at.isoformat(),
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -99,6 +115,7 @@ def workspace_status(workspace_path: str) -> dict:
 # Media tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def media_ingest(workspace_path: str) -> dict:
     """Run the full ingest pipeline: scan, proxy, transcribe, detect silence.
 
@@ -134,10 +151,11 @@ def media_ingest(workspace_path: str) -> dict:
             "errors": report.errors,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def media_list_assets(workspace_path: str) -> dict:
     """List media assets found in the workspace media/raw directory.
 
@@ -149,12 +167,12 @@ def media_list_assets(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         raw_dir = ws_path / "media" / "raw"
         if not raw_dir.exists():
             return _ok({"assets": [], "count": 0, "message": "media/raw directory not found"})
@@ -174,7 +192,7 @@ def media_list_assets(workspace_path: str) -> dict:
             "count": len(assets),
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -183,6 +201,7 @@ def media_list_assets(workspace_path: str) -> dict:
 # Proxy tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def proxy_generate(workspace_path: str) -> dict:
     """Generate proxy files for all media assets that need them.
 
@@ -194,12 +213,12 @@ def proxy_generate(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import scan_directory
         from workshop_video_brain.edit_mcp.adapters.ffmpeg.proxy import (
             ProxyPolicy,
@@ -230,7 +249,7 @@ def proxy_generate(workspace_path: str) -> dict:
                 skipped += 1
         return _ok({"proxied": proxied, "skipped": skipped, "errors": errors})
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -239,6 +258,7 @@ def proxy_generate(workspace_path: str) -> dict:
 # VFR Detection tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def media_check_vfr(workspace_path: str) -> dict:
     """Scan workspace for variable frame rate (VFR) video files.
 
@@ -260,12 +280,13 @@ def media_check_vfr(workspace_path: str) -> dict:
         data = asdict(report)
         return _ok(data)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
         return _err(f"VFR check failed: {exc}")
 
 
 @mcp.tool()
+@tool_guard
 def media_transcode_cfr(
     workspace_path: str,
     file_path: str,
@@ -296,8 +317,8 @@ def media_transcode_cfr(
         output = transcode_to_cfr(source, target_fps=fps)
         return _ok({"output_path": str(output), "target_fps": target_fps or "auto"})
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except RuntimeError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
         return _err(f"Transcode failed: {exc}")

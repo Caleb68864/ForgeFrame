@@ -9,6 +9,20 @@ import json
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    bad_json_param,
+    corrupt_project,
+    media_unreadable,
+    not_found,
+    invalid_input,
+    from_exception,
+)
 from workshop_video_brain.edit_mcp.server import tools as _tools_pkg
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
@@ -19,6 +33,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 
 
 @mcp.tool()
+@tool_guard
 def effect_add(
     workspace_path: str,
     project_file: str,
@@ -43,11 +58,11 @@ def effect_add(
     try:
         ws_path, workspace = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     if not effect_name or not effect_name.strip():
         return _err("effect_name must be a non-empty string")
@@ -58,7 +73,7 @@ def effect_add(
         try:
             param_dict = _json.loads(params)
         except _json.JSONDecodeError as exc:
-            return _err(f"Invalid params JSON: {exc}")
+            return err(f"Invalid params JSON: {exc}", error_type="bad_json_param", suggestion='Provide a valid JSON object, e.g. {"opacity": 0.5}.', cause=str(exc))
 
     # Snapshot before modify
     create_snapshot(ws_path, project_path, description=f"before_effect_{effect_name}")
@@ -80,6 +95,7 @@ def effect_add(
 
 
 @mcp.tool()
+@tool_guard
 def effect_list_common() -> dict:
     """List common Kdenlive/MLT effects with descriptions.
 
@@ -136,6 +152,7 @@ def _effect_def_to_dict(eff) -> dict:
 
 
 @mcp.tool()
+@tool_guard
 def effect_info(name: str) -> dict:
     """Return full schema for a Kdenlive effect by kdenlive_id or MLT service tag.
 
@@ -168,6 +185,7 @@ def effect_info(name: str) -> dict:
 # Stack-Ops tools (effects_copy / effects_paste / effect_reorder)
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def effects_copy(
     workspace_path: str,
     project_file: str,
@@ -186,17 +204,17 @@ def effects_copy(
     try:
         ws_path, _workspace = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     project = parse_project(project_path)
     try:
         stack = stack_ops.serialize_stack(project, (track, clip))
     except IndexError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     return _ok({
         "project_file": project_file,
@@ -206,6 +224,7 @@ def effects_copy(
 
 
 @mcp.tool()
+@tool_guard
 def effects_paste(
     workspace_path: str,
     project_file: str,
@@ -228,11 +247,11 @@ def effects_paste(
     try:
         ws_path, _workspace = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     try:
         stack_dict = json.loads(stack)
@@ -253,7 +272,7 @@ def effects_paste(
     try:
         count = stack_ops.apply_paste(project, (track, clip), stack_dict, mode)
     except (ValueError, IndexError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     serialize_project(project, project_path)
     return _ok({
@@ -267,6 +286,7 @@ def effects_paste(
 
 
 @mcp.tool()
+@tool_guard
 def effect_reorder(
     workspace_path: str,
     project_file: str,
@@ -289,11 +309,11 @@ def effect_reorder(
     try:
         ws_path, _workspace = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     try:
         record = create_snapshot(
@@ -315,7 +335,7 @@ def effect_reorder(
             f"{exc}. Current stack: {len(available)} filters: {available}"
         )
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     serialize_project(project, project_path)
     return _ok({
@@ -352,6 +372,7 @@ def _resolve_vault_root_for_tools():
 
 
 @mcp.tool()
+@tool_guard
 def effect_stack_preset(
     workspace_path: str,
     project_file: str,
@@ -374,11 +395,11 @@ def effect_stack_preset(
     try:
         ws_path, _workspace = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     tags_list: list[str] = []
     if tags.strip():
@@ -415,12 +436,12 @@ def effect_stack_preset(
             apply_hints=hints_obj,
         )
     except (ValueError, IndexError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     try:
         stack_presets.validate_against_catalog(preset, strict=True)
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     try:
         path = stack_presets.save_preset(
@@ -438,6 +459,7 @@ def effect_stack_preset(
 
 
 @mcp.tool()
+@tool_guard
 def effect_stack_apply(
     workspace_path: str,
     project_file: str,
@@ -459,11 +481,11 @@ def effect_stack_apply(
     try:
         ws_path, _workspace = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     mode_override = mode.strip() or None
     if mode_override is not None and mode_override not in ("append", "prepend", "replace"):
@@ -477,7 +499,7 @@ def effect_stack_apply(
             name, workspace_root=ws_path, vault_root=vault_root
         )
     except FileNotFoundError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     try:
         record = create_snapshot(
@@ -493,7 +515,7 @@ def effect_stack_apply(
             project, (track, clip), preset, mode_override=mode_override
         )
     except (ValueError, IndexError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     serialize_project(project, project_path)
 
@@ -511,6 +533,7 @@ def effect_stack_apply(
 
 
 @mcp.tool()
+@tool_guard
 def effect_stack_promote(workspace_path: str, name: str) -> dict:
     """Promote a workspace preset to the vault tier (markdown with frontmatter).
 
@@ -523,7 +546,7 @@ def effect_stack_promote(workspace_path: str, name: str) -> dict:
     try:
         ws_path, _workspace = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     vault_root = _tools_pkg._resolve_vault_root_for_tools()
     if vault_root is None:
@@ -544,7 +567,7 @@ def effect_stack_promote(workspace_path: str, name: str) -> dict:
             name, ws_path, vault_root, source_video_note_path=note_path
         )
     except FileNotFoundError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:  # noqa: BLE001
         return _err(f"Failed to promote preset: {exc}")
 
@@ -556,6 +579,7 @@ def effect_stack_promote(workspace_path: str, name: str) -> dict:
 
 
 @mcp.tool()
+@tool_guard
 def effect_stack_list(workspace_path: str, scope: str = "all") -> dict:
     """List presets across workspace and/or vault tiers.
 
@@ -571,7 +595,7 @@ def effect_stack_list(workspace_path: str, scope: str = "all") -> dict:
     try:
         ws_path, _workspace = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     vault_root = _tools_pkg._resolve_vault_root_for_tools()
     result = stack_presets.list_presets(ws_path, vault_root, scope=scope)

@@ -8,6 +8,20 @@ from __future__ import annotations
 import json
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    bad_json_param,
+    corrupt_project,
+    media_unreadable,
+    not_found,
+    invalid_input,
+    from_exception,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -91,11 +105,11 @@ def _keyframe_tool_impl(
     try:
         ws_path, workspace = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     if mode not in ("replace", "merge"):
         return _err(f"mode must be 'replace' or 'merge'; got {mode!r}")
@@ -105,7 +119,7 @@ def _keyframe_tool_impl(
     except json.JSONDecodeError as exc:
         return _err(f"Invalid keyframes JSON: {exc}")
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project = parse_project(project_path)
     fps = project.profile.fps
@@ -113,7 +127,7 @@ def _keyframe_tool_impl(
     try:
         new_kfs = _build_keyframe_objects(items, fps)
     except (ValueError, TypeError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     clip_ref = (track, clip)
     ease_family = workspace.keyframe_defaults.ease_family
@@ -146,7 +160,7 @@ def _keyframe_tool_impl(
             f"Available effects: {available}"
         )
     except (ValueError, LookupError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     # Snapshot before write
     try:
@@ -169,7 +183,7 @@ def _keyframe_tool_impl(
             f"Available effects: {available}"
         )
     except (ValueError, LookupError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     serialize_project(project, project_path)
 
@@ -185,6 +199,7 @@ def _keyframe_tool_impl(
 
 
 @mcp.tool()
+@tool_guard
 def effect_find(
     workspace_path: str,
     project_file: str,
@@ -202,26 +217,27 @@ def effect_find(
     try:
         ws_path, _workspace = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     project_path = ws_path / project_file
     if not project_path.exists():
-        return _err(f"Project file not found: {project_file}")
+        return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
     project = parse_project(project_path)
     try:
         idx = effect_find_pipe.find(project, (track, clip), name)
     except LookupError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except IndexError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
     return _ok({"effect_index": int(idx)})
 
 
 @mcp.tool()
+@tool_guard
 def effect_keyframe_set_scalar(
     workspace_path: str,
     project_file: str,
@@ -240,6 +256,7 @@ def effect_keyframe_set_scalar(
 
 
 @mcp.tool()
+@tool_guard
 def effect_keyframe_set_rect(
     workspace_path: str,
     project_file: str,
@@ -258,6 +275,7 @@ def effect_keyframe_set_rect(
 
 
 @mcp.tool()
+@tool_guard
 def effect_keyframe_set_color(
     workspace_path: str,
     project_file: str,

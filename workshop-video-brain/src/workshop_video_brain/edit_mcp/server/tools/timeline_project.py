@@ -8,6 +8,20 @@ from __future__ import annotations
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
+    tool_guard,
+    err,
+    missing_file,
+    missing_binary,
+    missing_dependency,
+    invalid_index,
+    bad_json_param,
+    corrupt_project,
+    media_unreadable,
+    not_found,
+    invalid_input,
+    from_exception,
+)
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
@@ -22,6 +36,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 # Timeline tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def timeline_build_review(workspace_path: str, mode: str = "ranked") -> dict:
     """Build a Kdenlive review timeline from workspace markers.
 
@@ -34,12 +49,12 @@ def timeline_build_review(workspace_path: str, mode: str = "ranked") -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         import json as _json
         from workshop_video_brain.core.models.markers import Marker, MarkerConfig
         from workshop_video_brain.core.models.media import MediaAsset
@@ -73,10 +88,11 @@ def timeline_build_review(workspace_path: str, mode: str = "ranked") -> dict:
             "mode": mode,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def timeline_build_selects(workspace_path: str, min_confidence: float = 0.5) -> dict:
     """Build a Kdenlive selects timeline from high-confidence markers.
 
@@ -89,12 +105,12 @@ def timeline_build_selects(workspace_path: str, min_confidence: float = 0.5) -> 
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         # Coerce min_confidence from string if needed
         try:
             min_confidence = float(min_confidence)
@@ -136,7 +152,7 @@ def timeline_build_selects(workspace_path: str, min_confidence: float = 0.5) -> 
             "min_confidence": min_confidence,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -145,6 +161,7 @@ def timeline_build_selects(workspace_path: str, min_confidence: float = 0.5) -> 
 # Project tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def project_create_working_copy(workspace_path: str) -> dict:
     """Create an initial .kdenlive working copy for the workspace.
 
@@ -156,12 +173,12 @@ def project_create_working_copy(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         from workshop_video_brain.workspace.manifest import read_manifest
         from workshop_video_brain.core.models.kdenlive import (
             KdenliveProject,
@@ -192,10 +209,11 @@ def project_create_working_copy(workspace_path: str) -> dict:
         out_path = serialize_versioned(project, ws_path, slug)
         return _ok({"kdenlive_path": str(out_path), "title": manifest.project_title})
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def project_validate(workspace_path: str) -> dict:
     """Validate the latest .kdenlive working copy project file.
 
@@ -207,12 +225,12 @@ def project_validate(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
         from workshop_video_brain.edit_mcp.adapters.kdenlive.validator import validate_project
 
@@ -224,7 +242,7 @@ def project_validate(workspace_path: str) -> dict:
             )
         kdenlive_files = sorted(working_copies.glob("*.kdenlive"))
         if not kdenlive_files:
-            return _err("No .kdenlive files found in projects/working_copies/")
+            return err("No .kdenlive files found in projects/working_copies/", error_type="missing_file", suggestion="Create a working copy first with project_create_working_copy, or verify this workspace has been initialised.")
 
         latest = latest_project(kdenlive_files)
         project = parse_project(latest)
@@ -244,10 +262,11 @@ def project_validate(workspace_path: str) -> dict:
             ],
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def project_summary(workspace_path: str) -> dict:
     """Return a summary of the workspace project including all artifacts.
 
@@ -259,14 +278,14 @@ def project_summary(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         from workshop_video_brain.workspace.manifest import read_manifest
 
         ws = Path(workspace_path)
         if not ws.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         manifest = read_manifest(ws)
 
         transcripts = list((ws / "transcripts").glob("*_transcript.json")) if (ws / "transcripts").exists() else []
@@ -287,7 +306,7 @@ def project_summary(workspace_path: str) -> dict:
             "latest_timeline": str(timelines[-1]) if timelines else None,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -296,6 +315,7 @@ def project_summary(workspace_path: str) -> dict:
 # Snapshot tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def snapshot_list(workspace_path: str) -> dict:
     """List all snapshots in the workspace.
 
@@ -307,12 +327,12 @@ def snapshot_list(workspace_path: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         from workshop_video_brain.workspace.snapshot import list_snapshots
 
         records = list_snapshots(workspace_path)
@@ -334,10 +354,11 @@ def snapshot_list(workspace_path: str) -> dict:
             "count": len(records),
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def snapshot_restore(workspace_path: str, snapshot_id: str) -> dict:
     """Restore a snapshot by its directory name (timestamp-slug).
 
@@ -350,14 +371,14 @@ def snapshot_restore(workspace_path: str, snapshot_id: str) -> dict:
     """
     try:
         if not workspace_path or not workspace_path.strip():
-            return _err("workspace_path must be a non-empty string")
+            return invalid_input("workspace_path must be a non-empty string", "Pass the absolute path to your workspace directory (the folder containing projects/, media/, etc.).", param="workspace_path")
         if not snapshot_id or not snapshot_id.strip():
             return _err("snapshot_id must be a non-empty string")
         ws_path = Path(workspace_path)
         if not ws_path.exists():
-            return _err(f"Workspace path does not exist: {workspace_path}")
+            return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
-            return _err(f"Workspace path is not a directory: {workspace_path}")
+            return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         # Validate that snapshot_id exists
         snap_dir = ws_path / "projects" / "snapshots" / snapshot_id
         if not snap_dir.exists():
@@ -375,9 +396,9 @@ def snapshot_restore(workspace_path: str, snapshot_id: str) -> dict:
     except FileNotFoundError as exc:
         return _err(f"Snapshot not found: {exc}")
     except ValueError as exc:
-        return _err(str(exc))
+        return from_exception(exc)
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -386,6 +407,7 @@ def snapshot_restore(workspace_path: str, snapshot_id: str) -> dict:
 # ForgeFrame init tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def forgeframe_init(
     vault_path: str,
     projects_root: str,
@@ -427,10 +449,11 @@ def forgeframe_init(
             "notes": result.notes,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def forgeframe_status() -> dict:
     """Check ForgeFrame initialization status.
 
@@ -444,7 +467,7 @@ def forgeframe_status() -> dict:
         from workshop_video_brain.app.init_system import check_status
         return _ok(check_status())
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 
@@ -453,6 +476,7 @@ def forgeframe_status() -> dict:
 # Project tools
 # ---------------------------------------------------------------------------
 @mcp.tool()
+@tool_guard
 def project_new(
     title: str,
     brain_dump: str = "",
@@ -489,10 +513,11 @@ def project_new(
             "brain_dump": result.brain_dump,
         })
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def project_list() -> dict:
     """List all ForgeFrame projects with their status.
 
@@ -504,10 +529,11 @@ def project_list() -> dict:
         projects = list_projects()
         return _ok({"projects": projects, "count": len(projects)})
     except Exception as exc:
-        return _err(str(exc))
+        return from_exception(exc)
 
 
 @mcp.tool()
+@tool_guard
 def project_archive(
     workspace_path: str,
     output_dir: str,
@@ -527,4 +553,4 @@ def project_archive(
         )
         return _ok(manifest.model_dump())
     except Exception as e:
-        return _err(str(e))
+        return from_exception(e)
