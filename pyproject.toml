@@ -22,7 +22,14 @@ wvb = "workshop_video_brain.app.cli:main"
 
 [dependency-groups]
 dev = ["ruff", "mypy"]
-test = ["pytest", "pytest-cov"]
+test = ["pytest", "pytest-cov", "pillow"]
+
+[tool.uv]
+# Sync both groups by default so the documented `uv run pytest` resolves the
+# in-venv pytest/fastmcp instead of falling back to a ~/.local pytest. `pillow`
+# is a test dependency for the review-loop / image-overlay pipelines (which
+# import PIL lazily at runtime).
+default-groups = ["dev", "test"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["workshop-video-brain/src/workshop_video_brain"]

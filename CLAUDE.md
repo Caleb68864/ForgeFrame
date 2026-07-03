@@ -21,3 +21,11 @@ All skills MUST be prefixed with `ff-` (e.g., `ff-video-idea-to-outline`, not `v
 ### Testing
 - Run all tests: `uv run pytest tests/ -v`
 - Python 3.12+ required
+- `pytest` + `pytest-cov` + `pillow` live in the `test` dependency-group and are
+  synced by default (`[tool.uv] default-groups = ["dev", "test"]` in the root
+  `pyproject.toml`). Run `uv sync` after changing groups so `uv run pytest`
+  resolves the in-venv `pytest`/`fastmcp` instead of a `~/.local` fallback.
+- Two `tests/integration/test_ai_mask_tool.py` cases need the optional `ai-mask`
+  extra: `uv pip install rembg onnxruntime` (or `uv pip install -e '.[ai-mask]'`).
+  It is intentionally NOT in the default sync (rembg pulls a heavy transitive
+  stack); without it those two tests fail with `EngineUnavailable`.
