@@ -82,4 +82,10 @@ class KdenliveProject(SerializableMixin):
     tractor: dict | None = None
     guides: list[Guide] = Field(default_factory=list)
     subtitles: list[SubtitleTrack] = Field(default_factory=list)
+    # Document-level ``kdenlive:docproperties.*`` settings keyed by suffix
+    # (e.g. ``"enableproxy"`` -> ``"1"``).  Holds non-serializer-managed doc
+    # properties -- notably proxy settings -- so they round-trip on the
+    # ``main_bin`` playlist.  Managed keys (version/profile/uuid/guides/
+    # subtitlesList/activeSubtitleIndex) are regenerated and never stored here.
+    docproperties: dict[str, str] = Field(default_factory=dict)
     opaque_elements: list[OpaqueElement] = Field(default_factory=list)

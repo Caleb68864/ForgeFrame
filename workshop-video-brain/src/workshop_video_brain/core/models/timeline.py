@@ -158,6 +158,41 @@ class AddEffect(TimelineIntent):
     params: dict[str, str] = Field(default_factory=dict)
 
 
+class AddTrackFilter(TimelineIntent):
+    """Attach an MLT filter to an entire track (its <playlist>), not a clip.
+
+    Rendered by the serializer as a ``<filter>`` child of the track's
+    ``<playlist>`` (after all entries) -- the only placement melt honours for a
+    whole-track audio effect (verified against a live melt render; see
+    ``docs/research/2026-07-03-tutorial-effect-analysis/timeline-audio-mixing.md``).
+
+    ``track_ref`` is the playlist id; ``track_index`` an optional explicit index
+    into ``project.playlists`` (used when the id cannot be resolved). ``filter_id``
+    is a stable id so re-running a tool replaces rather than stacks (when
+    ``replace`` is true).
+    """
+    track_ref: str = ""
+    track_index: int = -1
+    mlt_service: str = ""
+    filter_id: str = ""
+    properties: dict[str, str] = Field(default_factory=dict)
+    replace: bool = True
+
+
+class ClearTrackFilters(TimelineIntent):
+    """Remove track-level filters on a track (optionally filtered).
+
+    Used to make multi-filter tools (e.g. a multi-band EQ) idempotent: clear the
+    prior band stack before adding the fresh one. ``id_prefix`` matches filter
+    ids that start with the prefix; ``service`` matches ``mlt_service`` exactly.
+    An empty ``id_prefix`` and ``service`` clears *all* track filters on the track.
+    """
+    track_ref: str = ""
+    track_index: int = -1
+    id_prefix: str = ""
+    service: str = ""
+
+
 class AddComposition(TimelineIntent):
     """Insert an MLT transition (composition) between two tracks.
 

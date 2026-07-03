@@ -203,8 +203,38 @@ def run_render(
     # Register as queued
     register_render(workspace_root, job)
 
+    # Proxy render safety: a full-res render must never silently use a proxy.
+    # Kdenlive stores the PROXY path in each producer's ``resource`` at edit time
+    # (verified against KDE source), so melt would render low-res.  For every mode
+    # except the explicit "proxy" preview, render a resources-swapped copy whose
+    # producers point back at their originals (Kdenlive's KdenliveDoc::useOriginals).
+    render_source = project_path
+    if mode != "proxy":
+        try:
+            from workshop_video_brain.edit_mcp.pipelines.proxy_wiring import (
+                originals_render_copy,
+            )
+            render_source = originals_render_copy(
+                project_path, workspace_root / "renders" / ".proxy_originals"
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Proxy originals-swap skipped for %s: %s", project_path, exc)
+
+    exec_job = (
+        job
+        if Path(render_source) == project_path
+        else job.model_copy(
+            update={"project_path": str(Path(render_source).resolve())}
+        )
+    )
+
     # Execute
-    completed_job = execute_render(job, profile)
+    completed_job = execute_render(exec_job, profile)
+    # Keep the registry pointing at the original project, not the swap copy.
+    if exec_job is not job:
+        completed_job = completed_job.model_copy(
+            update={"project_path": job.project_path}
+        )
 
     # Register final status
     register_render(workspace_root, completed_job)

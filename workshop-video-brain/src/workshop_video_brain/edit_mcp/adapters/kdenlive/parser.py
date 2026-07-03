@@ -113,10 +113,60 @@ def _parse_playlist(
             # Represent gaps as PlaylistEntry with empty producer_id
             length = int(child.get("length", "0"))
             entries.append(PlaylistEntry(producer_id="", in_point=0, out_point=length - 1))
+        elif child.tag == "filter":
+            # Track-level effects are stored by real Kdenlive/MLT as <filter>
+            # direct children of the track <playlist> (§3 "Track-level audio").
+            # Tag with the track association attribute (no clip_index) so they
+            # round-trip back into the playlist.
+            felem = ET.fromstring(ET.tostring(child, encoding="unicode"))
+            felem.set("track", str(track_index))
+            opaques.append(
+                OpaqueElement(
+                    tag="filter",
+                    xml_string=ET.tostring(felem, encoding="unicode"),
+                    position_hint="track",
+                )
+            )
         else:
             opaques.append(_elem_to_opaque(child, position_hint=f"playlist:{playlist_id}"))
             logger.warning("Unsupported element <%s> inside playlist '%s'", child.tag, playlist_id)
     return Playlist(id=playlist_id, entries=entries), opaques
+
+
+# ``kdenlive:docproperties.*`` suffixes the serializer regenerates from model
+# state.  Excluded on parse so they don't duplicate in the docproperties bag.
+_MANAGED_DOCPROPERTY_SUFFIXES = frozenset(
+    {
+        "version",
+        "profile",
+        "uuid",
+        "guides",
+        "subtitlesList",
+        "activeSubtitleIndex",
+    }
+)
+
+_DOCPROP_PREFIX = "kdenlive:docproperties."
+
+
+def _parse_docproperties(elem: ET.Element) -> dict[str, str]:
+    """Read non-managed ``kdenlive:docproperties.*`` off the main_bin playlist.
+
+    Returns a suffix-keyed dict (e.g. ``{"enableproxy": "1"}``).  Proxy settings
+    live here; the serializer re-emits them so they round-trip.
+    """
+    docprops: dict[str, str] = {}
+    for child in elem:
+        if child.tag != "property":
+            continue
+        name = child.get("name", "")
+        if not name.startswith(_DOCPROP_PREFIX):
+            continue
+        suffix = name[len(_DOCPROP_PREFIX):]
+        if suffix in _MANAGED_DOCPROPERTY_SUFFIXES:
+            continue
+        docprops[suffix] = child.text or ""
+    return docprops
 
 
 # Tractor <property> keys the serializer regenerates from KdenliveProject state.
@@ -245,6 +295,7 @@ def parse_project(path: Path) -> KdenliveProject:
     tractor: dict | None = None
     guides: list[Guide] = []
     subtitles: list[SubtitleTrack] = []
+    docproperties: dict[str, str] = {}
     opaque_elements: list[OpaqueElement] = []
 
     for elem in root:
@@ -266,8 +317,13 @@ def parse_project(path: Path) -> KdenliveProject:
 
         elif tag == "playlist":
             playlist_id = elem.get("id", "")
-            # Skip serializer-generated infrastructure playlists
-            if playlist_id == "main_bin" or playlist_id.endswith("_kdpair"):
+            # Skip serializer-generated infrastructure playlists, but harvest the
+            # non-managed docproperties (proxy settings) off main_bin first so
+            # they round-trip.
+            if playlist_id == "main_bin":
+                docproperties.update(_parse_docproperties(elem))
+                continue
+            if playlist_id.endswith("_kdpair"):
                 continue
             try:
                 # track_index = the position this playlist will occupy in the
@@ -317,5 +373,6 @@ def parse_project(path: Path) -> KdenliveProject:
         tractor=tractor,
         guides=guides,
         subtitles=subtitles,
+        docproperties=docproperties,
         opaque_elements=opaque_elements,
     )

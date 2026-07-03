@@ -164,6 +164,42 @@ def _extract_clip_filters(
     return by_clip, consumed
 
 
+def _extract_track_filters(
+    project: KdenliveProject,
+) -> tuple[dict[int, list[ET.Element]], set[int]]:
+    """Pull *track-level* filters out of ``opaque_elements`` keyed by track index.
+
+    A track filter is a ``<filter>`` OpaqueElement carrying a ``track=`` attribute
+    but NO ``clip_index=`` (the absence distinguishes it from a clip effect).  MLT
+    applies a filter nested in a track's ``<playlist>`` to the whole track, so the
+    serializer relocates these there (§3 "Track-level audio", render-verified).
+    The ``track`` association attribute is stripped from the emitted element (it
+    is not MLT vocabulary); the parser reconstructs it on read.
+
+    Returns ``(filters_by_track, consumed_ids)``.
+    """
+    by_track: dict[int, list[ET.Element]] = {}
+    consumed: set[int] = set()
+    for opaque in project.opaque_elements:
+        if opaque.tag != "filter":
+            continue
+        try:
+            felem = ET.fromstring(opaque.xml_string)
+        except ET.ParseError:
+            continue
+        track = felem.get("track")
+        if track is None or felem.get("clip_index") is not None:
+            continue
+        try:
+            key = int(track)
+        except ValueError:
+            continue
+        felem.attrib.pop("track", None)
+        by_track.setdefault(key, []).append(felem)
+        consumed.add(id(opaque))
+    return by_track, consumed
+
+
 def _hide_directives(
     project: KdenliveProject,
 ) -> tuple[dict[str, str], set[int]]:
@@ -347,6 +383,14 @@ def serialize_project(
             )
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Could not serialise subtitlesList JSON: %s", exc)
+    # ---- PROXY / doc-property bag (round-tripped, suffix-keyed) ----
+    # Non-managed ``kdenlive:docproperties.*`` settings (notably proxy: enableproxy,
+    # proxyparams, proxyextension, generateproxy, proxyminsize, ...).  Managed keys
+    # (version/profile/uuid/guides/subtitlesList/activeSubtitleIndex) are emitted
+    # above and excluded by the parser, so no duplicates arise here.
+    for suffix, value in project.docproperties.items():
+        _set_prop(main_bin, f"kdenlive:docproperties.{suffix}", str(value))
+    # ---- end PROXY / doc-property bag ----
     for producer in project.producers:
         entry = ET.SubElement(main_bin, "entry")
         entry.set("producer", producer.id)
@@ -359,6 +403,10 @@ def serialize_project(
     # Clip effects are relocated from the flat opaque store into the clip
     # <entry> they target (§1.1 filter-placement fix).
     clip_filters, consumed_filter_ids = _extract_clip_filters(project)
+    # Track-level audio/effect filters are relocated into the track's <playlist>
+    # (after its entries) -- the only placement melt applies track-wide
+    # (§3 "Track-level audio", render-verified).
+    track_filters, consumed_track_filter_ids = _extract_track_filters(project)
     for track_index, playlist in enumerate(project.playlists):
         pl_elem = ET.SubElement(root, "playlist")
         pl_elem.set("id", playlist.id)
@@ -375,6 +423,9 @@ def serialize_project(
             else:
                 blank_elem = ET.SubElement(pl_elem, "blank")
                 blank_elem.set("length", str(entry.out_point + 1))
+        # Track-wide filters nest after all entries/blanks.
+        for felem in track_filters.get(track_index, []):
+            pl_elem.append(felem)
 
         # Paired empty playlist (Kdenlive convention)
         pair_elem = ET.SubElement(root, "playlist")
@@ -533,7 +584,7 @@ def serialize_project(
     # (transitions/filters) is nested back inside the <tractor> so MLT applies
     # it, everything else goes to the document root.
     # ------------------------------------------------------------------
-    consumed_ids = consumed_filter_ids | consumed_hide_ids
+    consumed_ids = consumed_filter_ids | consumed_track_filter_ids | consumed_hide_ids
     for opaque in project.opaque_elements:
         if id(opaque) in consumed_ids:
             continue

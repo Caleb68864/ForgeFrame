@@ -25,8 +25,10 @@ from workshop_video_brain.core.models.timeline import (
     AddEffect,
     AddGuide,
     AddSubtitleRegion,
+    AddTrackFilter,
     AddTransition,
     AudioFade,
+    ClearTrackFilters,
     CreateTrack,
     InsertGap,
     MoveClip,
@@ -178,6 +180,10 @@ def patch_project(
             _apply_set_track_visibility(new_project, intent)
         elif isinstance(intent, AddEffect):
             _apply_add_effect(new_project, intent)
+        elif isinstance(intent, ClearTrackFilters):
+            _apply_clear_track_filters(new_project, intent)
+        elif isinstance(intent, AddTrackFilter):
+            _apply_add_track_filter(new_project, intent)
         elif isinstance(intent, AddComposition):
             _apply_add_composition(new_project, intent)
         elif isinstance(intent, AddTransition):
@@ -980,6 +986,122 @@ def _apply_add_effect(project: KdenliveProject, intent: AddEffect) -> None:
     logger.info(
         "AddEffect: applied '%s' to clip %d on track '%s'",
         intent.effect_name, intent.clip_index, playlist.id,
+    )
+
+
+def _resolve_track_index(project: KdenliveProject, track_ref: str, track_index: int) -> int | None:
+    """Resolve a track filter's target playlist index.
+
+    Prefers an explicit non-negative ``track_index``; otherwise looks the
+    ``track_ref`` playlist id up. Returns None if neither resolves.
+    """
+    if track_index is not None and track_index >= 0:
+        if track_index < len(project.playlists):
+            return track_index
+        return None
+    return _playlist_index(project, track_ref)
+
+
+def _track_filter_meta(elem: OpaqueElement) -> tuple[int | None, str, str] | None:
+    """Return ``(track_index, filter_id, mlt_service)`` for a track filter opaque.
+
+    A *track* filter is a ``<filter>`` OpaqueElement carrying a ``track``
+    attribute but NO ``clip_index`` (the absence is what distinguishes it from a
+    clip-scoped filter). Returns None for anything else.
+    """
+    if elem.tag != "filter":
+        return None
+    try:
+        root = ET.fromstring(elem.xml_string)
+    except ET.ParseError:
+        return None
+    track = root.get("track")
+    if track is None or root.get("clip_index") is not None:
+        return None
+    try:
+        tidx = int(track)
+    except ValueError:
+        return None
+    service = root.get("mlt_service") or ""
+    for child in root:
+        if child.tag == "property" and child.get("name") == "mlt_service":
+            service = child.text or service
+    return tidx, root.get("id") or "", service
+
+
+def _apply_clear_track_filters(project: KdenliveProject, intent: ClearTrackFilters) -> None:
+    """Remove track-level filters on a track, optionally filtered by id/service."""
+    idx = _resolve_track_index(project, intent.track_ref, intent.track_index)
+    if idx is None:
+        logger.warning(
+            "ClearTrackFilters: no track for ref '%s'/index %d – skipped.",
+            intent.track_ref, intent.track_index,
+        )
+        return
+
+    def _keep(el: OpaqueElement) -> bool:
+        meta = _track_filter_meta(el)
+        if meta is None:
+            return True
+        tidx, fid, service = meta
+        if tidx != idx:
+            return True
+        if intent.id_prefix and not fid.startswith(intent.id_prefix):
+            return True
+        if intent.service and service != intent.service:
+            return True
+        return False  # matches -> drop
+
+    before = len(project.opaque_elements)
+    project.opaque_elements = [el for el in project.opaque_elements if _keep(el)]
+    logger.info(
+        "ClearTrackFilters: track %d removed %d filter(s) (prefix=%r service=%r)",
+        idx, before - len(project.opaque_elements), intent.id_prefix, intent.service,
+    )
+
+
+def _apply_add_track_filter(project: KdenliveProject, intent: AddTrackFilter) -> None:
+    """Attach an MLT filter to a whole track (nested in its <playlist>).
+
+    The filter is stored as a ``<filter track="{index}" mlt_service="...">``
+    OpaqueElement WITHOUT a ``clip_index`` attribute; the serializer relocates it
+    into the track's ``<playlist>`` (after entries), the only placement melt
+    applies for a track-wide audio effect (§3 "Track-level audio").
+    """
+    idx = _resolve_track_index(project, intent.track_ref, intent.track_index)
+    if idx is None:
+        logger.warning(
+            "AddTrackFilter: no track for ref '%s'/index %d – skipped.",
+            intent.track_ref, intent.track_index,
+        )
+        return
+
+    fid = intent.filter_id or f"trackfilter_{idx}_{intent.mlt_service}"
+
+    if intent.replace:
+        def _keep(el: OpaqueElement) -> bool:
+            meta = _track_filter_meta(el)
+            if meta is None:
+                return True
+            tidx, existing_id, _service = meta
+            return not (tidx == idx and existing_id == fid)
+        project.opaque_elements = [el for el in project.opaque_elements if _keep(el)]
+
+    props_xml = "".join(
+        f'<property name="{k}">{v}</property>' for k, v in intent.properties.items()
+    )
+    xml = (
+        f'<filter id="{fid}" '
+        f'mlt_service="{intent.mlt_service}" '
+        f'track="{idx}">'
+        f'{props_xml}'
+        f'</filter>'
+    )
+    project.opaque_elements.append(
+        OpaqueElement(tag="filter", xml_string=xml, position_hint="track")
+    )
+    logger.info(
+        "AddTrackFilter: '%s' (id=%s) on track %d", intent.mlt_service, fid, idx
     )
 
 

@@ -1,10 +1,12 @@
 # Kdenlive Tutorials
 
 - [[13 - Timelapse - Slideshow Effect - Kdenlive 2020 Tutorial]]
+- [[2024 Kdenlive Tutorial - Best Proxy Settings for Performance and Quality]]
 - [[2024 Kdenlive Tutorial - How to Use Keyframes]]
 - [[2024 Kdenlive Tutorial - Picture in Picture Effect]]
 - [[2025 Kdenlive Tutorial - Using Guides to add YouTube Chapters]]
 - [[Blender, Friction & Kdenlive - Animation Pipeline]]
+- [[Boost Your Sound Quality - Kdenlive Tutorial]]
 - [[Burning Text Effect - Kdenlive Tutorial]]
 - [[Color Correction & Grading - Kdenlive Effects Tutorial]]
 - [[Composite Fire Into Your Scenes - Kdenlive Tutorial]]
@@ -18,6 +20,7 @@
 - [[How to Apply Speed Ramping in Kdenlive 2025]]
 - [[How to Create Lower Thirds Titles (Animated Lower Thirds) - Kdenlive Tutorial Geekoutdoors.com EP995]]
 - [[How to Create Realistic Holograms in KDENlive - VFX Tutorial]]
+- [[How to Mix Your Voice with Music - Kdenlive Tutorial]]
 - [[How to Remove Objects From Video - Kdenlive Tutorial]]
 - [[How to Set Up Speech-to-Text in Kdenlive (Whisper AI Tutorial)]]
 - [[Kdenlive 25 - Video Editor]]
