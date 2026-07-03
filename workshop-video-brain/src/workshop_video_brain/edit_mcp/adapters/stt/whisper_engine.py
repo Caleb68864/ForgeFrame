@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import UUID
 
 from workshop_video_brain.core.models import Transcript, TranscriptSegment
+from workshop_video_brain.core.models.transcript import WordTiming
 
 logger = logging.getLogger(__name__)
 
@@ -121,17 +122,32 @@ def _transcribe_faster_whisper(
     if language:
         kwargs["language"] = language
 
-    segments_iter, info = wm.transcribe(str(audio_path), **kwargs)
+    # word_timestamps=True populates the per-word timing on each segment,
+    # unlocking jump-to-word transcript search (index in transcript_index).
+    segments_iter, info = wm.transcribe(
+        str(audio_path), word_timestamps=True, **kwargs
+    )
 
     segments: list[TranscriptSegment] = []
     raw_parts: list[str] = []
 
     for seg in segments_iter:
+        words: list[WordTiming] = []
+        for w in (getattr(seg, "words", None) or []):
+            words.append(
+                WordTiming(
+                    word=(w.word or "").strip(),
+                    start=float(w.start),
+                    end=float(w.end),
+                    confidence=float(getattr(w, "probability", 1.0)),
+                )
+            )
         ts = TranscriptSegment(
             start_seconds=seg.start,
             end_seconds=seg.end,
             text=seg.text.strip(),
             confidence=float(getattr(seg, "avg_logprob", 1.0)),
+            words=words,
         )
         segments.append(ts)
         raw_parts.append(seg.text.strip())
