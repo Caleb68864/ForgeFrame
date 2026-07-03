@@ -6,7 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
+from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import (
+    ProjectParseError,
+    parse_project,
+)
 from workshop_video_brain.core.models.kdenlive import KdenliveProject
 
 # ---------------------------------------------------------------------------
@@ -175,14 +178,27 @@ class TestParserSampleFixture:
 
 
 class TestParserGracefulFailure:
-    def test_nonexistent_file_returns_empty_project(self, tmp_path):
-        project = parse_project(tmp_path / "nonexistent.kdenlive")
-        assert isinstance(project, KdenliveProject)
+    def test_nonexistent_file_raises(self, tmp_path):
+        missing = tmp_path / "nonexistent.kdenlive"
+        with pytest.raises(ProjectParseError) as exc_info:
+            parse_project(missing)
+        assert exc_info.value.path == missing
 
-    def test_empty_file_returns_empty_project(self, tmp_path):
+    def test_empty_file_raises(self, tmp_path):
         p = tmp_path / "empty.kdenlive"
         p.write_text("", encoding="utf-8")
-        project = parse_project(p)
+        with pytest.raises(ProjectParseError):
+            parse_project(p)
+
+    def test_nonexistent_file_missing_ok_returns_empty_project(self, tmp_path):
+        project = parse_project(tmp_path / "nonexistent.kdenlive", missing_ok=True)
+        assert isinstance(project, KdenliveProject)
+        assert project.producers == []
+
+    def test_empty_file_missing_ok_returns_empty_project(self, tmp_path):
+        p = tmp_path / "empty.kdenlive"
+        p.write_text("", encoding="utf-8")
+        project = parse_project(p, missing_ok=True)
         assert isinstance(project, KdenliveProject)
 
 

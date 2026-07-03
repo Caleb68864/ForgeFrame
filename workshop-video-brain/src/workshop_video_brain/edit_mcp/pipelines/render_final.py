@@ -147,22 +147,24 @@ def render_final(
 # ---------------------------------------------------------------------------
 
 def _find_latest_project(workspace_root: Path) -> Path:
-    """Find the most recently modified .kdenlive project in workspace.
+    """Find the latest .kdenlive project in workspace.
+
+    Uses the shared version-aware selector (``_v<N>`` suffix, mtime fallback)
+    so this agrees with every other "latest project" site in the codebase.
 
     Raises:
         FileNotFoundError: If no .kdenlive files found.
     """
-    kdenlive_files = sorted(
-        workspace_root.rglob("*.kdenlive"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    if not kdenlive_files:
+    from workshop_video_brain.edit_mcp.server.tools_helpers import latest_project
+
+    kdenlive_files = list(workspace_root.rglob("*.kdenlive"))
+    latest = latest_project(kdenlive_files)
+    if latest is None:
         raise FileNotFoundError(
             f"No .kdenlive project found in {workspace_root}. "
             "Create a project first."
         )
-    return kdenlive_files[0]
+    return latest
 
 
 def _extension_for_profile(profile: RenderProfile) -> str:
@@ -178,7 +180,28 @@ def _build_render_command(
     output_path: Path,
     profile: RenderProfile,
 ) -> list[str]:
-    """Build FFmpeg render command from profile settings."""
+    """Build the render command for *project_file*.
+
+    ``.kdenlive`` inputs are MLT XML: ffmpeg cannot demux them, so they are
+    routed through the melt executor (``adapters/render/executor``), which
+    already handles alpha/advanced consumer properties.  Direct media inputs
+    (mp4/mov/...) stay on the ffmpeg re-encode path.
+    """
+    if Path(project_file).suffix.lower() == ".kdenlive":
+        from workshop_video_brain.edit_mcp.adapters.render.executor import (
+            _build_melt_command,
+        )
+        return _build_melt_command(Path(project_file), str(output_path), profile)
+
+    return _build_ffmpeg_render_command(project_file, output_path, profile)
+
+
+def _build_ffmpeg_render_command(
+    project_file: Path,
+    output_path: Path,
+    profile: RenderProfile,
+) -> list[str]:
+    """Build an ffmpeg re-encode command for a direct-media input."""
     cmd = [
         "ffmpeg",
         "-y",

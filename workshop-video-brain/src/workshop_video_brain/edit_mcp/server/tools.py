@@ -18,6 +18,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
     _require_workspace,
     _validate_workspace_path,
+    latest_project,
 )
 
 
@@ -648,7 +649,7 @@ def project_validate(workspace_path: str) -> dict:
         if not kdenlive_files:
             return _err("No .kdenlive files found in projects/working_copies/")
 
-        latest = kdenlive_files[-1]
+        latest = latest_project(kdenlive_files)
         project = parse_project(latest)
         report = validate_project(project, workspace_root=ws_path)
         return _ok({
@@ -754,7 +755,7 @@ def transitions_apply(
         if not kdenlive_files:
             return _err("No .kdenlive files found in projects/working_copies/")
 
-        latest = kdenlive_files[-1]
+        latest = latest_project(kdenlive_files)
         project = parse_project(latest)
 
         try:
@@ -786,20 +787,27 @@ def transitions_apply(
                     )
                 )
 
-        patched = patch_project(
+        patched, report = patch_project(
             project,
             intents,
             workspace_root=ws_path,
             project_path=latest,
+            with_report=True,
         )
+        if report.all_skipped:
+            return _err(
+                "transitions_apply applied no changes: "
+                + "; ".join(s["reason"] for s in report.skipped)
+            )
         manifest = read_manifest(workspace_path)
         slug = manifest.slug or "project"
         out_path = serialize_versioned(patched, ws_path, slug)
         return _ok({
             "kdenlive_path": str(out_path),
-            "transitions_applied": len(intents),
+            "transitions_applied": len(report.applied),
             "transition_type": transition_type,
             "preset": preset,
+            "skipped_intents": report.skipped,
         })
     except Exception as exc:
         return _err(str(exc))
@@ -859,7 +867,7 @@ def transitions_apply_at(
         if not kdenlive_files:
             return _err("No .kdenlive files found in projects/working_copies/")
 
-        latest = kdenlive_files[-1]
+        latest = latest_project(kdenlive_files)
         project = parse_project(latest)
 
         fps = project.profile.fps or 25.0
@@ -908,7 +916,15 @@ def transitions_apply_at(
             )
         ]
 
-        patched = patch_project(project, intents, workspace_root=ws_path, project_path=latest)
+        patched, report = patch_project(
+            project, intents, workspace_root=ws_path, project_path=latest,
+            with_report=True,
+        )
+        if report.all_skipped:
+            return _err(
+                "transitions_apply_at applied no changes: "
+                + "; ".join(s["reason"] for s in report.skipped)
+            )
         manifest = read_manifest(workspace_path)
         slug = manifest.slug or "project"
         out_path = serialize_versioned(patched, ws_path, slug)
@@ -919,6 +935,7 @@ def transitions_apply_at(
             "timestamp_seconds": timestamp_seconds,
             "boundary_frame": int(target_frame + best_distance if best_left else target_frame),
             "playlist_id": best_playlist_id,
+            "skipped_intents": report.skipped,
         })
     except Exception as exc:
         return _err(str(exc))
@@ -975,7 +992,7 @@ def transitions_apply_between(
         if not kdenlive_files:
             return _err("No .kdenlive files found in projects/working_copies/")
 
-        latest = kdenlive_files[-1]
+        latest = latest_project(kdenlive_files)
         project = parse_project(latest)
 
         # Find first video playlist
@@ -1013,7 +1030,15 @@ def transitions_apply_between(
             )
         ]
 
-        patched = patch_project(project, intents, workspace_root=ws_path, project_path=latest)
+        patched, report = patch_project(
+            project, intents, workspace_root=ws_path, project_path=latest,
+            with_report=True,
+        )
+        if report.all_skipped:
+            return _err(
+                "transitions_apply_between applied no changes: "
+                + "; ".join(s["reason"] for s in report.skipped)
+            )
         manifest = read_manifest(workspace_path)
         slug = manifest.slug or "project"
         out_path = serialize_versioned(patched, ws_path, slug)
@@ -1025,6 +1050,7 @@ def transitions_apply_between(
             "left_clip": left.producer_id,
             "right_clip": right.producer_id,
             "playlist_id": video_playlist.id,
+            "skipped_intents": report.skipped,
         })
     except Exception as exc:
         return _err(str(exc))
@@ -1072,7 +1098,7 @@ def clip_insert(
         if not kdenlive_files:
             return _err("No .kdenlive files found in projects/working_copies/")
 
-        latest = kdenlive_files[-1]
+        latest = latest_project(kdenlive_files)
         project = parse_project(latest)
 
         fps = project.profile.fps or 25.0
@@ -1154,7 +1180,12 @@ def clip_insert(
             source_path=str(media_file),
         )
 
-        patched = patch_project(project, [intent])
+        patched, report = patch_project(project, [intent], with_report=True)
+        if report.all_skipped:
+            return _err(
+                "clip_insert applied no changes: "
+                + "; ".join(s["reason"] for s in report.skipped)
+            )
         manifest = read_manifest(workspace_path)
         slug = manifest.slug or "project"
         out_path = serialize_versioned(patched, ws_path, slug)
@@ -1166,6 +1197,7 @@ def clip_insert(
             "out_frame": out_frame,
             "playlist_id": video_playlist.id,
             "position": position,
+            "skipped_intents": report.skipped,
         })
     except Exception as exc:
         return _err(str(exc))
@@ -1286,7 +1318,7 @@ def render_preview(workspace_path: str) -> dict:
         if not kdenlive_files:
             return _err("No .kdenlive files found in projects/working_copies/")
 
-        latest = kdenlive_files[-1]
+        latest = latest_project(kdenlive_files)
         job = run_render(
             workspace_root=ws_path,
             project_path=latest,
@@ -1840,10 +1872,10 @@ def _load_latest_project(workspace_path: str):
     from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
     ws_path = _validate_workspace_path(workspace_path)
     working_copies = ws_path / "projects" / "working_copies"
-    kdenlive_files = sorted(working_copies.glob("*.kdenlive")) if working_copies.exists() else []
+    kdenlive_files = list(working_copies.glob("*.kdenlive")) if working_copies.exists() else []
     if not kdenlive_files:
         raise FileNotFoundError("No .kdenlive files found in projects/working_copies/")
-    latest = kdenlive_files[-1]
+    latest = latest_project(kdenlive_files)
     project = parse_project(latest)
     return ws_path, project, latest
 
@@ -1906,7 +1938,12 @@ def clip_remove(workspace_path: str, clip_index: int, track: int = 0) -> dict:
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
         intent = RemoveClip(track_ref=playlist.id, clip_index=clip_index)
-        patched = patch_project(project, [intent])
+        patched, _report = patch_project(project, [intent], with_report=True)
+        if _report.all_skipped:
+            return _err(
+                "no changes applied: "
+                + "; ".join(s["reason"] for s in _report.skipped)
+            )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
             "kdenlive_path": str(out_path),
@@ -1944,7 +1981,12 @@ def clip_move(workspace_path: str, from_index: int, to_index: int, track: int = 
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
         intent = MoveClip(track_ref=playlist.id, from_index=from_index, to_index=to_index)
-        patched = patch_project(project, [intent])
+        patched, _report = patch_project(project, [intent], with_report=True)
+        if _report.all_skipped:
+            return _err(
+                "no changes applied: "
+                + "; ".join(s["reason"] for s in _report.skipped)
+            )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
             "kdenlive_path": str(out_path),
@@ -1986,7 +2028,12 @@ def clip_split(workspace_path: str, clip_index: int, split_at_seconds: float = 0
             clip_index=clip_index,
             split_at_frame=split_at_frame,
         )
-        patched = patch_project(project, [intent])
+        patched, _report = patch_project(project, [intent], with_report=True)
+        if _report.all_skipped:
+            return _err(
+                "no changes applied: "
+                + "; ".join(s["reason"] for s in _report.skipped)
+            )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
             "kdenlive_path": str(out_path),
@@ -2032,7 +2079,12 @@ def clip_trim(
 
         clip_ref = f"{playlist.id}:{clip_index}"
         intent = TrimClip(clip_ref=clip_ref, new_in=new_in, new_out=new_out)
-        patched = patch_project(project, [intent])
+        patched, _report = patch_project(project, [intent], with_report=True)
+        if _report.all_skipped:
+            return _err(
+                "no changes applied: "
+                + "; ".join(s["reason"] for s in _report.skipped)
+            )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
             "kdenlive_path": str(out_path),
@@ -2067,7 +2119,12 @@ def clip_ripple_delete(workspace_path: str, clip_index: int, track: int = 0) -> 
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
         intent = RippleDelete(track_ref=playlist.id, clip_index=clip_index)
-        patched = patch_project(project, [intent])
+        patched, _report = patch_project(project, [intent], with_report=True)
+        if _report.all_skipped:
+            return _err(
+                "no changes applied: "
+                + "; ".join(s["reason"] for s in _report.skipped)
+            )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
             "kdenlive_path": str(out_path),
@@ -2108,7 +2165,12 @@ def clip_speed(
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
         intent = SetClipSpeed(track_ref=playlist.id, clip_index=clip_index, speed=speed)
-        patched = patch_project(project, [intent])
+        patched, _report = patch_project(project, [intent], with_report=True)
+        if _report.all_skipped:
+            return _err(
+                "no changes applied: "
+                + "; ".join(s["reason"] for s in _report.skipped)
+            )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
             "kdenlive_path": str(out_path),
@@ -2160,7 +2222,12 @@ def audio_fade(
             fade_type=fade_type,
             duration_frames=duration_frames,
         )
-        patched = patch_project(project, [intent])
+        patched, _report = patch_project(project, [intent], with_report=True)
+        if _report.all_skipped:
+            return _err(
+                "no changes applied: "
+                + "; ".join(s["reason"] for s in _report.skipped)
+            )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
             "kdenlive_path": str(out_path),
@@ -2238,7 +2305,12 @@ def track_mute(workspace_path: str, track_index: int, muted: bool = True) -> dic
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
         intent = SetTrackMute(track_ref=track.id, muted=muted)
-        patched = patch_project(project, [intent])
+        patched, _report = patch_project(project, [intent], with_report=True)
+        if _report.all_skipped:
+            return _err(
+                "no changes applied: "
+                + "; ".join(s["reason"] for s in _report.skipped)
+            )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
             "kdenlive_path": str(out_path),
@@ -2278,7 +2350,12 @@ def track_visibility(workspace_path: str, track_index: int, visible: bool = True
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
         intent = SetTrackVisibility(track_ref=track.id, visible=visible)
-        patched = patch_project(project, [intent])
+        patched, _report = patch_project(project, [intent], with_report=True)
+        if _report.all_skipped:
+            return _err(
+                "no changes applied: "
+                + "; ".join(s["reason"] for s in _report.skipped)
+            )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
             "kdenlive_path": str(out_path),
@@ -2326,7 +2403,12 @@ def gap_insert(
             position=position,
             duration_frames=duration_frames,
         )
-        patched = patch_project(project, [intent])
+        patched, _report = patch_project(project, [intent], with_report=True)
+        if _report.all_skipped:
+            return _err(
+                "no changes applied: "
+                + "; ".join(s["reason"] for s in _report.skipped)
+            )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
             "kdenlive_path": str(out_path),
@@ -2334,6 +2416,7 @@ def gap_insert(
             "duration_seconds": duration_seconds,
             "duration_frames": duration_frames,
             "playlist_id": playlist.id,
+            "skipped_intents": _report.skipped,
         })
     except (ValueError, FileNotFoundError) as exc:
         return _err(str(exc))

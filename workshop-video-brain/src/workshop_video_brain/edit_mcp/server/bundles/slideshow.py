@@ -46,10 +46,11 @@ def _resolve_profile(
         from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import (
             parse_project,
         )
+        from workshop_video_brain.edit_mcp.server.tools_helpers import latest_project
         working = ws_path / "projects" / "working_copies"
-        files = sorted(working.glob("*.kdenlive")) if working.exists() else []
+        files = list(working.glob("*.kdenlive")) if working.exists() else []
         if files:
-            proj = parse_project(files[-1])
+            proj = parse_project(latest_project(files), missing_ok=True)
             width = proj.profile.width or width
             height = proj.profile.height or height
             fps = proj.profile.fps or fps

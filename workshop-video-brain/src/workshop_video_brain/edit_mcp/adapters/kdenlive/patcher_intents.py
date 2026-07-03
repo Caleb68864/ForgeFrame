@@ -14,6 +14,7 @@ from __future__ import annotations
 import copy
 import logging
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from workshop_video_brain.core.models.kdenlive import (
@@ -60,7 +61,50 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "calculate_crossfade",
     "patch_project",
+    "PatchReport",
 ]
+
+
+@dataclass
+class PatchReport:
+    """Outcome of a :func:`patch_project` run.
+
+    ``applied`` and ``skipped`` list the intents that took effect vs. those
+    the patcher log-and-skipped (bad refs, out-of-range indices, invalid
+    params...).  Each skipped entry records ``{"intent": <type name>,
+    "reason": <the patcher's own skip message>}`` so a tool can surface the
+    no-op instead of silently reporting success.
+    """
+
+    applied: list[str] = field(default_factory=list)
+    skipped: list[dict] = field(default_factory=list)
+
+    @property
+    def all_skipped(self) -> bool:
+        """True when at least one intent ran and every one was skipped."""
+        return bool(self.skipped) and not self.applied
+
+
+class _SkipCapture(logging.Handler):
+    """Collects this module's WARNING messages during a patch_project run.
+
+    Skips are reported by the individual ``_apply_*`` handlers as warnings
+    ending in ``skipped`` (an established convention); capturing them here lets
+    :func:`patch_project` build a :class:`PatchReport` without touching the ~30
+    handler signatures.  Applied-with-warning cases (e.g. a transition falling
+    back to standalone emission) deliberately omit the word "skip" and so are
+    not counted as skips.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.WARNING)
+        self.messages: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self.messages.append(record.getMessage())
+        except Exception:  # pragma: no cover - never let logging break a patch
+            self.messages.append(str(record.msg))
 
 
 def calculate_crossfade(
@@ -129,7 +173,8 @@ def patch_project(
     intents: list,
     workspace_root: Path | None = None,
     project_path: Path | None = None,
-) -> KdenliveProject:
+    with_report: bool = False,
+) -> KdenliveProject | tuple[KdenliveProject, PatchReport]:
     """Apply *intents* to *project*, returning a new KdenliveProject.
 
     The input project is never mutated.  Supported intent types:
@@ -155,12 +200,20 @@ def patch_project(
         workspace_root: Optional workspace root for snapshotting before
                         AddTransition intents.
         project_path: Optional path to project file for snapshotting.
+        with_report: When True, return ``(project, PatchReport)`` instead of
+            just the project.  Defaults to False so all existing callers keep
+            their single-value return.
     """
     # Deep-copy so we never mutate the input
     new_project = project.model_copy(deep=True)
     _snapshot_taken = False
 
-    for intent in intents:
+    report = PatchReport()
+    capture = _SkipCapture()
+    logger.addHandler(capture)
+    try:
+      for intent in intents:
+        _msg_before = len(capture.messages)
         if isinstance(intent, AddGuide):
             _apply_add_guide(new_project, intent)
         elif isinstance(intent, AddClip):
@@ -215,6 +268,21 @@ def patch_project(
                 type(intent).__name__,
             )
 
+        # Classify this intent: any new "skipped" warning => a no-op skip.
+        new_msgs = capture.messages[_msg_before:]
+        skip_msgs = [m for m in new_msgs if "skip" in m.lower()]
+        if skip_msgs:
+            report.skipped.append({
+                "intent": type(intent).__name__,
+                "reason": "; ".join(skip_msgs),
+            })
+        else:
+            report.applied.append(type(intent).__name__)
+    finally:
+        logger.removeHandler(capture)
+
+    if with_report:
+        return new_project, report
     return new_project
 
 

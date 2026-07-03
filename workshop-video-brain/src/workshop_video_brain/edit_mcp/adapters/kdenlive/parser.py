@@ -23,6 +23,22 @@ from workshop_video_brain.core.models.kdenlive import (
 
 logger = logging.getLogger(__name__)
 
+
+class ProjectParseError(Exception):
+    """Raised when a .kdenlive file cannot be read or parsed.
+
+    Carries the offending ``path`` and the underlying ``cause`` so callers can
+    return a precise error instead of silently proceeding with an empty
+    project (which would let a downstream patch overwrite a corrupt-but-
+    recoverable file).
+    """
+
+    def __init__(self, path: Path, cause: Exception):
+        self.path = Path(path)
+        self.cause = cause
+        super().__init__(f"Failed to parse project '{self.path}': {cause}")
+
+
 # Tags that this parser handles explicitly (lowercase).
 _KNOWN_TAGS = {
     "mlt",
@@ -267,21 +283,41 @@ def _parse_guide(elem: ET.Element) -> Guide | None:
         return None
 
 
-def parse_project(path: Path) -> KdenliveProject:
+def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
     """Parse a .kdenlive XML file and return a KdenliveProject.
 
-    Unknown XML elements are captured as OpaqueElement objects.
-    This function never raises; warnings are logged on unsupported constructs.
+    Unknown XML elements are captured as OpaqueElement objects.  Individual
+    malformed *sub*-elements are still tolerated (logged + kept opaque).
+
+    On a missing file or an unparseable document the default behaviour is to
+    raise :class:`ProjectParseError` -- returning an empty project here is
+    dangerous because a downstream tool would then "patch" nothing and
+    serialize it over a corrupt-but-recoverable file.
+
+    Args:
+        path: Path to the .kdenlive file.
+        missing_ok: If True, return an empty ``KdenliveProject`` instead of
+            raising when the file is missing or unparseable.  Reserved for
+            read-only/best-effort callers (resource browsing, profile sniffing)
+            that genuinely want a graceful empty fallback.
+
+    Raises:
+        ProjectParseError: If the file cannot be read/parsed and
+            ``missing_ok`` is False.
     """
     path = Path(path)
     try:
         tree = ET.parse(path)
     except FileNotFoundError as exc:
         logger.error("File not found: %s: %s", path, exc)
-        return KdenliveProject()
+        if missing_ok:
+            return KdenliveProject()
+        raise ProjectParseError(path, exc) from exc
     except ET.ParseError as exc:
         logger.error("XML parse error in %s: %s", path, exc)
-        return KdenliveProject()
+        if missing_ok:
+            return KdenliveProject()
+        raise ProjectParseError(path, exc) from exc
 
     root = tree.getroot()
 

@@ -60,7 +60,22 @@ def mock_profile():
     profile.extra_args = []
     profile.fast_start = True
     profile.movflags = "+faststart"
+    # melt-consumer attributes (used when routing .kdenlive inputs through melt)
+    profile.mlt_image_format = None
+    profile.pix_fmt = None
+    profile.disable_audio = False
+    profile.melt_args = []
     return profile
+
+
+@pytest.fixture
+def workspace_with_media(tmp_path: Path) -> Path:
+    """Workspace whose render input is a direct media file (ffmpeg path)."""
+    (tmp_path / "workspace.yaml").write_text("title: Media Project\n")
+    (tmp_path / "renders").mkdir()
+    media = tmp_path / "clip.mp4"
+    media.write_bytes(b"\x00\x00\x00\x18ftypmp42")  # dummy header; not decoded here
+    return tmp_path
 
 
 # ---------------------------------------------------------------------------
@@ -256,11 +271,32 @@ class TestFFmpegCommand:
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.subprocess")
     def test_fast_start_flag(
         self, mock_subprocess, mock_load_profile, mock_codec_check,
-        workspace_with_project: Path, mock_profile,
+        workspace_with_media: Path, mock_profile,
     ):
-        """fast_start=True should add -movflags +faststart to the command."""
+        """fast_start=True adds -movflags +faststart on the ffmpeg (media) path."""
         mock_profile.fast_start = True
         mock_profile.movflags = "+faststart"
+        mock_load_profile.return_value = mock_profile
+        mock_codec_check.return_value = True
+        mock_subprocess.run.return_value = MagicMock(returncode=0, stderr="")
+
+        render_final(
+            workspace_with_media, "youtube-1080p", project_file="clip.mp4",
+        )
+
+        call_args = mock_subprocess.run.call_args[0][0]
+        cmd_str = " ".join(str(a) for a in call_args)
+        assert cmd_str.startswith("ffmpeg")
+        assert "faststart" in cmd_str
+
+    @patch("workshop_video_brain.edit_mcp.pipelines.render_final.check_codec_available")
+    @patch("workshop_video_brain.edit_mcp.pipelines.render_final.load_profile")
+    @patch("workshop_video_brain.edit_mcp.pipelines.render_final.subprocess")
+    def test_kdenlive_routes_through_melt(
+        self, mock_subprocess, mock_load_profile, mock_codec_check,
+        workspace_with_project: Path, mock_profile,
+    ):
+        """.kdenlive inputs must render via melt, not `ffmpeg -i project.kdenlive`."""
         mock_load_profile.return_value = mock_profile
         mock_codec_check.return_value = True
         mock_subprocess.run.return_value = MagicMock(returncode=0, stderr="")
@@ -268,5 +304,27 @@ class TestFFmpegCommand:
         render_final(workspace_with_project, "youtube-1080p")
 
         call_args = mock_subprocess.run.call_args[0][0]
-        cmd_str = " ".join(str(a) for a in call_args)
-        assert "faststart" in cmd_str
+        assert call_args[0] == "melt"
+        # ffmpeg-demuxing an MLT XML is the exact bug being fixed
+        assert not (call_args[0] == "ffmpeg" and any(
+            str(a).endswith(".kdenlive") for a in call_args
+        ))
+
+    @patch("workshop_video_brain.edit_mcp.pipelines.render_final.check_codec_available")
+    @patch("workshop_video_brain.edit_mcp.pipelines.render_final.load_profile")
+    @patch("workshop_video_brain.edit_mcp.pipelines.render_final.subprocess")
+    def test_media_routes_through_ffmpeg(
+        self, mock_subprocess, mock_load_profile, mock_codec_check,
+        workspace_with_media: Path, mock_profile,
+    ):
+        """Direct media inputs stay on the ffmpeg re-encode path."""
+        mock_load_profile.return_value = mock_profile
+        mock_codec_check.return_value = True
+        mock_subprocess.run.return_value = MagicMock(returncode=0, stderr="")
+
+        render_final(
+            workspace_with_media, "youtube-1080p", project_file="clip.mp4",
+        )
+
+        call_args = mock_subprocess.run.call_args[0][0]
+        assert call_args[0] == "ffmpeg"

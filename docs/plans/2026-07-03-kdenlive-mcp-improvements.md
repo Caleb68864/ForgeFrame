@@ -64,19 +64,46 @@ top, so they come first.
 
 ### 1.3 Assorted bugs
 
-- **Lexicographic latest-version bug**: `_load_latest_project` (`server/tools.py:1838`)
-  uses `sorted(glob(...))[-1]`, so `slug_v10` sorts before `slug_v2` — after v9
-  the wrong file gets edited. (`render_final` uses mtime — inconsistent; pick one,
-  probably numeric-suffix parse.)
-- **render_final ffmpeg path broken by design**: `_build_render_command` runs
-  `ffmpeg -i project.kdenlive`; ffmpeg can't demux MLT XML. Only the melt path in
-  `adapters/render/executor.py` works — render_final should route through it.
-- **Swallowed parse errors**: `parse_project` returns an *empty* project on
-  FileNotFound/ParseError. A downstream tool can then "patch" the empty project
-  and serialize it over a corrupt-but-recoverable file. Should raise / return an
-  error result instead.
-- **Silent no-op intents**: patcher log-and-skips bad refs (e.g. AddClip with
-  unknown playlist) but the tool still writes a new version and reports success.
+- **Lexicographic latest-version bug** — **FIXED 2026-07-03**: `_load_latest_project`
+  (`server/tools.py`) used `sorted(glob(...))[-1]`, so `slug_v10` sorted before
+  `slug_v2`. Replaced by a shared version-aware selector
+  `latest_project()` (`server/tools_helpers.py`) that parses the `_v<N>` suffix
+  (v12 > v2) and falls back to mtime for unversioned names. All latest-project
+  sites unified on it (`server/tools.py` ×7, `render_final._find_latest_project`
+  — previously mtime, `server/resources.py`, `app/cli.py` ×2,
+  `bundles/slideshow.py`). Regression test: `tests/unit/test_latest_project.py`
+  (slug_v1..v12 → v12 wins, order-independent).
+- **render_final ffmpeg path broken by design** — **FIXED 2026-07-03**:
+  `_build_render_command` (`pipelines/render_final.py`) now routes `.kdenlive`
+  inputs through the melt executor (`adapters/render/executor._build_melt_command`)
+  and keeps direct-media inputs on ffmpeg. Empirically proven: a fixture project
+  rendered via the fixed path produced a valid 2.005 s h264 1280×720 + aac file
+  (melt + ffprobe on PATH). Tests: `tests/unit/test_render_final.py`
+  (`test_kdenlive_routes_through_melt`, `test_media_routes_through_ffmpeg`).
+  Note: full delegation to `run_render` was evaluated and rejected as *not clean*
+  — `run_render`/`create_render_job` own output-path naming and return a
+  `RenderJob`, incompatible with render_final's `RenderResult` contract and
+  `renders/<name>_<ts>` naming; routing the command builder is the minimal fix.
+- **Swallowed parse errors** — **FIXED 2026-07-03**: `parse_project`
+  (`adapters/kdenlive/parser.py`) now raises a dedicated `ProjectParseError`
+  (carrying `path` + `cause`) on FileNotFound/ParseError instead of returning an
+  empty project. An explicit `missing_ok=True` escape hatch preserves empty-on-
+  missing for the few read-only/best-effort callers that want it
+  (`resources.py` timeline summary, `bundles/slideshow.py` profile sniff).
+  All other call sites propagate to the tool's standard `except → error dict`.
+  Tests: `tests/unit/test_kdenlive_parser.py` (raise + missing_ok),
+  `tests/integration/test_parse_error_propagation.py` (corrupt file left
+  untouched; tool returns error).
+- **Silent no-op intents** — **FIXED 2026-07-03**: `patch_project`
+  (`adapters/kdenlive/patcher_intents.py`) gained an opt-in
+  `with_report=True` returning `(project, PatchReport)` — the existing ~44
+  single-value callers are untouched. `PatchReport.skipped` records
+  `{intent, reason}` for every log-and-skipped intent (captured via a scoped
+  logging handler, so no `_apply_*` handler signature changed). The main
+  intent-driven tools (clip_insert, transitions_apply*, gap_insert, and the
+  clip_*/track_* ops) now surface `skipped_intents` and return an error when
+  **all** intents were skipped (`report.all_skipped`). Tests:
+  `tests/unit/test_patch_report.py`.
 - **Units inconsistency**: seconds (clip_insert/trim/split/gap/audio_fade) vs
   frames (composite/mask/effect/keyframe) vs presets (transitions), with
   truncating `int(seconds*fps)` in some paths and `round()` in others, and an

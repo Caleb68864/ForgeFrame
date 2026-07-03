@@ -256,11 +256,12 @@ def workspace_validation(id: str) -> str:
         if not kdenlive_files:
             return f"No .kdenlive files found at {id}/projects/working_copies/"
 
-        latest = kdenlive_files[-1]
+        from workshop_video_brain.edit_mcp.server.tools_helpers import latest_project
+        latest = latest_project(kdenlive_files)
         from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
         from workshop_video_brain.edit_mcp.adapters.kdenlive.validator import validate_project
 
-        project = parse_project(latest)
+        project = parse_project(latest, missing_ok=True)
         report = validate_project(project, workspace_root=Path(id))
 
         lines = [

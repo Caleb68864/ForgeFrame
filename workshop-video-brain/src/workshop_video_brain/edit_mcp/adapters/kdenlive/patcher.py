@@ -20,6 +20,7 @@ from __future__ import annotations
 from .patcher_intents import (
     calculate_crossfade,
     patch_project,
+    PatchReport,
     _take_snapshot,
     _find_playlist,
     _playlist_index,
@@ -71,6 +72,7 @@ from .effect_stack import (
 __all__ = [
     "calculate_crossfade",
     "patch_project",
+    "PatchReport",
     "insert_effect_xml",
     "list_effects",
     "get_effect_property",
