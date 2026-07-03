@@ -49,9 +49,9 @@ from typing import Any
 
 from workshop_video_brain.core.models.kdenlive import (
     KdenliveProject,
-    PlaylistEntry,
     Producer,
 )
+from workshop_video_brain.edit_mcp.pipelines import clip_place as _cp
 from workshop_video_brain.edit_mcp.pipelines.keyframes import (
     Keyframe,
     _format_scalar,
@@ -110,16 +110,18 @@ def insert_overlay_clip(
 ) -> int:
     """Insert ``media_path`` onto the ``overlay_track``-th video playlist.
 
-    Places a blank gap of ``at_frame`` frames (when ``at_frame`` > 0) followed by
-    the overlay entry ``[0, duration_frames - 1]``. Ensures a producer exists for
-    the media. Mutates ``project`` in place and returns the *real*-clip index of
-    the inserted entry on that playlist (usable as ``(overlay_track, index)`` for
-    clip-filter ops).
+    Appends the overlay entry ``[0, duration_frames - 1]`` after the playlist's
+    existing content, preceded by a blank gap of ``at_frame`` frames (so the clip
+    lands ``at_frame`` frames past the current track end). Ensures a producer
+    exists for the media. Mutates ``project`` in place and returns the *real*-clip
+    index of the inserted entry on that playlist (usable as ``(overlay_track,
+    index)`` for clip-filter ops).
 
-    This is the minimal playlist-targeted insert the ``clip_insert`` tool cannot
-    do -- it always appends to the first video playlist -- implemented against the
-    model directly, exactly as ``_apply_add_clip`` does, without touching the
-    patcher or serializer.
+    The placement runs through the canonical ``clip_place`` engine
+    (``pipelines/clip_place.plan_overwrite``): the append-with-leading-gap is
+    expressed as an overwrite placement at absolute frame ``track_end + at_frame``
+    (past the track end, so the engine emits the pad blank + clip), replacing the
+    former hand-rolled model-level blank-pad insert (SYNTHESIS gap #6 migration).
     """
     if at_frame < 0:
         raise ValueError(f"at_frame must be >= 0; got {at_frame}")
@@ -147,17 +149,13 @@ def insert_overlay_clip(
             )
         )
 
-    if at_frame > 0:
-        playlist.entries.append(
-            PlaylistEntry(producer_id="", in_point=0, out_point=at_frame - 1)
-        )
-    playlist.entries.append(
-        PlaylistEntry(
-            producer_id=producer_id, in_point=0, out_point=duration_frames - 1
-        )
+    clip = _cp.PlacedClip(
+        producer_id=producer_id, in_point=0, out_point=duration_frames - 1
     )
-    real = [e for e in playlist.entries if e.producer_id]
-    return len(real) - 1
+    at = _cp.playlist_length(playlist.entries) + at_frame
+    result = _cp.plan_overwrite(playlist.entries, at, clip)
+    playlist.entries = result.entries
+    return result.placed_index
 
 
 # ---------------------------------------------------------------------------

@@ -47,12 +47,12 @@ def _place_image_overlay(
     Raises ``ValueError`` on bad geometry / track / fade arguments.
     """
     from workshop_video_brain.core.models.kdenlive import (
-        PlaylistEntry,
         Playlist,
         Producer,
         Track,
     )
     from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
+    from workshop_video_brain.edit_mcp.pipelines import clip_place as cp
     from workshop_video_brain.edit_mcp.pipelines import image_overlay as io
 
     fps = project.profile.fps or 25.0
@@ -107,15 +107,17 @@ def _place_image_overlay(
         resolved_track = track
         new_track = False
 
-    # --- place the still at at_frame, padding with a blank -------------
+    # --- place the still at at_frame via the canonical clip_place engine
+    # (absolute overwrite placement, pinned to never overlap existing content --
+    # the engine emits the leading pad blank).
     at_frame = max(0, at_frame)
-    current_end = sum(io._entry_len(e) for e in target.entries)
-    pad = at_frame - current_end
-    if pad > 0:
-        target.entries.append(PlaylistEntry(producer_id="", in_point=0, out_point=pad - 1))
-    target.entries.append(
-        PlaylistEntry(producer_id=producer_id, in_point=0, out_point=duration_frames - 1)
+    placed = cp.PlacedClip(
+        producer_id=producer_id, in_point=0, out_point=duration_frames - 1
     )
+    place_at = max(at_frame, cp.playlist_length(target.entries))
+    result = cp.plan_overwrite(target.entries, place_at, placed)
+    target.entries = result.entries
+    clip_index = result.placed_index
 
     # --- transform filter (position / scale / opacity / fades) ---------
     # Needed whenever geometry, non-unit opacity, or a fade is requested.
@@ -132,8 +134,6 @@ def _place_image_overlay(
             fps=fps,
         )
         playlist_index = project.playlists.index(target)
-        real_entries = [e for e in target.entries if e.producer_id]
-        clip_index = len(real_entries) - 1
         xml = io.build_transform_filter_xml(playlist_index, clip_index, rect_value)
         existing = patcher.list_effects(project, (playlist_index, clip_index))
         patcher.insert_effect_xml(

@@ -80,10 +80,6 @@ def _ok(data: dict) -> dict:
     return {"status": "success", "data": data}
 
 
-def _entry_len(entry) -> int:
-    return entry.out_point - entry.in_point + 1
-
-
 @mcp.tool()
 def title_card_add(
     project_file: str,
@@ -111,9 +107,10 @@ def title_card_add(
         track: Video-track index to place the card on.  ``None`` (default)
             creates a new dedicated top video track.
     """
-    from workshop_video_brain.core.models.kdenlive import PlaylistEntry, Playlist, Producer, Track
+    from workshop_video_brain.core.models.kdenlive import Playlist, Producer, Track
     from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
     from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
+    from workshop_video_brain.edit_mcp.pipelines import clip_place as cp
     from workshop_video_brain.edit_mcp.pipelines.titles import (
         TitleSpec,
         build_title_xml,
@@ -203,17 +200,16 @@ def title_card_add(
             target = video_playlists[track]
             resolved_track = track
 
-        # --- place the card at at_seconds, padding with a blank -------
+        # --- place the card at at_seconds via the canonical clip_place engine
+        # (absolute overwrite placement at at_frame, pinned to never overlap
+        # existing content -- the engine emits the leading pad blank).
         at_frame = max(0, round(at_seconds * fps))
-        current_end = sum(_entry_len(e) for e in target.entries)
-        pad = at_frame - current_end
-        if pad > 0:
-            target.entries.append(
-                PlaylistEntry(producer_id="", in_point=0, out_point=pad - 1)
-            )
-        target.entries.append(
-            PlaylistEntry(producer_id=producer_id, in_point=0, out_point=frames - 1)
+        placed = cp.PlacedClip(
+            producer_id=producer_id, in_point=0, out_point=frames - 1
         )
+        place_at = max(at_frame, cp.playlist_length(target.entries))
+        result = cp.plan_overwrite(target.entries, place_at, placed)
+        target.entries = result.entries
 
         # --- snapshot before write (best effort) ----------------------
         _snapshot_before_write(project_path)

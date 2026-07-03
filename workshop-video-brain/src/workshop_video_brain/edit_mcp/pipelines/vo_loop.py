@@ -31,9 +31,9 @@ from pathlib import Path
 
 from workshop_video_brain.core.models.kdenlive import (
     KdenliveProject,
-    PlaylistEntry,
     Producer,
 )
+from workshop_video_brain.edit_mcp.pipelines import clip_place as _cp
 from workshop_video_brain.edit_mcp.pipelines.overlay_looks import overlay_producer_id
 
 DEFAULT_WPM = 150.0
@@ -249,11 +249,16 @@ def insert_take_clip(
 ) -> int:
     """Insert a recorded VO take onto the ``audio_track``-th audio playlist.
 
-    Places a blank gap of ``at_frame`` frames (when > 0) then the take entry
-    ``[0, duration_frames - 1]``, ensuring a producer exists for the media.
-    Mutates ``project`` in place and returns the *real*-clip index of the
-    inserted entry on that playlist.  Follows the ``overlay_looks`` blank-padding
-    pattern -- no dependence on ``clip_place``.
+    Appends the take entry ``[0, duration_frames - 1]`` after the track's existing
+    content, preceded by a blank gap of ``at_frame`` frames, ensuring a producer
+    exists for the media.  Mutates ``project`` in place and returns the *real*-clip
+    index of the inserted entry on that playlist.
+
+    The placement runs through the canonical ``clip_place`` engine
+    (``pipelines/clip_place.plan_overwrite``): the append-with-leading-gap is an
+    overwrite placement at absolute frame ``track_end + at_frame`` (past the end,
+    so the engine emits the pad blank + clip), replacing the former hand-rolled
+    model-level blank-pad insert (SYNTHESIS gap #6 migration).
     """
     if at_frame < 0:
         raise ValueError(f"at_frame must be >= 0; got {at_frame}")
@@ -283,17 +288,13 @@ def insert_take_clip(
             )
         )
 
-    if at_frame > 0:
-        playlist.entries.append(
-            PlaylistEntry(producer_id="", in_point=0, out_point=at_frame - 1)
-        )
-    playlist.entries.append(
-        PlaylistEntry(
-            producer_id=producer_id, in_point=0, out_point=duration_frames - 1
-        )
+    clip = _cp.PlacedClip(
+        producer_id=producer_id, in_point=0, out_point=duration_frames - 1
     )
-    real = [e for e in playlist.entries if e.producer_id]
-    return len(real) - 1
+    at = _cp.playlist_length(playlist.entries) + at_frame
+    result = _cp.plan_overwrite(playlist.entries, at, clip)
+    playlist.entries = result.entries
+    return result.placed_index
 
 
 def seconds_to_frames(seconds: float, fps: float) -> int:
