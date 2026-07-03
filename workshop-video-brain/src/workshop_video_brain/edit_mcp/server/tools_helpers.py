@@ -114,3 +114,87 @@ def register_effect_wrapper(fn):
     from workshop_video_brain.server import mcp
     __wrapped_effects__.append(fn.__name__)
     return mcp.tool()(fn)
+
+
+# ---------------------------------------------------------------------------
+# Cross-cutting project/playlist/filter helpers (relocated from server/tools.py)
+# ---------------------------------------------------------------------------
+
+
+def _get_video_playlists(project):
+    """Return list of video playlist objects (non-audio tracks)."""
+    audio_ids = {t.id for t in project.tracks if t.track_type == "audio"}
+    return [p for p in project.playlists if p.id not in audio_ids]
+
+
+def _load_latest_project(workspace_path: str):
+    """Load the latest .kdenlive file from working_copies.  Returns (ws_path, project, latest_path)."""
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
+    ws_path = _validate_workspace_path(workspace_path)
+    working_copies = ws_path / "projects" / "working_copies"
+    kdenlive_files = list(working_copies.glob("*.kdenlive")) if working_copies.exists() else []
+    if not kdenlive_files:
+        raise FileNotFoundError("No .kdenlive files found in projects/working_copies/")
+    latest = latest_project(kdenlive_files)
+    project = parse_project(latest)
+    return ws_path, project, latest
+
+
+def _save_patched(ws_path, project, workspace_path: str) -> Path:
+    """Serialize patched project and return output path."""
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_versioned
+    from workshop_video_brain.workspace.manifest import read_manifest
+    manifest = read_manifest(workspace_path)
+    slug = manifest.slug or "project"
+    return serialize_versioned(project, ws_path, slug)
+
+
+def _resolve_playlist(project, track: int):
+    """Resolve track index to a video playlist.  Returns playlist or raises ValueError."""
+    video_playlists = _get_video_playlists(project)
+    if not video_playlists:
+        raise ValueError("No video playlists found in project")
+    if track < 0 or track >= len(video_playlists):
+        raise ValueError(
+            f"track index {track} out of range (project has {len(video_playlists)} video track(s))"
+        )
+    return video_playlists[track]
+
+
+_VALID_COLOR_FORMATS_MSG = (
+    "Invalid color. Expected '#RRGGBB' or '#RRGGBBAA' hex format."
+)
+
+
+def _build_filter_xml(mlt_service: str, kdenlive_id: str, track: int, clip: int,
+                      props: list[tuple[str, str]]) -> str:
+    """Build a Kdenlive/MLT ``<filter>`` XML string with the usual attrs."""
+    import xml.etree.ElementTree as _ET
+    root = _ET.Element(
+        "filter",
+        {
+            "mlt_service": mlt_service,
+            "track": str(track),
+            "clip_index": str(clip),
+        },
+    )
+    svc = _ET.SubElement(root, "property", {"name": "mlt_service"})
+    svc.text = mlt_service
+    kid = _ET.SubElement(root, "property", {"name": "kdenlive_id"})
+    kid.text = kdenlive_id
+    for name, value in props:
+        prop = _ET.SubElement(root, "property", {"name": name})
+        prop.text = value
+    return _ET.tostring(root, encoding="unicode")
+
+
+def _lookup_catalog_by_service(mlt_service: str):
+    """Return (kdenlive_id, EffectDef) for a given mlt_service, else (None, None)."""
+    try:
+        from workshop_video_brain.edit_mcp.pipelines import effect_catalog as _catalog
+    except ModuleNotFoundError:
+        return None, None
+    for kid, eff in _catalog.CATALOG.items():
+        if eff.mlt_service == mlt_service:
+            return kid, eff
+    return None, None
