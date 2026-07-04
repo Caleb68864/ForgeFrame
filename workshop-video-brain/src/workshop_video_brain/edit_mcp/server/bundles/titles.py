@@ -40,6 +40,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     MISSING_DEPENDENCY,
     BAD_JSON_PARAM,
 )
+from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _err
 
 # --- template discovery ----------------------------------------------------
 
@@ -91,14 +92,6 @@ def _load_style(style: str) -> dict:
 def _slug(text: str) -> str:
     s = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
     return s[:24] or "title"
-
-
-def _err(message: str) -> dict:
-    return {"status": "error", "message": message}
-
-
-def _ok(data: dict) -> dict:
-    return {"status": "success", "data": data}
 
 
 @mcp.tool()

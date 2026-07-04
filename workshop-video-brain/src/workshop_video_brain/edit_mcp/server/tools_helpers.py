@@ -116,9 +116,146 @@ def register_effect_wrapper(fn):
     return mcp.tool()(fn)
 
 
+def apply_simple_effect(
+    workspace_path: str,
+    project_file: str,
+    track: int,
+    clip: int,
+    *,
+    mlt_service: str,
+    kdenlive_id: str,
+    params: dict[str, object],
+    keyframes: str = "",
+) -> dict:
+    """Shared body for the generated per-effect wrapper modules.
+
+    Parses the project, builds a ``<filter>`` from ``mlt_service`` /
+    ``kdenlive_id`` / ``params`` (bools -> "1"/"0", everything else ``str()``),
+    snapshots before + after, inserts the effect at the end of the clip's stack,
+    and serializes in place. Returns ``_ok({effect_index, snapshot_id})`` or an
+    error dict. Extracted from ``effect_wrapper_gen`` so all wrappers share one
+    implementation (previously inlined ~40x, byte-for-byte).
+    """
+    import xml.etree.ElementTree as ET
+
+    from workshop_video_brain.edit_mcp.server.errors import err
+    from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
+        serialize_project,
+    )
+    from workshop_video_brain.workspace import create_snapshot
+
+    try:
+        ws_path, _ws = _require_workspace(workspace_path)
+        project_path = ws_path / project_file
+        if not project_path.exists():
+            return err(
+                f"Project file not found: {project_file}",
+                suggestion="Pass the path to an existing .kdenlive working copy; it resolves under the workspace root unless absolute. Run project_create_working_copy to make one.",
+            )
+
+        project = parse_project(project_path)
+
+        filt = ET.Element("filter")
+        svc = ET.SubElement(filt, "property", {"name": "mlt_service"})
+        svc.text = mlt_service
+        kid = ET.SubElement(filt, "property", {"name": "kdenlive_id"})
+        kid.text = kdenlive_id
+
+        for _mlt_name, _value in params.items():
+            if isinstance(_value, bool):
+                _str_val = "1" if _value else "0"
+            else:
+                _str_val = str(_value)
+            _prop = ET.SubElement(filt, "property", {"name": _mlt_name})
+            _prop.text = _str_val
+
+        if keyframes:
+            _kf = ET.SubElement(filt, "property", {"name": "keyframes"})
+            _kf.text = keyframes
+
+        xml_string = ET.tostring(filt, encoding="unicode")
+
+        # Determine insertion index (end of stack)
+        existing = patcher.list_effects(project, (track, clip))
+        insert_index = len(existing)
+
+        create_snapshot(
+            ws_path,
+            project_path,
+            description=f"before_effect_{kdenlive_id}",
+        )
+        patcher.insert_effect_xml(project, (track, clip), xml_string, insert_index)
+        snap = create_snapshot(
+            ws_path,
+            project_path,
+            description=f"after_effect_{kdenlive_id}",
+        )
+        serialize_project(project, project_path)
+
+        return _ok({
+            "effect_index": insert_index,
+            "snapshot_id": snap.snapshot_id,
+        })
+    except (ValueError, FileNotFoundError, IndexError) as exc:
+        return _err(str(exc))
+
+
 # ---------------------------------------------------------------------------
 # Cross-cutting project/playlist/filter helpers (relocated from server/tools.py)
 # ---------------------------------------------------------------------------
+
+
+def find_workspace_root(start: Path) -> Path | None:
+    """Walk up from *start* looking for a ``workspace.yaml`` marker.
+
+    Returns the first ancestor (including *start* itself if it is a directory)
+    that contains ``workspace.yaml``, or ``None``. Shared by bundles that accept
+    a project/media path and need to locate the enclosing workspace root.
+    """
+    candidates = [start] if start.is_dir() else []
+    candidates.extend(start.parents)
+    for parent in candidates:
+        if (parent / "workspace.yaml").exists():
+            return parent
+    return None
+
+
+def find_source_or_latest(
+    workspace_path: Path,
+    source: str,
+    extensions: set[str],
+) -> Path | None:
+    """Resolve *source* to a file path, or the newest matching file in raw.
+
+    If *source* is non-empty it is returned as-is (absolute, or resolved under
+    the workspace root) -- existence is the caller's concern. Otherwise the
+    newest file in ``media/raw`` whose suffix is in *extensions* (by mtime) is
+    returned, or ``None`` if the directory is absent/empty.
+
+    Shared by the file-processing bundles (stabilize / denoise / two-pass
+    normalize / ai_mask); each passes its own extension set so the intentionally
+    different video-vs-media filters are preserved. Note: ``tools/audio.py``'s
+    ``_find_audio_file`` is deliberately *not* routed here -- it adds an
+    ``is_file()`` guard on the explicit-path branch (different behavior).
+    """
+    if source and source.strip():
+        p = Path(source)
+        if not p.is_absolute():
+            p = workspace_path / source
+        return p
+
+    raw_dir = workspace_path / "media" / "raw"
+    if not raw_dir.exists():
+        return None
+    candidates = sorted(
+        (f for f in raw_dir.iterdir()
+         if f.is_file() and f.suffix.lower() in extensions),
+        key=lambda f: f.stat().st_mtime,
+        reverse=True,
+    )
+    return candidates[0] if candidates else None
 
 
 def _get_video_playlists(project):

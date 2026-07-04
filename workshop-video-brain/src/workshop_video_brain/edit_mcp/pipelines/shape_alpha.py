@@ -35,7 +35,7 @@ Schema verified against ``/usr/share/kdenlive/effects/shape.xml`` and
 """
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET
+from workshop_video_brain.edit_mcp.pipelines._common import make_filter_xml
 
 
 # Inner property names carried on the plain ``shape`` filter, in the order
@@ -63,20 +63,7 @@ def _make_filter(
     clip_ref: tuple[int, int],
     props: list[tuple[str, str]],
 ) -> str:
-    """Serialize a ``<filter>`` element (attrs + ``<property>`` children)."""
-    track, clip = clip_ref
-    root = ET.Element(
-        "filter",
-        {
-            "mlt_service": mlt_service,
-            "track": str(track),
-            "clip_index": str(clip),
-        },
-    )
-    for name, text in props:
-        el = ET.SubElement(root, "property", {"name": name})
-        el.text = text
-    return ET.tostring(root, encoding="unicode")
+    return make_filter_xml(mlt_service, clip_ref, props)
 
 
 def _shape_inner_props(

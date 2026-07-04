@@ -223,6 +223,80 @@ def scan_directory(
     return assets
 
 
+def probe_duration_seconds(media_path: Path) -> float | None:
+    """Best-effort media duration in seconds via ffprobe (None if unavailable).
+
+    Prefers the video stream's ``duration`` and falls back to the container
+    ``format.duration``. Returns ``None`` (never raises) if ffprobe is missing,
+    exits nonzero, times out, or the output cannot be parsed. Shared by
+    placement/multicam bundles that only need a rough length and treat missing
+    duration as "unknown".
+    """
+    import shutil
+
+    if not shutil.which("ffprobe"):
+        return None
+    try:
+        proc = subprocess.run(
+            [
+                "ffprobe", "-v", "quiet", "-print_format", "json",
+                "-show_format", "-show_streams", str(media_path),
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        if proc.returncode != 0:
+            return None
+        data = json.loads(proc.stdout or "{}")
+        for stream in data.get("streams", []):
+            if stream.get("codec_type") == "video" and stream.get("duration"):
+                return float(stream["duration"])
+        dur = data.get("format", {}).get("duration")
+        return float(dur) if dur else None
+    except Exception:  # noqa: BLE001 -- documented best-effort: None on any failure
+        return None
+
+
+def probe_format_duration(path: Path, *, log_label: str = "duration probe") -> float | None:
+    """Best-effort ``format=duration`` probe that logs loudly on failure.
+
+    Unlike :func:`probe_duration_seconds`, a missing/corrupt file is logged (at
+    WARNING, prefixed with *log_label*) so a ``None`` is never silently
+    indistinguishable from a real zero-duration file. Returns ``None`` on any
+    failure. Shared by the dupe-scan and slideshow bundles.
+    """
+    if not Path(path).exists():
+        logger.warning("%s: file missing: %s", log_label, path)
+        return None
+    try:
+        out = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True, text=True, check=False,
+        )
+    except FileNotFoundError:
+        logger.warning("%s: ffprobe binary not on PATH", log_label)
+        return None
+    except OSError as exc:
+        logger.warning("%s: ffprobe failed on %s: %s", log_label, path, exc)
+        return None
+    if out.returncode != 0:
+        logger.warning(
+            "%s: ffprobe exited %d on %s: %s",
+            log_label, out.returncode, path, out.stderr.strip()[-200:],
+        )
+        return None
+    text = out.stdout.strip()
+    try:
+        return float(text)
+    except ValueError:
+        logger.warning("%s: unparseable duration %r for %s", log_label, text, path)
+        return None
+
+
 @dataclass
 class LoudnessResult:
     """Loudness measurement result."""

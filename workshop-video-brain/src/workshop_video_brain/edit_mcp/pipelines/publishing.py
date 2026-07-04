@@ -12,6 +12,8 @@ import re
 from collections import Counter
 from pathlib import Path
 
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_mmss
+
 from workshop_video_brain.core.models.publishing import (
     PublishBundle,
     TitleVariants,
@@ -29,10 +31,7 @@ _MM_SS_RE = re.compile(r"^\d+:\d{2}$")
 
 def _seconds_to_mmss(seconds: float) -> str:
     """Convert float seconds to MM:SS string."""
-    total_secs = int(seconds)
-    minutes = total_secs // 60
-    secs = total_secs % 60
-    return f"{minutes}:{secs:02d}"
+    return seconds_to_mmss(seconds)
 
 
 def _tokenize(text: str) -> list[str]:

@@ -30,6 +30,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
     _ok,
     _validate_workspace_path,
+    find_source_or_latest,
 )
 from workshop_video_brain.server import mcp
 from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
@@ -62,22 +63,7 @@ _MEDIA_EXTS = {
 
 def _find_media_file(workspace_path: Path, source: str) -> Path | None:
     """Locate a media file: explicit path or latest in ``media/raw``."""
-    if source and source.strip():
-        p = Path(source)
-        if not p.is_absolute():
-            p = workspace_path / source
-        return p
-
-    raw_dir = workspace_path / "media" / "raw"
-    if not raw_dir.exists():
-        return None
-    candidates = sorted(
-        (f for f in raw_dir.iterdir()
-         if f.is_file() and f.suffix.lower() in _MEDIA_EXTS),
-        key=lambda f: f.stat().st_mtime,
-        reverse=True,
-    )
-    return candidates[0] if candidates else None
+    return find_source_or_latest(workspace_path, source, _MEDIA_EXTS)
 
 
 @mcp.tool()

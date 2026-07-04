@@ -47,6 +47,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 )
 from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import ProjectParseError
 from workshop_video_brain.edit_mcp.pipelines import slideshow as _ss
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_format_duration
 from workshop_video_brain.edit_mcp.server.bundles._pipeline_errors import (
     cleanup_partial_output as _cleanup_partial,
 )
@@ -115,44 +116,11 @@ def _resolve_profile(
 def _probe_duration(path: Path) -> float | None:
     """Best-effort ffprobe duration for a just-rendered output (None on failure).
 
-    Optional metadata only (the render already succeeded), so a probe failure is
-    non-fatal -- but it is logged loudly, distinguishing a missing file (should
-    never happen post-render) from an unparseable/undecodable probe result, so a
-    corrupt output is not silently indistinguishable from "no duration".
+    Optional metadata only (the render already succeeded); failures are logged
+    loudly rather than silently swallowed. Thin wrapper over the shared
+    :func:`probe_format_duration` helper.
     """
-    if not Path(path).exists():
-        logger.warning("duration probe: output file missing: %s", path)
-        return None
-    try:
-        out = subprocess.run(
-            [
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(path),
-            ],
-            capture_output=True, text=True, check=False,
-        )
-    except FileNotFoundError:
-        logger.warning("duration probe: ffprobe binary not on PATH (skipping)")
-        return None
-    except OSError as exc:
-        logger.warning("duration probe: ffprobe failed to run on %s: %s", path, exc)
-        return None
-    if out.returncode != 0:
-        logger.warning(
-            "duration probe: ffprobe exited %d on %s: %s",
-            out.returncode, path, out.stderr.strip()[-200:],
-        )
-        return None
-    text = out.stdout.strip()
-    try:
-        return float(text)
-    except ValueError:
-        logger.warning(
-            "duration probe: unparseable ffprobe duration %r for %s", text, path
-        )
-        return None
+    return probe_format_duration(path, log_label="duration probe")
 
 
 @mcp.tool()

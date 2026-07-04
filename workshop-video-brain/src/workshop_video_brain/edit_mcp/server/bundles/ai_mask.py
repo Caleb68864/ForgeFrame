@@ -47,31 +47,15 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
     _ok,
     _validate_workspace_path,
+    find_source_or_latest,
 )
 
 _VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".mts", ".m2ts"}
 
 
 def _find_video_file(workspace_path: Path, source: str) -> Path | None:
-    """Locate a video: explicit path (abs or ws-relative) or latest in raw.
-
-    Mirrors ``bundles/stabilize.py::_find_video_file``.
-    """
-    if source and source.strip():
-        p = Path(source)
-        if not p.is_absolute():
-            p = workspace_path / source
-        return p
-    raw_dir = workspace_path / "media" / "raw"
-    if not raw_dir.exists():
-        return None
-    candidates = sorted(
-        (f for f in raw_dir.iterdir()
-         if f.is_file() and f.suffix.lower() in _VIDEO_EXTS),
-        key=lambda f: f.stat().st_mtime,
-        reverse=True,
-    )
-    return candidates[0] if candidates else None
+    """Locate a video file: explicit path or latest in ``media/raw``."""
+    return find_source_or_latest(workspace_path, source, _VIDEO_EXTS)
 
 
 def _generate(

@@ -10,6 +10,8 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_mmss
+
 from workshop_video_brain.core.models.youtube import (
     ChannelStats,
     VideoAnalytics,
@@ -28,10 +30,7 @@ from workshop_video_brain.edit_mcp.adapters.youtube.fetcher import (
 
 def _seconds_to_mmss(seconds: float) -> str:
     """Convert float seconds to MM:SS string."""
-    total_secs = int(seconds)
-    minutes = total_secs // 60
-    secs = total_secs % 60
-    return f"{minutes}:{secs:02d}"
+    return seconds_to_mmss(seconds)
 
 
 def _format_date(upload_date: str) -> str:

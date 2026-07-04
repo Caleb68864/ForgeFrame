@@ -49,6 +49,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _validate_workspace_path,
 )
 from workshop_video_brain.edit_mcp.pipelines import clip_dupes as _cd
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_format_duration
 
 logger = logging.getLogger("workshop_video_brain.edit_mcp.tools")
 
@@ -61,43 +62,11 @@ _VIDEO_EXTENSIONS: frozenset[str] = frozenset(
 def _probe_duration(path: Path) -> float | None:
     """Best-effort ffprobe duration for a candidate clip (None on failure).
 
-    A ``None`` return skips the clip from phash comparison, so a silent swallow
-    would make a corrupt file indistinguishable from an empty one. We log loudly
-    and distinguish a missing file from an unparseable/undecodable probe result.
+    A ``None`` return skips the clip from phash comparison, so failures are
+    logged loudly (never silently swallowed). Thin wrapper over the shared
+    :func:`probe_format_duration` helper.
     """
-    if not Path(path).exists():
-        logger.warning("dupe-scan duration probe: clip missing: %s", path)
-        return None
-    try:
-        out = subprocess.run(
-            [
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(path),
-            ],
-            capture_output=True, text=True, check=False,
-        )
-    except FileNotFoundError:
-        logger.warning("dupe-scan duration probe: ffprobe binary not on PATH")
-        return None
-    except OSError as exc:
-        logger.warning("dupe-scan duration probe: ffprobe failed on %s: %s", path, exc)
-        return None
-    if out.returncode != 0:
-        logger.warning(
-            "dupe-scan duration probe: ffprobe exited %d on %s: %s",
-            out.returncode, path, out.stderr.strip()[-200:],
-        )
-        return None
-    text = out.stdout.strip()
-    try:
-        return float(text)
-    except ValueError:
-        logger.warning(
-            "dupe-scan duration probe: unparseable duration %r for %s", text, path
-        )
-        return None
+    return probe_format_duration(path, log_label="dupe-scan duration probe")
 
 
 def _list_clips(source: Path) -> list[Path]:

@@ -46,7 +46,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     MISSING_DEPENDENCY,
     BAD_JSON_PARAM,
 )
-from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _err
+from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _err, find_workspace_root
 from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
     serialize_project,
@@ -68,12 +68,7 @@ def _resolve(path_str: str) -> Path:
 
 
 def _find_workspace_root(start: Path) -> Path | None:
-    candidates = [start] if start.is_dir() else []
-    candidates.extend(start.parents)
-    for parent in candidates:
-        if (parent / "workspace.yaml").exists():
-            return parent
-    return None
+    return find_workspace_root(start)
 
 
 def _resolve_project(workspace_path: str, project_file: str) -> Path:

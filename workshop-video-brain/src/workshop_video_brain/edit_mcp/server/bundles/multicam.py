@@ -22,9 +22,6 @@ Touches no ``adapters/kdenlive/`` code, no ``server/tools.py``.
 from __future__ import annotations
 
 import hashlib
-import json
-import shutil
-import subprocess
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
@@ -60,6 +57,10 @@ from workshop_video_brain.edit_mcp.pipelines.audio_sync import (
     DEFAULT_WINDOW_SECONDS,
     sync_by_audio,
 )
+# Module-level name kept so tests can monkeypatch ``multicam._probe_duration_seconds``.
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import (
+    probe_duration_seconds as _probe_duration_seconds,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -71,30 +72,6 @@ def _producer_id_for(media_path: Path) -> str:
     stem = media_path.stem or "angle"
     h = hashlib.md5(str(media_path).encode()).hexdigest()[:6]
     return f"{stem}_{h}"
-
-
-def _probe_duration_seconds(media_path: Path) -> float | None:
-    """Best-effort media duration in seconds via ffprobe (None if unavailable)."""
-    if not shutil.which("ffprobe"):
-        return None
-    try:
-        proc = subprocess.run(
-            [
-                "ffprobe", "-v", "quiet", "-print_format", "json",
-                "-show_format", "-show_streams", str(media_path),
-            ],
-            capture_output=True, text=True, timeout=30,
-        )
-        if proc.returncode != 0:
-            return None
-        data = json.loads(proc.stdout or "{}")
-        for stream in data.get("streams", []):
-            if stream.get("codec_type") == "video" and stream.get("duration"):
-                return float(stream["duration"])
-        dur = data.get("format", {}).get("duration")
-        return float(dur) if dur else None
-    except Exception:
-        return None
 
 
 def _load(workspace_path: str, project_file: str):

@@ -51,7 +51,7 @@ import json
 import logging
 import math
 import re
-import xml.etree.ElementTree as ET
+from workshop_video_brain.edit_mcp.pipelines._common import make_filter_xml
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -260,19 +260,7 @@ def _make_filter(
     clip_ref: tuple[int, int],
     props: list[tuple[str, str]],
 ) -> str:
-    track, clip = clip_ref
-    root = ET.Element(
-        "filter",
-        {
-            "mlt_service": mlt_service,
-            "track": str(track),
-            "clip_index": str(clip),
-        },
-    )
-    for name, text in props:
-        el = ET.SubElement(root, "property", {"name": name})
-        el.text = text
-    return ET.tostring(root, encoding="unicode")
+    return make_filter_xml(mlt_service, clip_ref, props)
 
 
 # ---------------------------------------------------------------------------
