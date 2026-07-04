@@ -51,24 +51,30 @@ def find_source_or_latest(
     workspace_path: Path,
     source: str,
     extensions: set[str],
+    *,
+    require_file: bool = False,
 ) -> Path | None:
     """Resolve *source* to a file path, or the newest matching file in raw.
 
     If *source* is non-empty it is returned as-is (absolute, or resolved under
-    the workspace root) -- existence is the caller's concern. Otherwise the
-    newest file in ``media/raw`` whose suffix is in *extensions* (by mtime) is
-    returned, or ``None`` if the directory is absent/empty.
+    the workspace root) -- existence is the caller's concern **unless**
+    *require_file* is set, in which case a missing path or a directory yields
+    ``None`` (so it never reaches ffmpeg). Otherwise the newest file in
+    ``media/raw`` whose suffix is in *extensions* (by mtime) is returned, or
+    ``None`` if the directory is absent/empty.
 
     Shared by the file-processing bundles (stabilize / denoise / two-pass
-    normalize / ai_mask); each passes its own extension set so the intentionally
-    different video-vs-media filters are preserved. Note: ``tools/audio.py``'s
-    ``_find_audio_file`` is deliberately *not* routed here -- it adds an
-    ``is_file()`` guard on the explicit-path branch (different behavior).
+    normalize / ai_mask; ``require_file=False``) and, via the ``require_file=True``
+    flag, ``tools/audio.py``'s ``_find_audio_file`` (which needs the explicit-path
+    ``is_file()`` guard so a missing path routes to the loud "No audio file found"
+    error instead of ffmpeg's noisy banner).
     """
     if source and source.strip():
         p = Path(source)
         if not p.is_absolute():
             p = workspace_path / source
+        if require_file and not p.is_file():
+            return None
         return p
 
     raw_dir = workspace_path / "media" / "raw"

@@ -5,6 +5,18 @@
 ### Skill Naming
 All skills MUST be prefixed with `ff-` (e.g., `ff-video-idea-to-outline`, not `video-idea-to-outline`). This ensures all ForgeFrame skills group together in the `/` autocomplete menu.
 
+### Tool Parameter Naming
+- **New tools use `clip_index`** (not `clip`) for the clip-index-within-a-track
+  parameter. The live registry has a legacy split -- 56 older effect/mask/composite
+  tools use `clip`, 18 newer clip-editing tools use `clip_index` -- for the same
+  concept. This is documented, deliberate debt: renaming the 56 positionally would
+  break every caller for zero functional gain, so **no renames** (consistency
+  passes 2-4 verdict). If a future unification is ever justified it must go through
+  a `@param_alias` shim (`clip` <-> `clip_index`), never a positional break. Until
+  then: author new tools with `clip_index` so the newer convention wins by accretion.
+- Prefer `workspace_path` as the first parameter (177/201 tools do); tools that
+  operate on a URL / library / bare file / name legitimately lead with that instead.
+
 ### Project Structure
 - Plugin marketplace root: `.claude-plugin/marketplace.json`
 - Plugin directory: `workshop-video-brain/`

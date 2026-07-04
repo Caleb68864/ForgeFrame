@@ -16,6 +16,20 @@ unit modules:
   never import from the external oracle package.
 
 Gating markers/fixtures live in ``tests/conftest.py``.
+
+Growth policy (consolidation pass 4)
+------------------------------------
+This module mirrors ``pipelines/_common`` on the test side: a shared kernel of
+small, reusable primitives. It spans five domains -- MCP unwrap/invoke, tool
+registration probing, synthetic media generation, in-memory ``KdenliveProject``
+builders, and tool-availability gates. Split trigger (same as ``_common``):
+when it clearly exceeds its cohesion, promote to a ``tests/_testkit/`` package
+split by domain (``_mcp`` / ``_media`` / ``_projects`` / ``_gates``) behind a
+``__init__.py`` shim that re-exports every current name so the ~19 importing
+test modules stay byte-identical. As of pass 4 it is ~309 LOC / 5 domains --
+**at the threshold**, but a package split is deferred (the opinion's "do not
+pre-split" guidance) so this pass's diff stays contained; execute the shim-backed
+split as its own mechanical change when it next grows.
 """
 from __future__ import annotations
 

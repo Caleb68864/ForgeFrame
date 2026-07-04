@@ -30,6 +30,7 @@ import subprocess
 from pathlib import Path
 
 from workshop_video_brain.core.models.kdenlive import KdenliveProject
+from workshop_video_brain.edit_mcp.pipelines import _common
 from workshop_video_brain.edit_mcp.pipelines.overlay_looks import (
     append_clip_to_playlist,
 )
@@ -284,7 +285,13 @@ def insert_take_clip(
 
 
 def seconds_to_frames(seconds: float, fps: float) -> int:
-    """Round *seconds* to an integer frame index at *fps*."""
+    """Round *seconds* to an integer frame index at *fps*.
+
+    Thin fps-fallback front-end over the canonical
+    :func:`_common.seconds_to_frames`: substitutes ``DEFAULT_FPS`` for a
+    non-positive *fps* (the canonical helper *raises* on bad fps), then
+    delegates the half-up frame math to it.
+    """
     if fps <= 0:
         fps = DEFAULT_FPS
-    return int(round(float(seconds) * fps))
+    return _common.seconds_to_frames(float(seconds), fps)

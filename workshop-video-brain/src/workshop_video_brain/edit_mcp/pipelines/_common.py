@@ -4,6 +4,31 @@ Extraction target for byte-identical primitives that were independently
 reimplemented across ``pipelines/`` modules (consistency pass 1). Kept
 deliberately dependency-light so any pipeline can import it without pulling in
 the server/adapter layers.
+
+Growth policy (consolidation pass 4)
+------------------------------------
+This module is the home for **small, dependency-light, pure primitives** that
+are shared by two or more ``pipelines/`` modules and would otherwise be
+copy-pasted. What belongs here:
+
+* Deterministic, side-effect-free helpers (no I/O, no subprocess, no server or
+  adapter imports -- stdlib + ``core.models`` only).
+* Genuinely cross-cutting utilities (used by >=2 pipelines). A helper needed by
+  exactly one pipeline stays in that pipeline.
+
+It currently spans four domains: **time** (``seconds_to_frames``,
+``seconds_to_mmss``), **XML builders** (``make_filter_xml``,
+``make_filter_element_xml``, ``_build_filter_xml``), **DSP** math
+(``parabolic_peak_offset``), and **validation / text heuristics**
+(``check_unit_interval``, ``keyword_match_strength``).
+
+Split trigger: when this file exceeds **~250 LOC OR a 5th domain lands**,
+promote it to a ``_common/`` package split by domain (``_common/time.py``,
+``_common/xml.py``, ``_common/dsp.py``, ``_common/validation.py``) behind a
+same-path shim -- ``_common/__init__.py`` re-exports every current name so the
+import surface stays byte-identical (the patcher/tools-split pattern). As of
+pass 4 it is ~205 LOC / 4 domains -- **under the trigger; documented, not
+split.** Do not pre-split.
 """
 from __future__ import annotations
 

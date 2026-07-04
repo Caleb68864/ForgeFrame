@@ -860,3 +860,130 @@ present).
 **Verification.** Full suite `uv run pytest tests/ -q`: **4204 passed / 1
 skipped** (was 4200/1 + the 4 new boundary tests). New import-graph test green;
 per-helper import smoke green (12/12). No commit made (per instruction).
+
+---
+
+## Consolidation-4 -- clear the accumulated carry-forwards (final sweep)
+
+Executes the residual small-item carry-forwards accumulated across passes 1-5.
+Owns src + tests for the scoped items only. Pure delegation / documentation, zero
+behavior change. Baseline unchanged: **4204 passed / 1 skipped** before and after
+(full suite twice-clean: full run 4204/1 @154s; external tier re-run green @30s,
+0 flakes). External partition still cleanly partitions -- `-m external` collects
+**60** (62 items, 2 deselected). No commit made.
+
+### Carry-forward ledger -- every item closed with a verdict
+
+1. **guides/vo_loop `seconds_to_frames` wrapper delegation** (Pass 2 §units,
+   Pass 5 delta). **DONE.** Both `pipelines/guides.py` and `pipelines/vo_loop.py`
+   now keep their `if fps <= 0: fps = DEFAULT_FPS` front-end and delegate the frame
+   math to `_common.seconds_to_frames(float(seconds), fps)` (the canonical half-up
+   helper that *raises* on bad fps; the wrapper absorbs the fallback so it never
+   sees bad fps). Both import `_common` at module level. Existing tests unchanged
+   and green: `test_vo_loop::test_seconds_to_frames_rounds` (incl. `(2.0,0)==50`
+   fallback) and `test_guides_pipeline::TestFrameMath` (all 5 vectors +
+   `test_zero_fps_falls_back`). No test vector lands on a banker's-round-vs-half-up
+   `.5` boundary, so the `int(round(...))`->half-up switch is a no-op on them.
+
+2. **Cross-package timestamp dup** (Pass 1 near-miss 3). **DONE.**
+   `production_brain/skills/voiceover.py::_seconds_to_timestamp` now delegates to
+   `_common.seconds_to_mmss(seconds)` (behaviourally identical M:SS formatter).
+   Direction chosen per **ADR 005**: `production_brain -> edit_mcp.pipelines` is the
+   blessed downward "planning consumes analysis" edge (Rule 2 allows pipelines;
+   only `edit_mcp.server` is forbidden), so a **module-level** import of `_common`
+   is fine -- no cycle (`_common` imports only stdlib). `test_module_boundaries`
+   (all 4) stays green, confirming the new edge is compliant. NB: a *third* copy,
+   `pipelines/review_timeline.py::_seconds_to_timestamp`, is **HH:MM:SS** (not
+   M:SS) -- a genuinely different formatter, **not** a dup; left alone.
+
+3. **Testkit / external-builders overlap** (Pass 4 delta). **DONE -- collapsed via
+   re-export.** Direction chosen: **external MAY depend on the shared testkit;
+   the shared testkit must NEVER depend on external** (the pass-4 rule). So
+   `tests/integration/external/builders.py` now imports the shared constants
+   (`RED`/`BLUE`/`GREEN`/`WHITE`/`BLACK`, `DEFAULT_*`, `VIDEO_TRACK`/`AUDIO_TRACK`),
+   the `color_producer` helper (aliased `_color_producer`), and the byte-identical
+   `solid_color_project` / `sequence_project` builders **from `tests._testkit`**,
+   and keeps only the two genuinely-different builders local:
+   `two_video_track_project` (two *filled* video tracks vs testkit's
+   v1-filled/v2-empty `two_track_project`) and `build_filter_xml`
+   (external-render-path specific). `_testkit` is a plain, side-effect-free helper
+   module (no fixtures, no server import -- only `shutil.which` PATH lookups + mark
+   defs), so importing it keeps the `-m external` partition clean (verified: 60
+   collected, same as pass 4). Removed the now-unused `Producer` import.
+
+4. **`_common` growth policy** (Pass 3 + Pass 5 §3.3). **DOCUMENTED, NOT split.**
+   LOC = **204/205**; domains = **4** (time, XML builders x3, DSP, validation/text).
+   Under the ~250-LOC / 5th-domain trigger -> document only. Wrote the growth policy
+   into the `_common.py` module docstring: what belongs (small, dependency-light,
+   pure, cross-cutting primitives; stdlib + `core.models` only), and the explicit
+   split trigger (>250 LOC OR 5th domain -> promote to a `_common/` package split
+   by domain behind a same-path `__init__` shim; do not pre-split).
+
+5. **clip/clip_index final verdict** (Pass 2 §naming, Pass 5 §3-explicitly-not).
+   **DOCUMENTED, NO renames.** Added a "Tool Parameter Naming" convention to
+   `CLAUDE.md`: new tools use `clip_index`; the 56-`clip` vs 18-`clip_index` split
+   is deliberate documented debt (positional rename would break every caller for
+   zero functional gain); any future unification must go through a `@param_alias`
+   shim, never a positional break; new tools author with `clip_index` so the newer
+   convention wins by accretion. Also captured the `workspace_path`-first
+   entry-point norm there. **Not** placed in `docs/.../error-contract.md` -- that
+   guide is exclusively about error *messages* (`message`/`suggestion`/`error_type`),
+   so a param-naming rule would be off-topic; CLAUDE.md's Conventions section is the
+   apt home.
+
+### Other carry-forwards swept (resolve / explicitly close)
+
+- **`tools/audio.py::_find_audio_file` guard divergence** (Pass 1 near-miss 1).
+  **RESOLVED.** Added a `require_file: bool = False` keyword to the canonical
+  `tools_helpers.find_source_or_latest` (missing/dir explicit path -> `None` when
+  set; default `False` = existing callers unchanged). `_find_audio_file` now
+  delegates: `find_source_or_latest(ws, file_path, _AUDIO_EXTS, require_file=True)`
+  -- byte-equivalent behaviour (the `is_file()` guard that routes a missing path to
+  the loud "No audio file found" error instead of ffmpeg's banner). Extension set
+  hoisted to a module `_AUDIO_EXTS` constant. `test_faults_tools` + `test_faults_
+  bundles` (82) green; stabilize/denoise/two-pass/ai_mask (`require_file=False`)
+  unaffected.
+- **`_resolve_project` lexicographic `_v10<_v2` bug** (Pass 1 near-miss 2) --
+  **CLOSED: already fixed Pass 2** (both bundles use numeric `latest_project`).
+- **Two duration-probe shapes kept separate** (Pass 1 near-miss 4) -- **CLOSED:
+  intentional**; different contracts (silent video-stream vs loud
+  container-format), both canonical in `probe.py`.
+- **`transitions.py` 3 inline glob+latest sequences** (Pass 1 near-miss 5) --
+  **CLOSED: done Pass 2** (`_load_latest_project`).
+- **`insert_overlay_clip`/`insert_take_clip`, `_parabolic_*`, `_check_unit`,
+  `_match_strength`, mono-PCM decode, `has_video_stream` misfile** (Pass 1 larger
+  dups / Pass 3 Job 3) -- **CLOSED: all done Pass 3.**
+- **`tools_helpers` split + stranded `_build_filter_xml`** (Pass 1/3, Pass 5 §3.2)
+  -- **CLOSED: done Consolidation-1.**
+- **`bundles/` into `tools/` merge + `tools/__init__` contention** (Pass 3, Pass 5
+  §3.1) -- **CLOSED: verdict NO-merge; `tools/` auto-discovery landed
+  Consolidation-2.**
+- **`production_brain` <-> `edit_mcp` ADR-004 drift** (Pass 5 §3.4) -- **CLOSED:
+  ADR 005 + boundary test done Consolidation-3.** (This pass's item 2 adds one more
+  compliant forward edge under it.)
+- **Project-file-first entry-point subfamily / signature order** (Pass 2 §sig) --
+  **CLOSED: intentional addressing style, documented Pass 2; no reorder** (positional
+  break). CLAUDE.md now also notes the `workspace_path`-first norm.
+- **`tests/_testkit.py` growth** (Pass 4, Pass 5 §3.3). **DOCUMENTED, split
+  DEFERRED.** LOC = **309 / 5 domains** -- *at* the trigger. Wrote the growth policy
+  + split plan (shim-backed `tests/_testkit/` package: `_mcp`/`_media`/`_projects`/
+  `_gates`, `__init__` re-exports so the ~19 importers stay byte-identical) into the
+  `_testkit` docstring. Executing the split is a self-contained mechanical change
+  outside this pass's enumerated scope and the opinion's explicit "do not pre-split"
+  guidance -- **deferred, not pre-split**, to keep this pass's diff contained.
+- **~20 single-line `_fn`/`_callable` unwrap-helper migrations** (Pass 4) --
+  **CLOSED: deferred, mechanical/budget** (each saves ~2 LOC with per-file import
+  churn; non-blocking, not a duplication-of-logic concern).
+- **unit-vs-integration boundary leak** (registration tests in `unit/` that import
+  the whole server) (Pass 4) -- **CLOSED: observation only**, no correctness issue;
+  no reclassification this pass.
+- **External-oracle coverage gaps** (composite blend-modes, masking/alpha renders,
+  audio-loudnorm end-to-end) (Pass 4) -- **CLOSED: out of scope** -- these are
+  *new test authoring*, not duplication/consistency consolidation.
+
+**Files touched (src):** `pipelines/guides.py`, `pipelines/vo_loop.py`,
+`pipelines/_common.py` (docstring), `production_brain/skills/voiceover.py`,
+`server/tools/audio.py`, `server/tools_helpers/_workspace.py`. **(tests):**
+`tests/integration/external/builders.py`, `tests/_testkit.py` (docstring).
+**(docs):** `CLAUDE.md`. **Notes document appended; every listed carry-forward
+closed with a verdict.**

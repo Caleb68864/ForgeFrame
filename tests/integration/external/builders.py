@@ -8,6 +8,18 @@ turns into ``.kdenlive`` XML.
 IMPORTANT empirical note: an MLT ``color`` producer's ``resource`` must be the
 bare colour value (e.g. ``0xff0000ff``). Prefixing it with ``color:`` makes MLT
 render solid black, which would silently defeat the pixel-differential tests.
+
+Duplication note (consolidation pass 4): the colour constants, the
+``color:``-producer helper, and the ``solid_color_project`` / ``sequence_project``
+builders were byte-for-byte twins of ``tests/_testkit.py``. They are now
+**re-exported** from the shared testkit rather than reimplemented -- the sanctioned
+dependency direction is *external MAY depend on the shared testkit; the shared
+testkit must NEVER depend on the external package*. ``_testkit`` is a plain,
+side-effect-free helper module (no fixtures, no server import), so importing it
+keeps the ``-m external`` partition clean. Only the two builders that genuinely
+differ from the testkit versions live here: ``two_video_track_project`` (two
+*filled* video tracks vs the testkit's v1-filled/v2-empty ``two_track_project``)
+and ``build_filter_xml`` (external-render-path specific).
 """
 from __future__ import annotations
 
@@ -17,108 +29,28 @@ from workshop_video_brain.core.models.kdenlive import (
     KdenliveProject,
     Playlist,
     PlaylistEntry,
-    Producer,
     ProjectProfile,
     Track,
 )
 
-# 0xRRGGBBAA
-RED = "0xff0000ff"
-BLUE = "0x0000ffff"
-GREEN = "0x00ff00ff"
-WHITE = "0xffffffff"
-BLACK = "0x000000ff"
-
-DEFAULT_WIDTH = 320
-DEFAULT_HEIGHT = 180
-DEFAULT_FPS = 25.0
-
-VIDEO_TRACK = "playlist_video"
-AUDIO_TRACK = "playlist_audio"
-
-
-def _color_producer(producer_id: str, resource: str, length: int) -> Producer:
-    return Producer(
-        id=producer_id,
-        resource=resource,
-        properties={
-            "resource": resource,
-            "mlt_service": "color",
-            "length": str(length),
-        },
-    )
-
-
-def solid_color_project(
-    color: str = RED,
-    frames: int = 50,
-    width: int = DEFAULT_WIDTH,
-    height: int = DEFAULT_HEIGHT,
-    fps: float = DEFAULT_FPS,
-    title: str = "solid",
-) -> KdenliveProject:
-    """One video + one audio track, a single solid-colour clip on each."""
-    length = frames + 10
-    prod = _color_producer("producer_0", color, length)
-    p = KdenliveProject(
-        version="7",
-        title=title,
-        profile=ProjectProfile(width=width, height=height, fps=fps, colorspace="709"),
-    )
-    p.producers = [prod]
-    p.tracks = [
-        Track(id=VIDEO_TRACK, track_type="video", name="Video"),
-        Track(id=AUDIO_TRACK, track_type="audio", name="Audio"),
-    ]
-    entry = PlaylistEntry(producer_id="producer_0", in_point=0, out_point=frames - 1)
-    p.playlists = [
-        Playlist(id=VIDEO_TRACK, entries=[entry.model_copy(deep=True)]),
-        Playlist(id=AUDIO_TRACK, entries=[entry.model_copy(deep=True)]),
-    ]
-    p.tractor = {"id": "tractor0", "in": "0", "out": str(frames - 1)}
-    return p
-
-
-def sequence_project(
-    colors: list[str] | None = None,
-    frames_each: int = 25,
-    width: int = DEFAULT_WIDTH,
-    height: int = DEFAULT_HEIGHT,
-    fps: float = DEFAULT_FPS,
-    title: str = "sequence",
-) -> KdenliveProject:
-    """One video (+audio) track with N back-to-back solid-colour clips.
-
-    Each clip is a distinct producer so pixel tests can tell them apart.
-    """
-    colors = colors or [RED, BLUE]
-    total = frames_each * len(colors)
-    p = KdenliveProject(
-        version="7",
-        title=title,
-        profile=ProjectProfile(width=width, height=height, fps=fps, colorspace="709"),
-    )
-    video_entries: list[PlaylistEntry] = []
-    audio_entries: list[PlaylistEntry] = []
-    for i, color in enumerate(colors):
-        pid = f"producer_{i}"
-        p.producers.append(_color_producer(pid, color, frames_each + 10))
-        video_entries.append(
-            PlaylistEntry(producer_id=pid, in_point=0, out_point=frames_each - 1)
-        )
-        audio_entries.append(
-            PlaylistEntry(producer_id=pid, in_point=0, out_point=frames_each - 1)
-        )
-    p.tracks = [
-        Track(id=VIDEO_TRACK, track_type="video", name="Video"),
-        Track(id=AUDIO_TRACK, track_type="audio", name="Audio"),
-    ]
-    p.playlists = [
-        Playlist(id=VIDEO_TRACK, entries=video_entries),
-        Playlist(id=AUDIO_TRACK, entries=audio_entries),
-    ]
-    p.tractor = {"id": "tractor0", "in": "0", "out": str(total - 1)}
-    return p
+# Shared, byte-identical primitives re-exported from the testkit (single source
+# of truth). ``_color_producer`` keeps its historical private alias for the
+# local ``two_video_track_project`` below.
+from tests._testkit import (  # noqa: F401  (re-exported for external tests)
+    AUDIO_TRACK,
+    BLACK,
+    BLUE,
+    DEFAULT_FPS,
+    DEFAULT_HEIGHT,
+    DEFAULT_WIDTH,
+    GREEN,
+    RED,
+    VIDEO_TRACK,
+    WHITE,
+    color_producer as _color_producer,
+    sequence_project,
+    solid_color_project,
+)
 
 
 def two_video_track_project(

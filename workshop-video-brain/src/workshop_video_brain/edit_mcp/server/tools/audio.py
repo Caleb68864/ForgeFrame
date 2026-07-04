@@ -27,7 +27,11 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
     _validate_workspace_path,
+    find_source_or_latest,
 )
+
+# Audio/container suffixes accepted for the media/raw newest-file fallback.
+_AUDIO_EXTS = {".wav", ".mp3", ".flac", ".m4a", ".aac", ".mp4", ".mov", ".mkv"}
 
 
 
@@ -37,26 +41,16 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 # Audio processing tools
 # ---------------------------------------------------------------------------
 def _find_audio_file(workspace_path: Path, file_path: str) -> Path | None:
-    """Locate an audio file: explicit path or first/latest in media/raw."""
-    if file_path and file_path.strip():
-        p = Path(file_path)
-        if not p.is_absolute():
-            p = workspace_path / file_path
-        # Only accept a real file: a missing path or a directory must not be
-        # handed to ffmpeg (which fails with a noisy banner). Returning None
-        # routes to the loud "No audio file found" error instead.
-        return p if p.is_file() else None
+    """Locate an audio file: explicit path or newest in media/raw.
 
-    raw_dir = workspace_path / "media" / "raw"
-    if not raw_dir.exists():
-        return None
-    audio_exts = {".wav", ".mp3", ".flac", ".m4a", ".aac", ".mp4", ".mov", ".mkv"}
-    candidates = sorted(
-        (f for f in raw_dir.iterdir() if f.is_file() and f.suffix.lower() in audio_exts),
-        key=lambda f: f.stat().st_mtime,
-        reverse=True,
+    Delegates to the canonical :func:`find_source_or_latest` with
+    ``require_file=True`` so a missing/directory explicit path returns ``None``
+    (routing to the loud "No audio file found" error instead of handing ffmpeg a
+    path it fails on with a noisy banner).
+    """
+    return find_source_or_latest(
+        workspace_path, file_path, _AUDIO_EXTS, require_file=True
     )
-    return candidates[0] if candidates else None
 
 
 def _ensure_processed_dir(workspace_path: Path) -> Path:

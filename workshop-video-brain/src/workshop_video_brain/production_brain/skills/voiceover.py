@@ -11,6 +11,7 @@ from pathlib import Path
 from workshop_video_brain.core.models.enums import MarkerCategory
 from workshop_video_brain.core.models.markers import Marker
 from workshop_video_brain.core.models.transcript import Transcript, TranscriptSegment
+from workshop_video_brain.edit_mcp.pipelines import _common
 
 # Categories that warrant a voiceover fix
 _FIXABLE_CATEGORIES: frozenset[MarkerCategory] = frozenset([
@@ -327,11 +328,13 @@ def _extract_text_with_context(
 
 
 def _seconds_to_timestamp(seconds: float) -> str:
-    """Convert float seconds to MM:SS string."""
-    total = int(seconds)
-    mins = total // 60
-    secs = total % 60
-    return f"{mins}:{secs:02d}"
+    """Convert float seconds to ``M:SS`` string.
+
+    Delegates to the canonical :func:`_common.seconds_to_mmss` (behaviourally
+    identical) -- the blessed ``production_brain -> edit_mcp.pipelines``
+    direction per ADR 005 Rule 2.
+    """
+    return _common.seconds_to_mmss(seconds)
 
 
 def _resolve_note_path(workspace_root: Path, vault_path: Path) -> Path:

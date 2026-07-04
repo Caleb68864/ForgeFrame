@@ -22,6 +22,7 @@ import json
 
 from workshop_video_brain.core.models.kdenlive import KdenliveProject
 from workshop_video_brain.core.models.timeline import AddGuide
+from workshop_video_brain.edit_mcp.pipelines import _common
 
 DEFAULT_FPS = 25.0
 
@@ -37,10 +38,16 @@ def project_fps(project: KdenliveProject) -> float:
 
 
 def seconds_to_frames(seconds: float, fps: float) -> int:
-    """Convert *seconds* to an integer frame index (rounded to nearest frame)."""
+    """Convert *seconds* to an integer frame index (rounded to nearest frame).
+
+    Thin fps-fallback front-end over the canonical
+    :func:`_common.seconds_to_frames`: this wrapper substitutes ``DEFAULT_FPS``
+    for a non-positive *fps* (the canonical helper *raises* on bad fps), then
+    delegates the half-up frame math to it.
+    """
     if fps <= 0:
         fps = DEFAULT_FPS
-    return int(round(float(seconds) * fps))
+    return _common.seconds_to_frames(float(seconds), fps)
 
 
 def frames_to_seconds(frames: int, fps: float) -> float:
