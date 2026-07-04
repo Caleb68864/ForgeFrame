@@ -148,3 +148,14 @@ After completing analytics:
 - Summarise: "Analysed {N} videos. Top performer: '{title}' with {views:,} views."
 - Offer to run again with a different video count or time window.
 - Suggest: "Want me to analyse a specific video's performance against your channel average?"
+- Single-video tools are also available: `youtube_fetch_video` (one video) and
+  `youtube_fetch_channel` (raw channel data) if you need finer-grained pulls.
+
+---
+
+## Failure contract
+
+ForgeFrame tools return a structured error dict carrying `error_type` +
+a plain `suggestion` (never a traceback) — e.g. a `missing_binary` when yt-dlp
+isn't installed. Read `suggestion` first; the full taxonomy is in the vault's
+[[MCP Error Catalog]].

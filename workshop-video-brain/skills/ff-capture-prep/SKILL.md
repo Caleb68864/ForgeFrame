@@ -56,8 +56,40 @@ Present the markdown checklist directly. Add a brief intro like:
 
 Then the full checklist markdown, followed by any personalized notes.
 
+## After the shoot: what ingest will do (set expectations now)
+
+Capture prep should tell the creator what happens the moment the footage lands,
+so they shoot with that pipeline in mind. Once files are in `media/raw/`:
+
+1. `media_ingest` — one call runs the whole ingest brain: scan assets, generate
+   proxies, transcribe, and detect silences. Everything below hangs off this.
+2. `proxy_attach` — wire the generated proxies into the working copy so Kdenlive
+   edits smoothly against lightweight files (revert with `proxy_detach` before
+   final render). Mention this if they're shooting 4K/high-bitrate — it's why
+   editing stays responsive.
+3. `clips_detect_scenes` — split a long continuous recording into shot boundaries
+   (via `scdet`), and `media_segment_at_silence` — split a long take into
+   per-take files at detected silences. Tell the creator: **leave a beat of
+   silence between takes** so this segmentation works cleanly.
+4. `media_stabilize` — two-pass FFmpeg vidstab for any handheld/shaky shot.
+   Flag on the checklist which shots are handheld so they're candidates.
+
+This is a pre-shoot skill, so you don't run these — you set the expectation and
+optimize the shoot for them (silence between takes, note handheld shots, flag
+high-bitrate sources for proxying).
+
+---
+
 ## Example
 
 User: "I'm about to film the dovetail tutorial, can you get me a checklist?"
 
 Response: Load the shot plan from the workspace, generate the checklist at 1080p/30fps, present it with notes about the specific shots in the plan.
+
+---
+
+## Failure contract
+
+Every ForgeFrame tool returns a structured error dict carrying `error_type` +
+a plain `suggestion` (never a traceback). Read `suggestion` first; the full
+taxonomy is in the vault's [[MCP Error Catalog]].

@@ -92,8 +92,19 @@ After the user reviews the outline, offer:
 Close with the standard next-steps reminder:
 
 1. Review and refine the outline in your vault note
-2. Drop raw footage into the `intake/` folder when you're ready to film
-3. Run `wvb media ingest <workspace_path>/` after filming to process footage
+2. Drop raw footage into `media/raw/` when you're ready to film
+3. After filming, run the `media_ingest` tool to process footage — one call runs
+   the full ingest brain: scan assets, generate proxies, transcribe, and detect
+   silences. Then wire proxies into the edit with `proxy_attach` (so Kdenlive
+   edits smoothly; `proxy_detach` before the final render).
+
+**Ingest-brain helpers worth knowing at project start**, so you shoot for them:
+- `clips_detect_scenes` splits a long continuous recording at shot boundaries,
+  and `media_segment_at_silence` splits a long take into per-take files at
+  detected silences — leave a beat of silence between takes so this is clean.
+- `media_stabilize` cleans up any handheld/shaky shot (two-pass vidstab).
+
+See `/ff-capture-prep` for the full pre-shoot checklist around this pipeline.
 
 ---
 
@@ -107,7 +118,11 @@ Close with the standard next-steps reminder:
 - Always confirm the workspace and vault note paths were created successfully
   before presenting the outline.
 - If `vault_note_path` is empty in the result, warn the user that no vault note
-  was created and suggest running `wvb init` to configure ForgeFrame.
+  was created and suggest running `/ff-init` (or `forgeframe_init`) to configure
+  ForgeFrame.
+- **Failure contract:** tools return a structured error dict (`error_type` +
+  `suggestion`), never a traceback. An empty `vault_note_path` is usually the
+  "vault not configured" case in the vault's [[MCP Error Catalog]].
 
 ---
 
@@ -137,4 +152,5 @@ assembly."
 After completing setup, tell the user which skill to use next:
 - For script refinement: `/ff-tutorial-script`
 - For shot list changes: `/ff-shot-plan`
-- After filming: `/ff-auto-editor` or `wvb media ingest`
+- After filming: run `media_ingest`, then `/ff-auto-editor` or
+  `/ff-assemble-from-script`

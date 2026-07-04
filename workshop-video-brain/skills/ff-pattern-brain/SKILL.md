@@ -92,3 +92,17 @@ Obsidian note, or generate overlay text for your video?"
 The extracted data is a starting point. Your job is to make it *useful*:
 accurate, complete, and formatted for someone following along at a workbench.
 If something is clearly wrong or missing, say so and ask the user to clarify.
+
+The underlying extraction is exposed as the `pattern_extract` tool (materials,
+measurements, steps, tips from workspace transcripts) if you want to run it
+directly. The numbered build steps it produces are also the input to
+`/ff-assemble-from-script` and `shots_map_to_script` — a clean step list here
+makes footage-to-step matching downstream far more accurate.
+
+---
+
+## Failure contract
+
+ForgeFrame tools return a structured error dict carrying `error_type` +
+a plain `suggestion` (never a traceback). Read `suggestion` first; the full
+taxonomy is in the vault's [[MCP Error Catalog]].

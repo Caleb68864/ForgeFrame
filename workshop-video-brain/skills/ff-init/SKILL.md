@@ -174,3 +174,13 @@ Would you like to re-run init with a new vault path, or fix these manually?
 
 Offer to re-run init with corrected paths, or explain how to fix manually
 (e.g., install FFmpeg, update the path in `~/.forgeframe/config.json`).
+
+---
+
+## Failure contract
+
+Every ForgeFrame tool (including `forgeframe_init` / `forgeframe_status`) returns
+a structured error dict carrying `error_type` + a plain `suggestion` — never a
+traceback. Read `suggestion` first; the full taxonomy is in the vault's
+[[MCP Error Catalog]]. A missing-vault error here is usually the `vault_root` /
+config gap it documents.

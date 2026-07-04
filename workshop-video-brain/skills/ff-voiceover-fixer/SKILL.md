@@ -160,6 +160,33 @@ video note. Confirm the path to the user when done.
 
 ---
 
+## Re-recording a fix and dropping it back in
+
+When a rewrite (or a "CUT") means the user re-records that line rather than
+keeping the original audio, use the VO loop to place the new take on the
+timeline without hand-nudging clips:
+
+- `vo_plan` — split the corrected script into numbered VO cues and lay them on
+  an audio track (each cue is a slot).
+- `vo_attach` — attach the recorded take for a cue: it probes the file, places
+  it on the track, and reports **drift** vs. the planned duration (so you know if
+  the new read runs long/short against the picture).
+- `vo_status` — the cue table: planned / recorded / missing, estimated vs.
+  actual, drift. Use it to see which fixes still need a re-record.
+
+Once the corrected VO is on the timeline, level it:
+
+- `audio_normalize_two_pass` — match the new take's loudness to the rest
+  (accurate two-pass `loudnorm`) so the drop-in doesn't jump in volume.
+- `track_volume` / `track_eq` — set the voice track's overall level and roll off
+  rumble/harshness so re-recorded lines sit with the originals.
+- `audio_duck` — keyframe any music bed down under the corrected narration.
+
+(For the file-level cleanup of raw audio, see `/ff-audio-cleanup`; for the full
+finishing mix, `/ff-finishing`.)
+
+---
+
 ## Quality guidelines
 
 - Never invent technical content. If you don't know what the presenter meant,
@@ -179,4 +206,8 @@ After producing the fixes:
 - Summarize: "N segments rewritten, M cut. Estimated word count reduced by ~X%."
 - Offer to update the Obsidian note with the fixes.
 - If the transcript has pervasive quality issues (more than 30% of segments
-  flagged), suggest a re-record rather than a full rewrite pass.
+  flagged), suggest a re-record rather than a full rewrite pass — then use the
+  VO loop above (`vo_plan` → `vo_attach` → `vo_status`) to drop the new takes in.
+- **Failure contract:** tools return a structured error dict (`error_type` +
+  `suggestion`), never a traceback — read `suggestion` first. Full taxonomy: the
+  vault's [[MCP Error Catalog]].

@@ -125,9 +125,34 @@ Output: media/processed/voiceover.wav
 
 Use these when the user wants a specific adjustment rather than the full pipeline:
 
-- `audio_normalize` — loudness only, no other processing
+- `audio_normalize` — loudness only, single-pass, no other processing
+- `audio_normalize_two_pass` — **preferred for delivery**: measured two-pass
+  FFmpeg `loudnorm` (analyze, then correct) for accurate integrated LUFS. Use
+  this over `audio_normalize` when the output is the final master.
+- `audio_loudness_scan` — measure per-clip LUFS / true-peak / LRA across a whole
+  shoot before deciding what to fix (read-only).
 - `audio_compress` — dynamic range only
 - `audio_denoise` — noise reduction only
+
+---
+
+## Timeline mixing (when the audio is already on a Kdenlive timeline)
+
+The tools above process files in `media/raw/`→`media/processed/`. Once clips are
+on a working-copy timeline, mix at the **track** level instead — these operate on
+whole tracks in the latest working copy:
+
+- `track_volume` — set a track's overall volume (a `volume` filter on the track).
+- `track_eq` — multi-band EQ across a track (stacked `avfilter.equalizer` bands),
+  e.g. roll off rumble on a voice track or thin a boomy music bed.
+- `audio_duck` — keyframe a music track's `volume` down under speech on the voice
+  track. This is how you sit music under narration without touching the source
+  files. (For the full finishing mix, hand off to `/ff-finishing`.)
+
+If the user is dropping in recorded voiceover rather than cleaning existing
+audio, use the VO loop: `vo_plan` (split a script into numbered cues on a track)
+→ `vo_attach` (place each recorded take, report drift) → `vo_status` (planned /
+recorded / missing table). See `/ff-voiceover-fixer` for the narration-rewrite side.
 
 ---
 
@@ -140,6 +165,9 @@ Use these when the user wants a specific adjustment rather than the full pipelin
 - If the user says audio sounds "muffled" after processing, the highpass cutoff
   may be too aggressive — suggest they re-run with `raw_cleanup` preset.
 - Output always goes to `media/processed/` — the source file is never modified.
+- **Failure contract:** every tool returns a structured error dict carrying
+  `error_type` + a plain-language `suggestion` (never a traceback). Read
+  `suggestion` first; the full taxonomy is in the vault's [[MCP Error Catalog]].
 
 ---
 

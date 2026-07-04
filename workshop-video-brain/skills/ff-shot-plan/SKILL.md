@@ -255,6 +255,26 @@ If the user mentions gear constraints, adapt accordingly:
 
 ---
 
+## Planning for the edit, not just the shoot
+
+A shot plan is also where you flag what the *edit* will need, so those assets get
+captured or scripted up front:
+
+- **Voiceover timing.** If the video is VO-driven, note which beats are narration
+  over B-roll. Downstream, `vo_plan` splits the script into numbered VO cues and
+  lays them on the timeline (then `vo_attach` drops in recorded takes) — a shot
+  plan that marks "VO over B-roll" beats makes those cues line up with real
+  footage. Flag it in the Notes column.
+- **Title cards / lower-thirds.** Any beat that needs an on-screen title, a
+  step label, or a lower-third name tag should be flagged here — those become
+  `title_card_add` (on-screen title card) and drop-shadowed overlays in the edit
+  (`effect_drop_shadow` for lower-third layers). Measurement shots you already
+  mark "text overlay needed" are the same idea. `/ff-finishing` applies them.
+
+Mark these in the shot's Notes so nothing gets discovered as missing mid-edit.
+
+---
+
 ## Handoff
 
 After producing the shot plan, tell the user:
@@ -263,3 +283,6 @@ After producing the shot plan, tell the user:
   workarounds.
 - Suggest: "Use `/ff-obsidian-video-note` to add this shot plan to your project
   vault note."
+- **Failure contract:** ForgeFrame tools return a structured error dict
+  (`error_type` + `suggestion`), never a traceback — read `suggestion` first.
+  Full taxonomy: the vault's [[MCP Error Catalog]].

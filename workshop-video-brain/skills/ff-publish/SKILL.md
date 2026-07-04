@@ -104,7 +104,20 @@ Or via MCP:
 publish_note(workspace_path="<workspace_path>", video_url="<url>")
 ```
 
-### Step 4 — Handoff
+### Step 4 — Chapters and thumbnail
+
+Two publish assets deserve their own tools:
+
+- `publish_chapters` — export the project's **timeline guides + chapter markers**
+  as ready-to-paste YouTube chapter text. Prefer this over the transcript-derived
+  chapters when the edit already has real guide markers on the timeline — the
+  timestamps are then exact, not estimated. (Add guides with `guide_add`; see
+  `/ff-finishing`.)
+- `thumbnail_generate` — extract the best frame from the cut and overlay bold
+  title text to produce a publish thumbnail PNG. Offer it here; ask the creator
+  which moment (or timestamp) should be the still, and what headline text.
+
+### Step 5 — Handoff
 
 - Confirm all files are in `reports/publish/`
 - Remind creator to verify chapter timestamps against the final export
@@ -134,8 +147,14 @@ publish_note(workspace_path="<workspace_path>", video_url="<url>")
 - Short punchy title should target under 40 characters.
 - Tags should be 15-25, all lowercase, no duplicates.
 - Hashtags should be max 15, prefixed with #.
-- Chapter timestamps should be verified against the actual video timeline.
+- Chapter timestamps should be verified against the actual video timeline
+  (use `publish_chapters` for exact timestamps when guide markers exist).
 - If no transcript exists, generate graceful defaults from the title.
+- Individual generators exist if you want one asset at a time: `publish_titles`,
+  `publish_description`, `publish_tags`, `publish_summary`.
+- **Failure contract:** tools return a structured error dict (`error_type` +
+  `suggestion`), never a traceback. Read `suggestion` first; the full taxonomy
+  is in the vault's [[MCP Error Catalog]].
 
 ---
 

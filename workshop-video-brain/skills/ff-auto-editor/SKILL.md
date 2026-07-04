@@ -90,12 +90,48 @@ Tell the user:
 - Total estimated duration
 - Any unmatched clips (B-roll candidates for later)
 
-### Step 6 — Suggest refinements
+### Step 6 — Self-review the render (close the loop)
+
+Don't hand back a blind cut. After `assembly_build`, watch it the way an agent
+can — render frames and inspect them:
+
+```
+render_review_frames(workspace_path="<workspace_path>", every_n_seconds=5)
+```
+
+This renders the cut, extracts frames at an interval (or at markers), tiles a
+contact sheet, and runs `qc_check` in one call. Look for black frames, wrong
+clips at a step, or dead air, then fix with the fine-grained tools below and
+re-review. This is the render → look → adjust loop that makes assembly agentic.
+
+### Step 7 — Suggest refinements
 
 Offer these follow-up actions:
 - "Run `/ff-rough-cut-review` to get pacing feedback on this cut."
 - "Use `/ff-broll-whisperer` to find placement for the unmatched clips."
 - "Open the project in Kdenlive and review the chapter markers."
+
+---
+
+## Fine-grained assembly (below the assembly_plan level)
+
+`assembly_plan` / `assembly_build` produce the whole first cut in one shot. When
+you need to place or swap individual clips at exact times — the real work of
+layering B-roll over A-roll — use the placement engine directly on the latest
+working copy:
+
+- `transcript_search` — find the clip/segment to place ("the part where I glue
+  the panel"). BM25-ranked over the transcript index with jump-to timestamps.
+  Build the index first with `transcript_index_build` if it doesn't exist.
+- `clip_place(track, at_seconds, mode="overwrite"|"insert")` — drop a clip at an
+  absolute time on a track. Overwrite lays B-roll over A-roll; insert ripples.
+- `clip_place_matched` — place a clip cut to exactly the duration of a reference
+  clip (e.g. cover an A-roll span with a single insert).
+- `clip_move_to` — cross-track move; `clip_trim` / `clip_split` / `clip_ripple_delete`
+  for tightening.
+
+For the full script→timeline orchestration (map every build step to clips and
+place them), hand off to `/ff-assemble-from-script`.
 
 ---
 
@@ -123,7 +159,10 @@ Assembly report saved to reports/assembly_report.md
 - Tutorial-step clips score highest as primaries.
 - Closeup and overhead clips are preferred as inserts.
 - Clips with no transcript and no labels will score low and likely end up
-  in unmatched_clips — suggest running `clip labels` first.
+  in unmatched_clips — suggest running `clips_label` first.
+- **Failure contract:** tools return a structured error dict (`error_type` +
+  `suggestion`), never a traceback. If assembly fails on "no working copy", run
+  `project_create_working_copy`. Full taxonomy: the vault's [[MCP Error Catalog]].
 - If the script has fewer steps than clips, some clips will be unmatched.
   This is expected and normal.
 

@@ -244,6 +244,9 @@ The `status` field uses these values, matching the workspace manifest:
   skipped (because they had no new content).
 - If vault_path is not set in the workspace manifest, ask the user for it
   before proceeding — do not guess.
+- **Failure contract:** ForgeFrame tools return a structured error dict
+  (`error_type` + `suggestion`), never a traceback. A "vault not configured"
+  error is documented in the vault's [[MCP Error Catalog]]; read `suggestion` first.
 
 ---
 
