@@ -14,13 +14,12 @@ ffmpeg-guarded integration tests). Also asserts both MCP tools are registered
 """
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
-
 from PIL import Image, ImageStat
+
+from tests._testkit import requires_melt_ffmpeg as pytestmark, unwrap
 
 from workshop_video_brain.core.models.kdenlive import (
     KdenliveProject,
@@ -37,17 +36,8 @@ from workshop_video_brain.edit_mcp.server.bundles.review_loop import (
     thumbnail_generate,
 )
 
-melt_available = shutil.which("melt") is not None
-ffmpeg_available = shutil.which("ffmpeg") is not None
-
-pytestmark = pytest.mark.skipif(
-    not (melt_available and ffmpeg_available),
-    reason="melt and ffmpeg required for review-loop integration proofs",
-)
-
-# ``@mcp.tool()`` wraps the functions; ``.fn`` is the callable implementation.
-_review = getattr(render_review_frames, "fn", render_review_frames)
-_thumb = getattr(thumbnail_generate, "fn", thumbnail_generate)
+_review = unwrap(render_review_frames)
+_thumb = unwrap(thumbnail_generate)
 
 
 def _two_clip_project(path: Path) -> None:
@@ -247,14 +237,8 @@ def test_thumbnail_generate_from_kdenlive_project(tmp_path):
 # --- registration asserts --------------------------------------------------
 
 def test_tools_registered():
-    import asyncio
+    import workshop_video_brain.server  # noqa: F401  (registers the tools)
+    from tests._testkit import assert_registered
 
-    import workshop_video_brain.server as server_mod
-
-    mcp = server_mod.mcp
-    getter = getattr(mcp, "get_tools", None) or getattr(mcp, "list_tools")
-    result = asyncio.run(getter())
-    names = set(result) if isinstance(result, dict) else {t.name for t in result}
-    assert "render_review_frames" in names
-    assert "thumbnail_generate" in names
+    assert_registered("render_review_frames", "thumbnail_generate")
     assert callable(_review) and callable(_thumb)

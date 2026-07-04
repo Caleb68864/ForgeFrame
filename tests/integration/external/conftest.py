@@ -17,6 +17,18 @@ import pytest
 pytestmark = pytest.mark.external
 
 
+def pytest_collection_modifyitems(items):
+    """Auto-mark real-melt render tests as ``render_retry`` (job 3 stabilizer).
+
+    Any external test that requests the ``melt_bin`` fixture drives a real
+    ``melt`` render and is therefore exposed to the CPU-load flake; the bounded
+    2-attempt retry protocol lives in the root ``tests/conftest.py``.
+    """
+    for item in items:
+        if "melt_bin" in getattr(item, "fixturenames", ()):  # real render test
+            item.add_marker(pytest.mark.render_retry)
+
+
 def _require(binary: str) -> str:
     path = shutil.which(binary)
     if not path:

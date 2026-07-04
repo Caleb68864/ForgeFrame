@@ -29,40 +29,15 @@ from workshop_video_brain.edit_mcp.server.bundles import clip_place as _bundle
 from workshop_video_brain.workspace.manager import WorkspaceManager
 
 # @mcp.tool() returns the raw function here; .fn fallback matches other bundles.
-clip_place = getattr(_bundle.clip_place, "fn", _bundle.clip_place)
-clip_move_to = getattr(_bundle.clip_move_to, "fn", _bundle.clip_move_to)
-clip_place_matched = getattr(_bundle.clip_place_matched, "fn", _bundle.clip_place_matched)
+from tests._testkit import color_producer as _color_prod  # noqa: E402
+from tests._testkit import two_track_project as _two_track_project  # noqa: E402
+from tests._testkit import unwrap  # noqa: E402
+
+clip_place = unwrap(_bundle.clip_place)
+clip_move_to = unwrap(_bundle.clip_move_to)
+clip_place_matched = unwrap(_bundle.clip_place_matched)
 
 FPS = 25.0
-
-
-def _color_prod(pid: str, resource: str, length: int) -> Producer:
-    return Producer(
-        id=pid,
-        resource=resource,
-        properties={"resource": resource, "mlt_service": "color", "length": str(length)},
-    )
-
-
-def _two_track_project() -> KdenliveProject:
-    """v1 (100-frame red), v2 (empty), audio -- indices 0,1,2 in playlists."""
-    p = KdenliveProject(
-        title="place",
-        profile=ProjectProfile(width=320, height=180, fps=FPS),
-    )
-    p.producers = [_color_prod("red", "0xff0000ff", 200)]
-    p.tracks = [
-        Track(id="v1", track_type="video"),
-        Track(id="v2", track_type="video"),
-        Track(id="a1", track_type="audio"),
-    ]
-    p.playlists = [
-        Playlist(id="v1", entries=[PlaylistEntry(producer_id="red", in_point=0, out_point=99)]),
-        Playlist(id="v2", entries=[]),
-        Playlist(id="a1", entries=[]),
-    ]
-    p.tractor = {"id": "tractor0", "in": "0", "out": "99"}
-    return p
 
 
 def _real(entries):

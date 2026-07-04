@@ -83,21 +83,10 @@ def _props(elem: ET.Element) -> dict[str, str]:
 
 def test_bundle_module_registers_tools():
     """Importing the server must expose both bundle tools via list_tools."""
-    import asyncio
+    import workshop_video_brain.server  # noqa: F401  (registers the tools)
+    from tests._testkit import assert_registered
 
-    import workshop_video_brain.server as server_mod
-
-    mcp = server_mod.mcp
-    # fastmcp exposes the registry as either ``get_tools`` (dict) or
-    # ``list_tools`` (list) depending on the active compatibility mode.
-    getter = getattr(mcp, "get_tools", None) or getattr(mcp, "list_tools")
-    result = asyncio.run(getter())
-    if isinstance(result, dict):
-        names = set(result)
-    else:
-        names = {t.name for t in result}
-    assert "transition_masked_wipe" in names
-    assert "effect_luma_key" in names
+    assert_registered("transition_masked_wipe", "effect_luma_key")
 
 
 def test_transition_masked_wipe_signature():

@@ -12,7 +12,6 @@ from workshop_video_brain.core.utils.paths import (
     versioned_path,
     workspace_relative,
 )
-from workshop_video_brain.core.utils.naming import slugify, timestamp_prefix
 
 
 class TestSafeFilename:
@@ -86,34 +85,8 @@ class TestEnsureDir:
         assert target.is_dir()
 
 
-class TestSlugify:
-    def test_lowercase(self):
-        assert slugify("Hello World") == "hello-world"
-
-    def test_strips_special_chars(self):
-        result = slugify("Test (video) #1!")
-        assert "(" not in result
-        assert ")" not in result
-        assert "#" not in result
-        assert "!" not in result
-
-    def test_collapses_hyphens(self):
-        result = slugify("a  b   c")
-        assert "--" not in result
-
-    def test_strips_leading_trailing_hyphens(self):
-        result = slugify("--hello--")
-        assert not result.startswith("-")
-        assert not result.endswith("-")
-
-
-class TestTimestampPrefix:
-    def test_format(self):
-        ts = timestamp_prefix()
-        # YYYY-MM-DD-HHMMSS
-        parts = ts.split("-")
-        assert len(parts) == 4
-        assert len(parts[0]) == 4   # year
-        assert len(parts[1]) == 2   # month
-        assert len(parts[2]) == 2   # day
-        assert len(parts[3]) == 6   # HHMMSS
+# NOTE: slugify() and timestamp_prefix() have a dedicated, comprehensive suite
+# in test_naming.py (14 slugify cases + 6 timestamp cases). The former
+# ``TestSlugify`` / ``TestTimestampPrefix`` classes here were byte-identical /
+# strict-subset duplicates of that suite and were removed in the pass-4
+# consolidation (coverage preserved by test_naming.py).

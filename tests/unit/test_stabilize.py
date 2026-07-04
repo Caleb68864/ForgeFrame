@@ -28,31 +28,8 @@ def _result(success: bool = True) -> FFmpegResult:
     )
 
 
-def _invoke(tool, *args, **kwargs):
-    """Call an MCP tool, unwrapping FastMCP's FunctionTool if present.
-
-    Different FastMCP versions either return the raw function from
-    ``@mcp.tool()`` or a ``FunctionTool`` wrapper exposing ``.fn``.
-    """
-    fn = getattr(tool, "fn", tool)
-    return fn(*args, **kwargs)
-
-
-def _tool_names(mcp) -> list[str]:
-    """Return registered tool names across FastMCP interface variants."""
-    import inspect
-
-    if hasattr(mcp, "list_tools"):
-        res = mcp.list_tools()
-        if inspect.iscoroutine(res):
-            res = asyncio.run(res)
-        return [t.name for t in res]
-    res = mcp.get_tools()
-    if inspect.iscoroutine(res):
-        res = asyncio.run(res)
-    if isinstance(res, dict):
-        return list(res.keys())
-    return [getattr(t, "name", t) for t in res]
+from tests._testkit import call_tool as _invoke  # noqa: E402
+from tests._testkit import registered_tool_names as _tool_names  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

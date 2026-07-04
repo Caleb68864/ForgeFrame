@@ -6,29 +6,17 @@ unavailable).
 """
 from __future__ import annotations
 
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
 
 pytest.importorskip("fastmcp", reason="fastmcp not installed")
 
-ffmpeg_available = (
-    shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
-)
-pytestmark = pytest.mark.skipif(
-    not ffmpeg_available, reason="ffmpeg/ffprobe not available on PATH"
-)
+from tests._testkit import make_test_clip, requires_ffmpeg_ffprobe as pytestmark, unwrap
 
 from workshop_video_brain.edit_mcp.server.bundles import clip_preview as bundle
 
-
-def _callable(obj):
-    return getattr(obj, "fn", obj)
-
-
-clips_preview_gif = _callable(bundle.clips_preview_gif)
+clips_preview_gif = unwrap(bundle.clips_preview_gif)
 
 
 def _make_workspace(tmp_path: Path) -> Path:
@@ -39,12 +27,7 @@ def _make_workspace(tmp_path: Path) -> Path:
 
 
 def _make_clip(path: Path, duration: float = 5.0) -> None:
-    subprocess.run(
-        ["ffmpeg", "-y", "-f", "lavfi",
-         "-i", f"testsrc=size=640x480:rate=25:duration={duration}",
-         "-pix_fmt", "yuv420p", str(path)],
-        capture_output=True, check=True,
-    )
+    make_test_clip(path, duration=duration, fps=25, size=(640, 480), pix_fmt="yuv420p")
 
 
 class TestGifPreview:

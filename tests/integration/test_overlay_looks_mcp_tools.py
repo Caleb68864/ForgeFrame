@@ -11,7 +11,6 @@ The fixture ``keyframe_project.kdenlive`` exposes three video tracks
 """
 from __future__ import annotations
 
-import asyncio
 import inspect
 import shutil
 import xml.etree.ElementTree as ET
@@ -25,20 +24,9 @@ fastmcp = pytest.importorskip("fastmcp", reason="fastmcp not installed")
 # triggers the auto-importer that registers overlay_looks.
 from workshop_video_brain.edit_mcp.server import tools as _tools_mod  # noqa: F401
 import workshop_video_brain.edit_mcp.server.bundles  # noqa: F401
-from workshop_video_brain.server import mcp
 from workshop_video_brain.edit_mcp.server.bundles import overlay_looks as _ol_mod
 
-
-def _callable(mod, name: str):
-    """Return the underlying function for an MCP tool.
-
-    Depending on the installed fastmcp version, ``@mcp.tool()`` may return the
-    original function or wrap it in a ``FunctionTool`` (callable via ``.fn``).
-    Unwrap so the test drives the real implementation (mirrors the hologram test).
-    """
-    obj = getattr(mod, name)
-    return getattr(obj, "fn", obj)
-
+from tests._testkit import registered_tool_names as _registered_tool_names, tool_fn as _callable
 
 workspace_create = _callable(_tools_mod, "workspace_create")
 effect_light_leak = _callable(_ol_mod, "effect_light_leak")
@@ -81,17 +69,6 @@ def _services(project_path: Path, tag: str) -> list[str]:
 # ---------------------------------------------------------------------------
 # Registration / signatures
 # ---------------------------------------------------------------------------
-
-def _registered_tool_names() -> set[str]:
-    """Tool names known to the FastMCP singleton, across fastmcp versions."""
-    getter = getattr(mcp, "get_tools", None) or getattr(mcp, "list_tools")
-    res = getter()
-    if inspect.isawaitable(res):
-        res = asyncio.run(res)
-    if isinstance(res, dict):
-        return set(res.keys())
-    return {getattr(t, "name", t) for t in res}
-
 
 def test_bundle_tools_registered_via_list_tools():
     names = _registered_tool_names()

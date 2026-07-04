@@ -21,8 +21,7 @@ from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import (
 )
 
 
-def _fn(tool):
-    return getattr(tool, "fn", tool)
+from tests._testkit import unwrap as _fn  # noqa: E402
 
 
 workspace_create = _fn(_tools.workspace_create)

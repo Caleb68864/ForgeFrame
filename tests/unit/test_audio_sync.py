@@ -163,12 +163,7 @@ def test_sync_result_as_dict_shape():
 # MCP registration (the `.fn`-unwrap / list_tools pattern)
 # ---------------------------------------------------------------------------
 
-def _registered_tool_names() -> set[str]:
-    getter = getattr(mcp, "get_tools", None) or getattr(mcp, "list_tools", None)
-    result = asyncio.run(getter())
-    if isinstance(result, dict):
-        return set(result.keys())
-    return {getattr(t, "name", getattr(t, "key", str(t))) for t in result}
+from tests._testkit import registered_tool_names as _registered_tool_names  # noqa: E402
 
 
 def test_media_sync_by_audio_is_registered():

@@ -32,8 +32,7 @@ PERIOD = 60.0 / TRUE_BPM  # 0.5 s
 BEAT_TOLERANCE = 0.05      # +/-50 ms
 
 
-def _fn(tool):
-    return getattr(tool, "fn", tool)
+from tests._testkit import unwrap as _fn  # noqa: E402
 
 
 music_beat_grid = _fn(_bundle.music_beat_grid)

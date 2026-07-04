@@ -5,7 +5,6 @@ tests/integration/test_keyframe_mcp_tools.py.
 """
 from __future__ import annotations
 
-import asyncio
 import shutil
 from pathlib import Path
 
@@ -13,20 +12,10 @@ import pytest
 
 fastmcp = pytest.importorskip("fastmcp", reason="fastmcp not installed")
 
-from workshop_video_brain.server import mcp
 from workshop_video_brain.edit_mcp.server.bundles import zoom_whip as _zw_mod
 from workshop_video_brain.edit_mcp.server import tools as _tools_mod
 
-
-def _callable(module, name):
-    """Unwrap an MCP tool to its underlying function.
-
-    Depending on the fastmcp version, ``@mcp.tool()`` returns the original
-    function or a ``FunctionTool`` exposing the callable via ``.fn``.
-    """
-    obj = getattr(module, name)
-    return getattr(obj, "fn", obj)
-
+from tests._testkit import registered_tool_names, tool_fn as _callable
 
 transition_zoom_whip = _callable(_zw_mod, "transition_zoom_whip")
 workspace_create = _callable(_tools_mod, "workspace_create")
@@ -45,17 +34,8 @@ def _make_ws(tmp_path: Path, project_name: str = "test.kdenlive") -> tuple[Path,
     return ws_root, project_name
 
 
-def _registered_tool_names() -> set[str]:
-    """Return registered tool names, tolerating fastmcp API differences."""
-    getter = getattr(mcp, "get_tools", None) or getattr(mcp, "list_tools", None)
-    result = asyncio.run(getter())
-    if isinstance(result, dict):
-        return set(result.keys())
-    return {getattr(t, "name", getattr(t, "key", str(t))) for t in result}
-
-
 def test_tool_is_registered_via_list_tools():
-    assert "transition_zoom_whip" in _registered_tool_names()
+    assert "transition_zoom_whip" in registered_tool_names()
 
 
 def test_applies_four_effects_across_the_cut(tmp_path):

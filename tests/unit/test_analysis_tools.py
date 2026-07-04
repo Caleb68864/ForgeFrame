@@ -25,25 +25,8 @@ from workshop_video_brain.edit_mcp.pipelines import (
 # Registration helpers (FastMCP interface variants + .fn unwrap)
 # ---------------------------------------------------------------------------
 
-def _invoke(tool, *args, **kwargs):
-    fn = getattr(tool, "fn", tool)
-    return fn(*args, **kwargs)
-
-
-def _tool_names(mcp) -> list[str]:
-    import inspect
-
-    if hasattr(mcp, "list_tools"):
-        res = mcp.list_tools()
-        if inspect.iscoroutine(res):
-            res = asyncio.run(res)
-        return [t.name for t in res]
-    res = mcp.get_tools()
-    if inspect.iscoroutine(res):
-        res = asyncio.run(res)
-    if isinstance(res, dict):
-        return list(res.keys())
-    return [getattr(t, "name", t) for t in res]
+from tests._testkit import call_tool as _invoke  # noqa: E402
+from tests._testkit import registered_tool_names as _tool_names  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

@@ -413,3 +413,160 @@ Grepped the shell + pipeline layers for direct `.entries`/`.playlists`/
   primitives" but watch for the same multi-domain drift that hit
   `tools_helpers`; a `_common/` package split (`_xml`, `_time`, `_text`,
   `_dsp`) is a Pass-5 option if it keeps growing.
+
+---
+
+## Pass 4 (2026-07-03) — test-suite consolidation (testkit + dedup + flake)
+
+Owns `tests/` + conftest infra. Baseline at pass start: **4203 passed / 1
+skipped + 2 render "failures"** that were load-flakes (both green isolated),
+417s. Post-pass: **4200 passed / 1 skipped, 0 failures, run TWICE** (218s and
+228s) — the two `-3` vs baseline `passed` is the 5 dedup deletions minus the 2
+flakes-now-passing (4203+2 collected − 5 deleted = 4200 pass + the skip).
+
+### Testkit inventory (new shared infra)
+
+- **`tests/_testkit.py`** (309 LOC, new — importable as `from tests._testkit
+  import …`; repo-root is on `sys.path` because `tests/__init__.py` exists but
+  the repo root has none, so pytest prepends it):
+  - `unwrap(tool)` / `tool_fn(module, name)` / `call_tool(tool, *a, **k)` — the
+    `@mcp.tool()` `.fn`-unwrap dance (was copy-pasted ~40×).
+  - `registered_tool_names(mcp=None)` / `assert_registered(*names, mcp=None)` —
+    the FastMCP `list_tools`/`get_tools` (sync-or-coroutine, list-or-dict) probe
+    (was ~7 near-identical 10-18-line blocks).
+  - `make_test_clip(path, *, duration, fps, kind, size, color, freq,
+    with_audio, pix_fmt)` — ffmpeg `testsrc`/`color`/`sine` synthesis.
+  - `solid_color_project` / `sequence_project` / `two_track_project` /
+    `color_producer` — hermetic colour-producer `KdenliveProject` builders (the
+    **non-external twin** of `external/builders.py`; deliberately NOT imported
+    from the external package so non-external tests don't couple to the oracle
+    tier).
+  - `HAVE_FFMPEG/FFPROBE/MELT` bools + `requires_ffmpeg` / `requires_ffprobe` /
+    `requires_ffmpeg_ffprobe` / `requires_melt` / `requires_melt_ffmpeg` skip
+    marks (canonical; assign to module `pytestmark`).
+- **`tests/conftest.py`** (113 LOC, new): re-exports the skip marks; provides
+  session `ffmpeg`/`ffprobe`/`melt` fixtures (skip-if-absent, return path);
+  hosts the `render_retry` bounded-retry `pytest_runtest_protocol` hook (job 3).
+- **`tests/integration/external/conftest.py`** (+12): `pytest_collection_modify
+  items` auto-applies `@pytest.mark.render_retry` to every external item that
+  requests the `melt_bin` fixture (i.e. all real-melt render tests).
+- **`pyproject.toml`**: registered the `render_retry` marker.
+
+### Files migrated (19)
+
+Registration/`_invoke` blocks → testkit: `unit/test_{analysis_tools,
+denoise_video,loudnorm_two_pass,stabilize,audio_sync,rewind_pipeline}`,
+`integration/test_{zoom_whip_mcp_tool,overlay_looks_mcp_tools,
+masked_wipes_mcp_tools,review_loop_tools}`. Unwrap helper → `unwrap`:
+`integration/test_{proxy_attach,subtitle_attach,beat_grid_mcp,
+parse_error_propagation,vo_loop_mcp,clip_place_mcp_tools}`. Project builder →
+`two_track_project`/`color_producer`: `test_clip_place_mcp_tools`. Media →
+`make_test_clip`: `test_clip_preview_mcp_tool`. Marker → canonical:
+`test_clip_preview_mcp_tool` (`requires_ffmpeg_ffprobe`), `test_review_loop_
+tools` (`requires_melt_ffmpeg`). Each verified green individually (263 tests)
+and in both full runs. **LOC (tracked files): −274 / +59; new shared infra
++422** (net +207 now; tips negative as the remaining ~20 single-line
+`_fn`/`_callable` unwrap helpers migrate — mechanical follow-up, left for
+budget: they each save ~2 LOC and carry per-file import churn).
+
+**Bias kept mechanical**: no assertion-strength changes; local helper names
+retained as import aliases (`_invoke`, `_fn`, `_tool_names`,
+`_registered_tool_names`, `_two_track_project`, `_color_prod`) so call sites and
+monkeypatch targets are untouched.
+
+### Dedup deletions — 5 tests (class: provably-equal / misplaced-duplicate)
+
+An AST body-hash census (name+body, then body-only) over all `test_*.py` found
+**exactly one** cross-file identical-body group and **zero** other ≥4-line
+duplicates. Deleted the whole `TestSlugify` (4) + `TestTimestampPrefix` (1)
+classes from `unit/test_paths.py` — a path-utils file that had imported
+`slugify`/`timestamp_prefix` only to re-test them. `unit/test_naming.py` is the
+dedicated home with a **strict superset** (14 slugify + 6 timestamp cases):
+`test_lowercase`≡`test_converts_to_lowercase` and
+`test_strips_special_chars`≡`test_special_chars_stripped` are byte-identical
+asserts; `test_collapses_hyphens`, `test_strips_leading_trailing_hyphens`,
+`test_format` are covered by decomposed test_naming cases. Coverage
+provably preserved; removed the now-unused import. **No hardening/faults
+deletions**: `test_faults_*` is a *stronger superset* of `test_hardening_*`
+(adds byte-unchanged / no-stray-`_v` / no-snapshot / media-raw-guard asserts),
+so the bodies differ — not equal-strength; kept per "when in doubt, keep."
+
+### Flake root cause — FOUND (environmental), not a product/test bug
+
+The "rotating external melt-render load-flake" is caused by **orphaned,
+CPU-pinning render subprocesses left by earlier force-killed (SIGKILL) suite
+runs**. Caught three in-flight during this pass:
+- 2× `ffmpeg -y -loop 1 -t 0.24 -i <corrupt>.png … libx264` from
+  `test_faults_bundles::test_slideshow_corrupt_images` (pytest-339 & -341),
+  running **4h15m / 4h09m**. ffmpeg spins forever on an undecodable PNG behind
+  `-loop 1` (never reaches the `-t` frame count).
+- 1× unbounded `melt … -consumer avformat:…` (no `out=` cap → targets the
+  tractor's ~2.1e9-frame out) from a `render_preview`/workflow test, **215 CPU-
+  min**.
+
+Each pins a full core; stacked across interrupted passes they saturated the box
+(the initial 417s baseline flaked *because* ~3 cores were stolen the whole
+time). Confirmed the product code is already correctly hardened — the slideshow
+bundle has `SLIDESHOW_RENDER_TIMEOUT` (default 1800s, test shrinks to 5s) +
+`TimeoutExpired` handling with the exact `-loop 1` spin-forever comment, and
+`render.executor.execute_render` is a blocking `subprocess.run(timeout=…)`. The
+leak only happens when **pytest itself is SIGKILLed mid-render** (the child
+reparents to init and, on corrupt/unbounded input, never exits). It is NOT a
+tmp collision (per-test `tmp_path`), NOT a shared output path (unlink + per-test
+dir), NOT SDL/consumer state (avformat consumer, no display).
+
+**Fix**: (1) killed all orphans → clean box; suite time **halved** (417s→218s),
+confirming the diagnosis. (2) Belt-and-braces bounded **2-attempt retry** scoped
+to real-melt render tests via the `render_retry` marker (auto-applied to
+external `melt_bin` users), with a loud yellow terminal line on each retry;
+verified with a synthetic probe (flake absorbed on attempt 2 = passed; a genuine
+failure still FAILS after 2 attempts = not masked; unmarked tests run once). No
+blanket rerun plugin.
+
+**Two-run verdict**: flake did **NOT** reproduce as a failure in either full run
+(run1: 0 retries, 0 fail; run2: 0 fail). **Recommendation for future passes: do
+not `kill -9` the suite; if interrupted, sweep `pgrep -fa 'melt|ffmpeg.*-loop'`
+and kill stragglers before the next run** — a single leftover pins a core and
+resurrects the flake.
+
+### Marker normalization (job 4)
+
+`external` marker usage is consistent (whole `external/` package via
+`pytestmark`). Verified `-m external` (60) and `-m "not external"` (4141)
+**cleanly partition**: 60 + 4141 = 4201 = full collection, no overlap, no gap.
+ffmpeg-gated integration tests now have canonical skip marks available; migrated
+2 as exemplars, the rest still use equivalent inline `shutil.which` skipifs
+(same skip-report text) — mechanical follow-up.
+
+### Test-architecture observations for Pass 5
+
+- **`tests._testkit` is now the sanctioned shared kernel** (mirrors the
+  `server/tools_helpers` story on the src side). Watch for the same multi-domain
+  drift: it already spans unwrap, registration, media-gen, project builders and
+  gating marks. If it grows, split into `_mcp` / `_media` / `_projects` /
+  `_gates`.
+- **~20 single-line `_fn`/`_callable(obj)` unwrap helpers remain** un-migrated
+  (budget). All are `return getattr(x, "fn", x)` → `from tests._testkit import
+  unwrap as _fn`. A handful are `_callable(mod, name)` (→ `tool_fn`) or closure
+  `_callable(name)` — check the arity before swapping. Pure mechanical.
+- **unit-vs-integration boundary is generally clean** but leaky in spots: the
+  `unit/` tests that instantiate the FastMCP singleton and assert registration
+  (`test_{analysis_tools,denoise_video,loudnorm_two_pass,stabilize,audio_sync,
+  rewind_pipeline}`) are really integration-flavoured (they import the whole
+  server). Not moved; flagged. Conversely `test_paths.py` had *naming* tests
+  (now removed) — watch for tests filed by import-convenience rather than
+  subject.
+- **External oracle coverage map** (60 tests, all `melt_bin`-gated → now all
+  `render_retry`): render/pixel proofs for clip-place, pan/zoom, subject-zoom,
+  roto, timeremap, speed-ramp, multicam, subtitle, track-audio, transitions,
+  fade-luma, image-overlay, effect-visible, plus melt-accept/probe/transport/
+  fixture-roundtrip smoke. Builders are `color:`-producer solids (distro-
+  independent). Gaps for Pass 5: no external proof for composite blend-modes,
+  masking/alpha renders (there's a non-external `test_alpha_render`), or
+  audio-loudnorm end-to-end pixel/levels.
+- **`external/builders.py` vs `tests/_testkit.py` now overlap** (`solid_color_
+  project`/`sequence_project` are near-identical). Left separate deliberately
+  (direction rule: external MAY depend on shared, shared must NOT depend on
+  external). Pass 5 could collapse by having `external/builders.py` re-export
+  the three builders from `_testkit` and keep only `two_video_track_project` +
+  `build_filter_xml` locally.

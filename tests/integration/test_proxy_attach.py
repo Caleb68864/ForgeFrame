@@ -31,8 +31,7 @@ from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
 
 
-def _fn(tool):
-    return getattr(tool, "fn", tool)
+from tests._testkit import unwrap as _fn  # noqa: E402
 
 
 proxy_attach = _fn(_bundle.proxy_attach)

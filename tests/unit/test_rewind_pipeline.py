@@ -158,13 +158,8 @@ def test_reversed_clip_name_distinct_segments_do_not_collide():
 # ---------------------------------------------------------------------------
 
 def test_effect_rewind_registered_with_mcp():
-    import asyncio
+    from workshop_video_brain import server  # noqa: F401  (registers the tools)
+    from tests._testkit import registered_tool_names
 
-    from workshop_video_brain import server
-
-    # fastmcp exposes the registry as either ``get_tools`` (dict) or
-    # ``list_tools`` (list) depending on the active compatibility mode.
-    getter = getattr(server.mcp, "get_tools", None) or getattr(server.mcp, "list_tools")
-    result = asyncio.run(getter())
-    names = set(result) if isinstance(result, dict) else {t.name for t in result}
+    names = registered_tool_names()
     assert "effect_rewind" in names, f"effect_rewind not registered: {names}"

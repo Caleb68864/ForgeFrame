@@ -30,8 +30,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _fn(tool):
-    return getattr(tool, "fn", tool)
+from tests._testkit import unwrap as _fn  # noqa: E402
 
 
 vo_plan = _fn(_bundle.vo_plan)

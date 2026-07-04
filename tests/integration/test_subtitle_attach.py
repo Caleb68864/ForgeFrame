@@ -22,8 +22,7 @@ import workshop_video_brain.edit_mcp.server.tools as _tools
 from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
 
 
-def _fn(tool):
-    return getattr(tool, "fn", tool)
+from tests._testkit import unwrap as _fn  # noqa: E402
 
 
 subtitles_attach = _fn(_bundle.subtitles_attach)
