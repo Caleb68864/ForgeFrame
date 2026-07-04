@@ -709,3 +709,87 @@ unification noted above. Phases B (auto-discover `tools/`) and C (ADR-005 / docs
 untouched -- out of scope for this pass.
 
 **No commit made** (per instruction). Working tree carries the split for review.
+
+---
+
+## Consolidation-2 -- retire the `tools/__init__` re-export contention point (Phase B)
+
+Executes the opinion's Phase B (`docs/plans/2026-07-03-codebase-restructuring-opinion.md`
+section 3.1 / section 4): make `server/tools/__init__.py` auto-discover its
+submodules (mirroring `server/bundles/__init__.py`) so a new grouped-tool module
+never edits a shared file. Pure mechanism change, zero behavior change, zero
+caller edits. Baseline unchanged: **4200 passed / 1 skipped**, **201 live tools**,
+before and (twice-run) after.
+
+**Before/after.** `tools/__init__.py` went **324 lines -> 85 lines**. The old file
+explicitly imported all 15 submodules and hand-maintained a 139-name re-export
+block + a 139-entry `__all__` (the last shared-file contention point: every new
+tool module or helper required editing it). The new file has **zero** per-name
+lines -- it discovers, registers, and re-exports entirely by loop.
+
+**Approach chosen: (a) pkgutil auto-discovery + PEP 562 `__getattr__` backed by an
+ownership map** (not (b) generated eager re-exports). Rationale: `__getattr__`
+keeps the module namespace clean (so a real `__dict__` entry from a
+`monkeypatch.setattr` naturally shadows lazy resolution -- see below), and the
+name->module map is derived, not maintained. The discovery loop
+(`pkgutil.iter_modules(__path__)`, skip `_`-prefixed, `import_module` for the
+decorator side effect -- identical to `bundles/`) also records, for each
+submodule, the names it *owns* into `_EXPORTS: dict[str, ModuleType]`:
+- functions/classes where `obj.__module__ == submodule.__name__` (the
+  `@mcp.tool()` decorator returns the *plain* function with `__module__` intact,
+  so tool names and private helpers are all detected);
+- module-level data constants (no `__module__`) matched by container type
+  (`_VALID_MASK_SHAPES`/`_VALID_MASK_TYPES` tuples) -- avoids capturing shared
+  framework instances like the `mcp` singleton.
+Plus a 7-name `_HELPER_REEXPORTS` tuple for the helpers historically re-exported
+from the sibling `tools_helpers` package (`_build_filter_xml`, `_resolve_playlist`,
+`_load_latest_project`, `_save_patched`, `_get_video_playlists`,
+`_lookup_catalog_by_service`, `_VALID_COLOR_FORMATS_MSG`) -- these are imported
+*into* the submodules, not defined there, so ownership discovery cannot find
+them; this is the one small explicit list, and it shrinks the maintained surface
+from 139 to 7. `__getattr__` resolves any `_EXPORTS` name to its source module;
+unknown names still raise `AttributeError` (behavior preserved). `__all__ =
+sorted(_EXPORTS)`.
+
+**Importer coverage (all kept working, zero edits).** Verified against the full
+enumerated surface: `app/cli.py` (~25 lazy `from ...tools import <name>`),
+`bundles/shake_shadow.py` (`_build_filter_xml`, `_playlist_clip_duration_frames`,
+`_resolve_playlist`), `bundles/rewind.py` (`effect_glitch_stack`),
+`scripts/smoke_test_kdenlive_mcp.py` (`from ...server import tools` + 10
+`tools.<name>` attribute accesses), and ~25 test files (name imports,
+`tools.<attr>` access, submodule-name imports `from ...tools import
+effects_bundles`/`effects_catalog`/`keyframes` -- these resolve via the normal
+import system since `import_module` sets each submodule as a package attribute).
+All 139 names of the old `__all__` resolve to the same objects; the new `__all__`
+is a superset of **141** (2 additive: `_masking_finalize`, `_validate_frame_range`
+-- owned private helpers now auto-exposed, harmless, nothing relied on their
+absence).
+
+**Monkeypatch verdict: SAFE (module dict wins over `__getattr__`).** The
+`_resolve_vault_root_for_tools` monkeypatch (`tests/integration/test_effect_presets`,
+`test_stack_presets_mcp_tools`, `test_hologram_mcp_tool`, `test_color_wash_mcp_tool`)
+does `monkeypatch.setattr(tools, "_resolve_vault_root_for_tools", ...)`;
+`effects_catalog` reads it back via `_tools_pkg._resolve_vault_root_for_tools()`.
+Mechanics: the pre-patch `getattr` resolves via `__getattr__` (so monkeypatch's
+existence check passes and records the real func); `setattr` writes the stub into
+the package `__dict__`; the read-back hits the dict (not `__getattr__`) -> stub
+wins; teardown restores the real func into the dict. Confirmed live (a standalone
+read-through returned the patched value) and by the four presets test files
+staying green.
+
+**Zero-edit drop-in proof.** Dropped a temp `tools/zzztempdropin.py` with a dummy
+`@mcp.tool()`, imported `workshop_video_brain.server` fresh: the tool was
+present as a package attribute, in `__all__`, `from ...tools import`-able, and
+**registered with FastMCP (202 tools)** -- all with **zero edits** to
+`__init__.py`. Temp module removed; count back to 201.
+
+**Docs check (task step 4).** No living convention states "append to
+`tools/__init__`": `CLAUDE.md`, the user memory files, and the `plugin-authoring`
+skill say nothing about it; only historical dated specs reference the pre-split
+`server/tools.py`. Nothing to update.
+
+**Verification.** cli import smoke (`import workshop_video_brain.app.cli`) OK;
+scripts smoke parse + all 10 `tools.<name>` references resolve; full suite
+`uv run pytest tests/ -q` twice-run **4200 passed / 1 skipped** (matches Pass 4
+baseline); **201 live tools** before and after. `git diff` confined to
+`tools/__init__.py` (this section aside). No commit made (per instruction).

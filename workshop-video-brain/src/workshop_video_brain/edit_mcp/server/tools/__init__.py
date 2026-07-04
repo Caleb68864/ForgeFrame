@@ -1,324 +1,85 @@
-"""Aggregator for the carved ``server/tools`` package.
+"""Aggregator for the carved ``server/tools`` package (auto-discovered).
 
 Importing this package imports every domain submodule so that all
 ``@mcp.tool()`` decorators fire and register with the FastMCP singleton
-(preserving the original ``import server.tools`` side effect). It also
-re-exports every public tool and the private helpers external code relies
-on (e.g. ``_build_filter_xml`` imported by ``bundles/shake_shadow``).
+(preserving the original ``import server.tools`` side effect). Discovery
+mirrors ``server/bundles`` (``pkgutil.iter_modules``) so **adding a new tool
+module never edits this file** -- drop a ``tools/<x>.py`` with ``@mcp.tool()``
+decorators and it registers on package import.
+
+The historical re-export surface (every public tool plus the private helpers
+external code relies on, e.g. ``_build_filter_xml`` imported by
+``bundles/shake_shadow``) is preserved via PEP 562 ``__getattr__``: a
+``name -> source module`` map is built during the discovery loop from the names
+each submodule *defines* (owns), plus the small set of helpers historically
+re-exported from ``tools_helpers``. ``from ...tools import <name>`` and
+``tools.<name>`` therefore keep resolving with zero caller edits.
+
+Monkeypatch note: tests ``setattr`` names such as ``_resolve_vault_root_for_tools``
+directly on this package and submodule code reads them back via
+``_tools_pkg.<name>``. A real module ``__dict__`` entry always shadows
+``__getattr__`` (PEP 562), so a patched attribute wins over lazy resolution and
+is restored cleanly on teardown -- the patch semantics are unchanged.
 """
 from __future__ import annotations
 
-from workshop_video_brain.edit_mcp.server.tools_helpers import (  # noqa: F401
-    _get_video_playlists,
-    _load_latest_project,
-    _save_patched,
-    _resolve_playlist,
-    _build_filter_xml,
-    _VALID_COLOR_FORMATS_MSG,
-    _lookup_catalog_by_service,
-)
+import importlib
+import pkgutil
+from types import ModuleType
 
-from workshop_video_brain.edit_mcp.server.tools.workspace_media import (  # noqa: F401
-    media_check_vfr,
-    media_ingest,
-    media_list_assets,
-    media_transcode_cfr,
-    proxy_generate,
-    workspace_create,
-    workspace_status,
-)
-from workshop_video_brain.edit_mcp.server.tools.transcript_markers import (  # noqa: F401
-    markers_auto_generate,
-    markers_list,
-    subtitles_export,
-    subtitles_generate,
-    transcript_export,
-    transcript_generate,
-    voiceover_extract_segments,
-)
-from workshop_video_brain.edit_mcp.server.tools.timeline_project import (  # noqa: F401
-    forgeframe_init,
-    forgeframe_status,
-    project_archive,
-    project_create_working_copy,
-    project_list,
-    project_new,
-    project_summary,
-    project_validate,
-    snapshot_list,
-    snapshot_restore,
-    timeline_build_review,
-    timeline_build_selects,
-)
-from workshop_video_brain.edit_mcp.server.tools.transitions import (  # noqa: F401
-    transitions_apply,
-    transitions_apply_at,
-    transitions_apply_between,
-)
-from workshop_video_brain.edit_mcp.server.tools.clips_nle import (  # noqa: F401
-    _validate_clip_index,
-    audio_fade,
-    clip_insert,
-    clip_move,
-    clip_remove,
-    clip_ripple_delete,
-    clip_speed,
-    clip_split,
-    clip_trim,
-    clips_label,
-    clips_search,
-    gap_insert,
-    track_add,
-    track_mute,
-    track_visibility,
-)
-from workshop_video_brain.edit_mcp.server.tools.render import (  # noqa: F401
-    project_match_source,
-    project_setup_profile,
-    qc_check,
-    render_final_tool,
-    render_list_profiles,
-    render_preview,
-    render_status,
-)
-from workshop_video_brain.edit_mcp.server.tools.audio import (  # noqa: F401
-    _ensure_processed_dir,
-    _find_audio_file,
-    audio_analyze,
-    audio_compress,
-    audio_denoise,
-    audio_enhance,
-    audio_enhance_all,
-    audio_normalize,
-)
-from workshop_video_brain.edit_mcp.server.tools.broll import (  # noqa: F401
-    _resolve_broll_vault,
-    broll_library_index,
-    broll_library_search,
-    broll_library_stats,
-    broll_library_tag,
-    broll_suggest,
-)
-from workshop_video_brain.edit_mcp.server.tools.assembly_titles import (  # noqa: F401
-    assembly_build,
-    assembly_plan,
-    pacing_analyze,
-    pattern_extract,
-    replay_generate,
-    title_cards_generate,
-)
-from workshop_video_brain.edit_mcp.server.tools.social_publish import (  # noqa: F401
-    publish_bundle,
-    publish_description,
-    publish_note,
-    publish_summary,
-    publish_tags,
-    publish_titles,
-    social_clip_post,
-    social_find_clips,
-    social_generate_package,
-    youtube_analyze,
-    youtube_fetch_channel,
-    youtube_fetch_video,
-    youtube_save_to_vault,
-)
-from workshop_video_brain.edit_mcp.server.tools.keyframes import (  # noqa: F401
-    _build_keyframe_objects,
-    _keyframe_tool_impl,
-    _keyframes_from_json,
-    effect_find,
-    effect_keyframe_set_color,
-    effect_keyframe_set_rect,
-    effect_keyframe_set_scalar,
-)
-from workshop_video_brain.edit_mcp.server.tools.compositing_masking import (  # noqa: F401
-    _VALID_MASK_SHAPES,
-    _VALID_MASK_TYPES,
-    _masking_prelude,
-    composite_pip,
-    composite_set,
-    composite_wipe,
-    effect_chroma_key,
-    effect_chroma_key_advanced,
-    effect_object_mask,
-    mask_apply,
-    mask_set,
-    mask_set_shape,
-)
-from workshop_video_brain.edit_mcp.server.tools.effects_catalog import (  # noqa: F401
-    _effect_def_to_dict,
-    _repo_forge_project_json_path,
-    _resolve_vault_root_for_tools,
-    effect_add,
-    effect_info,
-    effect_list_common,
-    effect_reorder,
-    effect_stack_apply,
-    effect_stack_list,
-    effect_stack_preset,
-    effect_stack_promote,
-    effects_copy,
-    effects_paste,
-)
-from workshop_video_brain.edit_mcp.server.tools.effects_bundles import (  # noqa: F401
-    _playlist_clip_duration_frames,
-    _reorder_impl,
-    effect_fade,
-    effect_glitch_stack,
-    effect_hologram,
-    flash_cut_montage,
-    move_down,
-    move_to_bottom,
-    move_to_top,
-    move_up,
-)
-from workshop_video_brain.edit_mcp.server.tools.effects_color import (  # noqa: F401
-    color_analyze,
-    color_apply_lut,
-    effect_color_grade,
-    effect_color_wash,
-    effect_scifi_greenscreen,
-    transition_paper_cutout,
-)
+# Helpers historically re-exported through this package from the sibling
+# ``tools_helpers`` package (they are imported *into* the tool submodules, not
+# defined there, so ownership discovery below will not find them).
+from workshop_video_brain.edit_mcp.server import tools_helpers as _tools_helpers
 
-__all__ = [
-    "_VALID_COLOR_FORMATS_MSG",
-    "_VALID_MASK_SHAPES",
-    "_VALID_MASK_TYPES",
-    "_build_filter_xml",
-    "_build_keyframe_objects",
-    "_effect_def_to_dict",
-    "_ensure_processed_dir",
-    "_find_audio_file",
+_HELPER_REEXPORTS = (
     "_get_video_playlists",
-    "_keyframe_tool_impl",
-    "_keyframes_from_json",
     "_load_latest_project",
-    "_lookup_catalog_by_service",
-    "_masking_prelude",
-    "_playlist_clip_duration_frames",
-    "_reorder_impl",
-    "_repo_forge_project_json_path",
-    "_resolve_broll_vault",
-    "_resolve_playlist",
-    "_resolve_vault_root_for_tools",
     "_save_patched",
-    "_validate_clip_index",
-    "assembly_build",
-    "assembly_plan",
-    "audio_analyze",
-    "audio_compress",
-    "audio_denoise",
-    "audio_enhance",
-    "audio_enhance_all",
-    "audio_fade",
-    "audio_normalize",
-    "broll_library_index",
-    "broll_library_search",
-    "broll_library_stats",
-    "broll_library_tag",
-    "broll_suggest",
-    "clip_insert",
-    "clip_move",
-    "clip_remove",
-    "clip_ripple_delete",
-    "clip_speed",
-    "clip_split",
-    "clip_trim",
-    "clips_label",
-    "clips_search",
-    "color_analyze",
-    "color_apply_lut",
-    "composite_pip",
-    "composite_set",
-    "composite_wipe",
-    "effect_add",
-    "effect_chroma_key",
-    "effect_chroma_key_advanced",
-    "effect_color_grade",
-    "effect_color_wash",
-    "effect_fade",
-    "effect_find",
-    "effect_glitch_stack",
-    "effect_hologram",
-    "effect_info",
-    "effect_keyframe_set_color",
-    "effect_keyframe_set_rect",
-    "effect_keyframe_set_scalar",
-    "effect_list_common",
-    "effect_object_mask",
-    "effect_reorder",
-    "effect_scifi_greenscreen",
-    "effect_stack_apply",
-    "effect_stack_list",
-    "effect_stack_preset",
-    "effect_stack_promote",
-    "effects_copy",
-    "effects_paste",
-    "flash_cut_montage",
-    "forgeframe_init",
-    "forgeframe_status",
-    "gap_insert",
-    "markers_auto_generate",
-    "markers_list",
-    "mask_apply",
-    "mask_set",
-    "mask_set_shape",
-    "media_check_vfr",
-    "media_ingest",
-    "media_list_assets",
-    "media_transcode_cfr",
-    "move_down",
-    "move_to_bottom",
-    "move_to_top",
-    "move_up",
-    "pacing_analyze",
-    "pattern_extract",
-    "project_archive",
-    "project_create_working_copy",
-    "project_list",
-    "project_match_source",
-    "project_new",
-    "project_setup_profile",
-    "project_summary",
-    "project_validate",
-    "proxy_generate",
-    "publish_bundle",
-    "publish_description",
-    "publish_note",
-    "publish_summary",
-    "publish_tags",
-    "publish_titles",
-    "qc_check",
-    "render_final_tool",
-    "render_list_profiles",
-    "render_preview",
-    "render_status",
-    "replay_generate",
-    "snapshot_list",
-    "snapshot_restore",
-    "social_clip_post",
-    "social_find_clips",
-    "social_generate_package",
-    "subtitles_export",
-    "subtitles_generate",
-    "timeline_build_review",
-    "timeline_build_selects",
-    "title_cards_generate",
-    "track_add",
-    "track_mute",
-    "track_visibility",
-    "transcript_export",
-    "transcript_generate",
-    "transition_paper_cutout",
-    "transitions_apply",
-    "transitions_apply_at",
-    "transitions_apply_between",
-    "voiceover_extract_segments",
-    "workspace_create",
-    "workspace_status",
-    "youtube_analyze",
-    "youtube_fetch_channel",
-    "youtube_fetch_video",
-    "youtube_save_to_vault",
-]
+    "_resolve_playlist",
+    "_build_filter_xml",
+    "_VALID_COLOR_FORMATS_MSG",
+    "_lookup_catalog_by_service",
+)
+
+# Immutable/container data constants (e.g. ``_VALID_MASK_SHAPES``) carry no
+# ``__module__`` to attribute them to a defining submodule, so recognise them
+# by type when deciding ownership.
+_CONSTANT_TYPES = (str, bytes, int, float, bool, tuple, frozenset, dict, list, set)
+
+# name -> source module, built during side-effect discovery below.
+_EXPORTS: dict[str, ModuleType] = {}
+
+for _mod_info in pkgutil.iter_modules(__path__):
+    if _mod_info.name.startswith("_"):
+        continue
+    _submod = importlib.import_module(f"{__name__}.{_mod_info.name}")
+    for _name, _obj in vars(_submod).items():
+        if _name.startswith("__"):
+            continue
+        if isinstance(_obj, ModuleType):
+            continue
+        _owner = getattr(_obj, "__module__", None)
+        if _owner == _submod.__name__:
+            # A function/class defined in this submodule.
+            _EXPORTS.setdefault(_name, _submod)
+        elif _owner is None and isinstance(_obj, _CONSTANT_TYPES):
+            # A module-level data constant defined in this submodule.
+            _EXPORTS.setdefault(_name, _submod)
+
+for _name in _HELPER_REEXPORTS:
+    _EXPORTS.setdefault(_name, _tools_helpers)
+
+__all__ = sorted(_EXPORTS)
+
+
+def __getattr__(name: str):
+    """Resolve a re-exported tool/helper name to its owning module (PEP 562)."""
+    source = _EXPORTS.get(name)
+    if source is not None:
+        return getattr(source, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__():
+    return sorted(set(globals()) | set(_EXPORTS))
