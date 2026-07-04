@@ -115,8 +115,9 @@ def audio_normalize_two_pass(
         ws_path = _validate_workspace_path(workspace_path)
         src = _find_media_file(ws_path, source)
         if src is None:
-            return _err(
-                "No media file found. Provide source or add files to media/raw/."
+            return err(
+                "No media file found. Provide source or add files to media/raw/.",
+                suggestion="Pass source pointing at a media file, or drop a clip into media/raw/ so the tool can pick it up automatically.",
             )
         if not src.exists():
             return err(f"File not found: {src}", error_type=MISSING_FILE, suggestion="Check the source path; it is resolved relative to the workspace root unless absolute.", path=str(src))
@@ -134,8 +135,9 @@ def audio_normalize_two_pass(
 
         output = normalized_output_path(src, processed_dir, output_name or None)
         if src_in_raw and output.resolve() == src.resolve():
-            return _err(
-                "Refusing to overwrite media/raw source; choose an output_name."
+            return err(
+                "Refusing to overwrite your original source in media/raw/; media/raw/ is read-only by design.",
+                suggestion="Pass a different output_name so the result is written to media/processed/ instead.",
             )
 
         try:

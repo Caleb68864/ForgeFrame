@@ -107,8 +107,9 @@ def broll_library_index(workspace_path: str = "") -> dict:
 
         vault = _resolve_broll_vault()
         if vault is None:
-            return _err(
-                "Vault path not configured. Set WVB_VAULT_PATH env var or run 'wvb init'."
+            return err(
+                "Vault path not configured.",
+                suggestion="Set the WVB_VAULT_PATH environment variable to your vault, or run 'wvb init' to configure it.",
             )
 
         if workspace_path and workspace_path.strip():
@@ -121,13 +122,14 @@ def broll_library_index(workspace_path: str = "") -> dict:
             import json as _json
             config_path = Path.home() / ".forgeframe" / "config.json"
             if not config_path.exists():
-                return _err(
-                    "No workspace_path provided and no ~/.forgeframe/config.json found."
+                return err(
+                    "No workspace_path was provided and no ~/.forgeframe/config.json exists to fall back on.",
+                    suggestion="Pass workspace_path explicitly, or run 'wvb init' to create ~/.forgeframe/config.json with your projects_root.",
                 )
             cfg = _json.loads(config_path.read_text(encoding="utf-8"))
             projects_root = cfg.get("projects_root", "")
             if not projects_root:
-                return _err("projects_root not set in ~/.forgeframe/config.json")
+                return err("projects_root is not set in ~/.forgeframe/config.json.", suggestion="Add a \"projects_root\" entry to ~/.forgeframe/config.json, or pass workspace_path directly.")
             result = index_all_projects(vault, Path(projects_root))
 
         return _ok(result)
@@ -210,8 +212,9 @@ def broll_library_tag(
 
         vault = _resolve_broll_vault()
         if vault is None:
-            return _err(
-                "Vault path not configured. Set WVB_VAULT_PATH env var or run 'wvb init'."
+            return err(
+                "Vault path not configured.",
+                suggestion="Set the WVB_VAULT_PATH environment variable to your vault, or run 'wvb init' to configure it.",
             )
 
         tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
@@ -235,8 +238,9 @@ def broll_library_stats() -> dict:
 
         vault = _resolve_broll_vault()
         if vault is None:
-            return _err(
-                "Vault path not configured. Set WVB_VAULT_PATH env var or run 'wvb init'."
+            return err(
+                "Vault path not configured.",
+                suggestion="Set the WVB_VAULT_PATH environment variable to your vault, or run 'wvb init' to configure it.",
             )
 
         stats = get_library_stats(vault)

@@ -90,7 +90,8 @@ def _generate(
 
     src = _find_video_file(ws_path, source)
     if src is None:
-        return _err("No video file found. Provide source or add files to media/raw/.")
+        return err("No video file found. Provide source or add files to media/raw/.",
+                   suggestion="Pass source pointing at a video file, or drop a clip into media/raw/ so the tool can pick it up automatically.")
     if not src.exists():
         return err(f"File not found: {src}", error_type=MISSING_FILE, suggestion="Check the source path; it is resolved relative to the workspace root unless absolute.", path=str(src))
 

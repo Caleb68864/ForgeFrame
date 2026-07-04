@@ -87,7 +87,8 @@ def effect_glitch_stack(
     for svc in GLITCH_SERVICES:
         kid, eff = _lookup_catalog_by_service(svc)
         if kid is None:
-            return _err(f"missing catalog service: {svc}")
+            return err(f"Effect service '{svc}' is not in the generated catalog.",
+                       suggestion="Regenerate the catalog with `uv run workshop-video-brain catalog regenerate`, or use effect_list_common to pick a known effect.")
         params = dict(next(p for s, p in stack if s == svc))
         resolved.append((svc, kid, params))
 
@@ -98,7 +99,8 @@ def effect_glitch_stack(
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
+        return err(f"Snapshot failed: {exc}",
+                   suggestion="A safety snapshot could not be written before applying the effects. Check that projects/snapshots/ is writable, then retry.")
 
     project = parse_project(project_path)
 
@@ -122,8 +124,9 @@ def effect_glitch_stack(
                 project, (track, clip), xml, position=first_effect_index + inserted
             )
         except (IndexError, ValueError) as exc:
-            return _err(
-                f"partial failure after {inserted} filters: {exc}"
+            return err(
+                f"partial failure after {inserted} filters: {exc}",
+                suggestion="Some filters applied before this one failed. Restore the pre-op snapshot with snapshot_restore to get back to a clean state, then retry.",
             )
         inserted += 1
 
@@ -238,7 +241,8 @@ def effect_hologram(
     for svc, params in stack:
         kid, _eff = _lookup_catalog_by_service(svc)
         if kid is None:
-            return _err(f"missing catalog service: {svc}")
+            return err(f"Effect service '{svc}' is not in the generated catalog.",
+                       suggestion="Regenerate the catalog with `uv run workshop-video-brain catalog regenerate`, or use effect_list_common to pick a known effect.")
         resolved.append((svc, kid, params))
 
     # Single snapshot before writing.
@@ -248,7 +252,8 @@ def effect_hologram(
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
+        return err(f"Snapshot failed: {exc}",
+                   suggestion="A safety snapshot could not be written before applying the effects. Check that projects/snapshots/ is writable, then retry.")
 
     try:
         existing = patcher.list_effects(project, (track, clip))
@@ -270,7 +275,8 @@ def effect_hologram(
                 project, (track, clip), xml, position=first_effect_index + inserted
             )
         except (IndexError, ValueError) as exc:
-            return _err(f"partial failure after {inserted} filters: {exc}")
+            return err(f"partial failure after {inserted} filters: {exc}",
+                       suggestion="Some filters applied before this one failed. Restore the pre-op snapshot with snapshot_restore to get back to a clean state, then retry.")
         inserted += 1
 
     serialize_project(project, project_path)
@@ -432,7 +438,8 @@ def flash_cut_montage(
     from workshop_video_brain.workspace import create_snapshot
 
     if n_cuts < 2:
-        return _err(f"n_cuts must be >= 2; got {n_cuts}")
+        return err(f"n_cuts must be >= 2; got {n_cuts}",
+                   suggestion="A flash-cut montage needs at least two cuts. Pass n_cuts of 2 or more.")
 
     try:
         ws_path, _ws = _require_workspace(workspace_path)
@@ -446,10 +453,12 @@ def flash_cut_montage(
     # Verify effects present in catalog
     blur_kid, _ = _lookup_catalog_by_service("avfilter.dblur")
     if blur_kid is None:
-        return _err("missing catalog service: avfilter.dblur")
+        return err("Effect service 'avfilter.dblur' is not in the generated catalog.",
+                   suggestion="Regenerate the catalog with `uv run workshop-video-brain catalog regenerate`; this bundle needs the avfilter.dblur effect.")
     neg_kid, _ = _lookup_catalog_by_service("avfilter.negate")
     if invert_alt and neg_kid is None:
-        return _err("missing catalog service: avfilter.negate")
+        return err("Effect service 'avfilter.negate' is not in the generated catalog.",
+                   suggestion="Regenerate the catalog with `uv run workshop-video-brain catalog regenerate`; this bundle needs the avfilter.negate effect.")
 
     # Snapshot ONCE before anything
     try:
@@ -458,7 +467,8 @@ def flash_cut_montage(
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
+        return err(f"Snapshot failed: {exc}",
+                   suggestion="A safety snapshot could not be written before applying the effects. Check that projects/snapshots/ is writable, then retry.")
 
     project = parse_project(project_path)
 
@@ -491,7 +501,8 @@ def flash_cut_montage(
     try:
         project = _pp.patch_project(project, intents_sequential)
     except Exception as exc:  # noqa: BLE001
-        return _err(f"split failed: {exc}")
+        return err(f"split failed: {exc}",
+                   suggestion="The clip could not be split at the requested point. Check the split time falls inside the clip, then retry.")
 
     # Re-resolve playlist after patch (patch_project returns a new project).
     playlist = _resolve_playlist(project, track)
@@ -519,8 +530,9 @@ def flash_cut_montage(
             )
             inserted_filters += 1
         except (IndexError, ValueError) as exc:
-            return _err(
-                f"partial failure inserting blur on piece {i}: {exc}"
+            return err(
+                f"partial failure inserting blur on piece {i}: {exc}",
+                suggestion="Some pieces were processed before this one failed. Restore the pre-op snapshot with snapshot_restore, then retry.",
             )
 
         if invert_alt and (i % 2 == 1):
@@ -539,8 +551,9 @@ def flash_cut_montage(
                 )
                 inserted_filters += 1
             except (IndexError, ValueError) as exc:
-                return _err(
-                    f"partial failure inserting negate on piece {i}: {exc}"
+                return err(
+                    f"partial failure inserting negate on piece {i}: {exc}",
+                    suggestion="Some pieces were processed before this one failed. Restore the pre-op snapshot with snapshot_restore, then retry.",
                 )
 
     serialize_project(project, project_path)
@@ -613,7 +626,8 @@ def _reorder_impl(
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:
-        return _err(f"Snapshot failed: {exc}")
+        return err(f"Snapshot failed: {exc}",
+                   suggestion="A safety snapshot could not be written before applying the effects. Check that projects/snapshots/ is writable, then retry.")
 
     try:
         patcher.reorder_effects(project, (track, clip), effect_index, new_index)

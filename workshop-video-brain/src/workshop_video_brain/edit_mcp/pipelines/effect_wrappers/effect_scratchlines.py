@@ -15,6 +15,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _require_workspace,
     register_effect_wrapper,
 )
+from workshop_video_brain.edit_mcp.server.errors import err
 from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
 from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
@@ -34,7 +35,7 @@ def effect_scratchlines(
         ws_path, _ws = _require_workspace(workspace_path)
         project_path = ws_path / project_file
         if not project_path.exists():
-            return _err(f"Project file not found: {project_file}")
+            return err(f"Project file not found: {project_file}", suggestion="Pass the path to an existing .kdenlive working copy; it resolves under the workspace root unless absolute. Run project_create_working_copy to make one.")
 
         project = parse_project(project_path)
 

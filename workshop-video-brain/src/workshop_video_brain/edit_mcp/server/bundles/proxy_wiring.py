@@ -146,10 +146,10 @@ def proxy_attach(
         )
 
         if not report.attached:
-            return _err(
-                "No proxies wired. "
-                f"missing_proxy_files={report.skipped_missing_proxy or 'none'}; "
-                "run proxy_generate first or pass an explicit proxy_path."
+            return err(
+                "No proxies were wired: none of the clips had a matching proxy file. "
+                f"missing_proxy_files={report.skipped_missing_proxy or 'none'}",
+                suggestion="Run proxy_generate first to create proxies, or pass an explicit proxy_path.",
             )
 
         ws_root = _find_workspace_root(project_path) or ws
@@ -209,7 +209,7 @@ def proxy_detach(
         _, report = pw.detach_proxies(project, source=source, all_clips=all_clips)
 
         if not report.detached:
-            return _err("No proxied producers to detach.")
+            return err("No proxied producers to detach; this project has no proxies wired.", suggestion="This is only meaningful after proxies have been attached with the proxy wiring step.")
 
         ws_root = _find_workspace_root(project_path) or ws
         create_snapshot(ws_root, project_path, description="before_proxy_detach")

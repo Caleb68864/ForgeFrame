@@ -136,26 +136,27 @@ def effect_light_leak(
     if not project_path.exists():
         return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
     if not leak_media or not str(leak_media).strip():
-        return _err("leak_media must be a non-empty path")
+        return err("leak_media must be a non-empty path", suggestion="Pass the path to the light-leak clip to overlay; it resolves under the workspace root unless absolute.")
     if not Path(leak_media).exists():
-        return _err(f"leak_media does not exist: {leak_media}")
+        return err(f"leak_media does not exist: {leak_media}", suggestion="Check the leak_media path; it resolves under the workspace root unless absolute.")
     if blend_mode not in LIGHT_LEAK_BLEND_MODES:
-        return _err(
+        return err(
             f"Unknown blend_mode '{blend_mode}'; light-leak modes: "
-            f"{sorted(LIGHT_LEAK_BLEND_MODES)}"
+            f"{sorted(LIGHT_LEAK_BLEND_MODES)}",
+            suggestion="Pass blend_mode as one of the listed light-leak modes (e.g. 'screen' or 'add').",
         )
     if at_frame < 0:
-        return _err("at_frame must be >= 0")
+        return err("at_frame must be >= 0", suggestion="Pass at_frame as 0 or more (the frame where the overlay starts).")
     if duration_frames <= 0:
-        return _err("duration_frames must be > 0")
+        return err("duration_frames must be > 0", suggestion="Pass a positive duration_frames for how long the overlay lasts.")
     if fade_in_frames < 0 or fade_out_frames < 0:
-        return _err("fade frames must be >= 0")
+        return err("fade frames must be >= 0", suggestion="Pass fade_in/fade_out frame counts as 0 or more.")
     if not 0.0 <= float(opacity) <= 1.0:
-        return _err(f"opacity must be in [0.0, 1.0]; got {opacity}")
+        return err(f"opacity must be in [0.0, 1.0]; got {opacity}", suggestion="Pass opacity as a fraction between 0.0 (invisible) and 1.0 (solid).")
 
     resolved_overlay = overlay_track if overlay_track >= 0 else target_track + 1
     if resolved_overlay == target_track:
-        return _err("overlay_track must differ from target_track")
+        return err("overlay_track must differ from target_track", suggestion="Put the overlay on a different track from the footage it sits over; pass a distinct overlay_track index.")
 
     try:
         record = create_snapshot(
@@ -320,18 +321,19 @@ def effect_day_to_night(
     if not project_path.exists():
         return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
     if not 0.0 <= float(intensity) <= 1.0:
-        return _err(f"intensity must be in [0.0, 1.0]; got {intensity}")
+        return err(f"intensity must be in [0.0, 1.0]; got {intensity}", suggestion="Pass intensity as a fraction between 0.0 (off) and 1.0 (full).")
 
     use_sky = bool(sky_media and str(sky_media).strip())
     if use_sky:
         from pathlib import Path as _Path
 
         if not _Path(sky_media).exists():
-            return _err(f"sky_media does not exist: {sky_media}")
+            return err(f"sky_media does not exist: {sky_media}", suggestion="Check the sky_media path; it resolves under the workspace root unless absolute.")
         if blend_mode not in LIGHT_LEAK_BLEND_MODES:
-            return _err(
+            return err(
                 f"Unknown blend_mode '{blend_mode}'; sky overlay modes: "
-                f"{sorted(LIGHT_LEAK_BLEND_MODES)}"
+                f"{sorted(LIGHT_LEAK_BLEND_MODES)}",
+                suggestion="Pass blend_mode as one of the listed sky-overlay modes (e.g. 'screen' or 'add').",
             )
 
     project = parse_project(project_path)
@@ -360,7 +362,7 @@ def effect_day_to_night(
     for svc in DAY_TO_NIGHT_SERVICES:
         kid = lookup_catalog_id(svc)
         if kid is None:
-            return _err(f"missing catalog service: {svc}")
+            return err(f"Effect service '{svc}' is not in the generated catalog.", suggestion="Regenerate the catalog with `uv run workshop-video-brain catalog regenerate`, or use effect_list_common to pick a known effect.")
         props = dict(next(p for s, p in chain if s == svc))
         resolved.append((svc, kid, props))
 
@@ -394,7 +396,7 @@ def effect_day_to_night(
                 position=first_effect_index + inserted,
             )
         except (IndexError, ValueError) as exc:
-            return _err(f"partial failure after {inserted} filters: {exc}")
+            return err(f"partial failure after {inserted} filters: {exc}", suggestion="Some filters applied before this one failed. Restore the pre-op snapshot with snapshot_restore, then retry.")
         inserted += 1
 
     # Optional sky overlay: same additive insert + blend path as light-leak.

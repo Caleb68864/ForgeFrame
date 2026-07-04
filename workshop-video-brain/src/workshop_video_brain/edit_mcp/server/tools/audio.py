@@ -207,8 +207,9 @@ def audio_enhance(
         from workshop_video_brain.edit_mcp.adapters.ffmpeg.audio import voice_enhance_chain
         chain_result = voice_enhance_chain(source, output, preset=preset)
         if not chain_result["success"]:
-            return _err(
-                chain_result.get("error", "Enhancement pipeline failed")
+            return err(
+                chain_result.get("error", "Enhancement pipeline failed"),
+                suggestion="Confirm ffmpeg is installed and the source audio is readable, then retry.",
             )
         return _ok({
             "input": str(source),
@@ -236,7 +237,8 @@ def audio_enhance_all(
         ws_path = _validate_workspace_path(workspace_path)
         raw_dir = ws_path / "media" / "raw"
         if not raw_dir.exists():
-            return _err("media/raw/ directory not found in workspace.")
+            return err(f"media/raw/ does not exist in this workspace: {raw_dir}",
+                       suggestion="Create media/raw/ and copy your source recordings into it before running this tool.")
 
         processed_dir = _ensure_processed_dir(ws_path)
 
@@ -291,7 +293,8 @@ def audio_analyze(workspace_path: str, file_path: str = "") -> dict:
         stderr = result.stderr
         json_match = re.search(r"\{[^{}]*\}", stderr, re.DOTALL)
         if not json_match:
-            return _err("Could not parse loudnorm output from FFmpeg.")
+            return err("Could not parse loudnorm output from FFmpeg.",
+                       suggestion="This usually means ffmpeg's loudnorm filter produced no JSON — check that your ffmpeg build includes the loudnorm filter and the source has an audio stream.")
 
         loudnorm_data = _json.loads(json_match.group())
         return _ok({

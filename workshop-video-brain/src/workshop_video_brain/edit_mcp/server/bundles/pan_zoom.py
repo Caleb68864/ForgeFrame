@@ -134,8 +134,9 @@ def effect_pan_zoom(
         return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
 
     if start_rect is None and end_rect is None and preset is None:
-        return _err(
-            "provide either a preset or both start_rect and end_rect"
+        return err(
+            "Provide either a preset or both start_rect and end_rect.",
+            suggestion="Pass a named preset (e.g. 'ken_burns_in'), or pass both start_rect and end_rect as 'x y w h'.",
         )
 
     from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import (
@@ -177,8 +178,9 @@ def effect_pan_zoom(
         chosen_start = start_rect if start_rect is not None else p_start
         chosen_end = end_rect if end_rect is not None else p_end
         if chosen_start is None or chosen_end is None:
-            return _err(
-                "provide either a preset or both start_rect and end_rect"
+            return err(
+                "Provide either a preset or both start_rect and end_rect.",
+                suggestion="Pass a named preset (e.g. 'ken_burns_in'), or pass both start_rect and end_rect as 'x y w h'.",
             )
         final_start = clamp_rect(chosen_start, width, height)
         final_end = clamp_rect(chosen_end, width, height)

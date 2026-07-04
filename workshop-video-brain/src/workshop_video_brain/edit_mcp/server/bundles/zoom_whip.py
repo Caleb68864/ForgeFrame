@@ -219,7 +219,7 @@ def transition_zoom_whip(
                 "end_frame": half["end_frame"],
             }
     except (IndexError, ValueError) as exc:
-        return _err(f"Failed to build transition: {exc}")
+        return err(f"Failed to build transition: {exc}", suggestion="Check the two clips exist and are adjacent; the one-line cause above says what failed.")
 
     serialize_project(project, project_path)
 

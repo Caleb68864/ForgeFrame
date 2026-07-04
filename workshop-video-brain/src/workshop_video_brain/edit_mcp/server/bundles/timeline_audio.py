@@ -172,7 +172,7 @@ def track_volume(
     try:
         snapshot_id = _apply(project, project_path, ws_path, [intent], "before_track_volume")
     except Exception as exc:  # noqa: BLE001
-        return _err(f"failed to apply track_volume: {exc}")
+        return err(f"failed to apply track_volume: {exc}", suggestion="Check the track index exists (project_summary lists tracks); the one-line cause above says what failed.")
 
     return _ok({
         "kdenlive_path": str(project_path),
@@ -232,7 +232,7 @@ def track_pan(
     try:
         snapshot_id = _apply(project, project_path, ws_path, [intent], "before_track_pan")
     except Exception as exc:  # noqa: BLE001
-        return _err(f"failed to apply track_pan: {exc}")
+        return err(f"failed to apply track_pan: {exc}", suggestion="Check the track index exists (project_summary lists tracks); the one-line cause above says what failed.")
 
     return _ok({
         "kdenlive_path": str(project_path),
@@ -309,7 +309,7 @@ def track_eq(
     try:
         snapshot_id = _apply(project, project_path, ws_path, intents, "before_track_eq")
     except Exception as exc:  # noqa: BLE001
-        return _err(f"failed to apply track_eq: {exc}")
+        return err(f"failed to apply track_eq: {exc}", suggestion="Check the track index exists (project_summary lists tracks); the one-line cause above says what failed.")
 
     return _ok({
         "kdenlive_path": str(project_path),
@@ -403,11 +403,12 @@ def audio_duck(
     project = parse_project(project_path)
     for label, idx in (("music_track", music_track), ("voice_track", voice_track)):
         if idx < 0 or idx >= len(project.playlists):
-            return _err(
-                f"{label} {idx} out of range (project has {len(project.playlists)} tracks)"
+            return err(
+                f"{label} {idx} is out of range - this project has {len(project.playlists)} track(s).",
+                suggestion=f"Pass a {label} within 0-{max(0, len(project.playlists) - 1)}. Use project_summary to see the tracks.",
             )
     if duck_db >= 0:
-        return _err("duck_db must be negative (a dip)")
+        return err("duck_db must be negative (a dip)", suggestion="Pass duck_db as a negative number of decibels, e.g. -12, to lower the music under the voice.")
 
     fps = project.profile.fps or 25.0
     music_playlist = project.playlists[music_track]
@@ -417,7 +418,7 @@ def audio_duck(
     try:
         speech = _voice_speech_intervals(project, voice_playlist, fps, threshold_db)
     except Exception as exc:  # noqa: BLE001 - ffmpeg / fs errors
-        return _err(f"voice-activity detection failed: {exc}")
+        return err(f"voice-activity detection failed: {exc}", suggestion="Confirm the voice track has readable audio; the one-line cause above says what failed.")
 
     keyframes = ta.voice_activity_to_duck_keyframes(
         speech,
@@ -447,7 +448,7 @@ def audio_duck(
     try:
         snapshot_id = _apply(project, project_path, ws_path, [intent], "before_audio_duck")
     except Exception as exc:  # noqa: BLE001
-        return _err(f"failed to apply audio_duck: {exc}")
+        return err(f"failed to apply audio_duck: {exc}", suggestion="Check the music and voice track indices exist; the one-line cause above says what failed.")
 
     return _ok({
         "kdenlive_path": str(project_path),

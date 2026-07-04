@@ -234,20 +234,21 @@ def overlay_insert(
     if not project_path.exists():
         return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
     if not image_path or not str(image_path).strip():
-        return _err("image_path must be a non-empty path")
+        return err("image_path must be a non-empty path", suggestion="Pass the path to the image you want to overlay (PNG/JPG); it resolves under the workspace root unless absolute.")
     if not Path(image_path).exists():
-        return _err(f"image_path does not exist: {image_path}")
+        return err(f"image_path does not exist: {image_path}", suggestion="Check the image path; it resolves under the workspace root unless absolute.")
     if not io.is_supported_image(image_path):
-        return _err(
+        return err(
             f"unsupported image type {Path(image_path).suffix!r}; "
-            f"supported: {sorted(io.IMAGE_EXTENSIONS)}"
+            f"supported: {sorted(io.IMAGE_EXTENSIONS)}",
+            suggestion="Convert the image to a supported format (PNG or JPG) and pass that instead.",
         )
     if at_seconds < 0:
-        return _err("at_seconds must be >= 0")
+        return err("at_seconds must be >= 0", suggestion="Pass at_seconds as 0 or more (the second on the timeline where the overlay starts).")
     if duration_seconds <= 0:
-        return _err("duration_seconds must be > 0")
+        return err("duration_seconds must be > 0", suggestion="Pass a positive duration_seconds for how long the overlay stays on screen.")
     if not 0.0 <= float(opacity) <= 1.0:
-        return _err(f"opacity must be in [0.0, 1.0]; got {opacity}")
+        return err(f"opacity must be in [0.0, 1.0]; got {opacity}", suggestion="Pass opacity as a fraction between 0.0 (invisible) and 1.0 (solid).")
 
     project = parse_project(project_path)
     fps = project.profile.fps or 25.0
@@ -331,26 +332,28 @@ def watermark_apply(
     if not project_path.exists():
         return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
     if not image_path or not str(image_path).strip():
-        return _err("image_path must be a non-empty path")
+        return err("image_path must be a non-empty path", suggestion="Pass the path to the image you want to overlay (PNG/JPG); it resolves under the workspace root unless absolute.")
     if not Path(image_path).exists():
-        return _err(f"image_path does not exist: {image_path}")
+        return err(f"image_path does not exist: {image_path}", suggestion="Check the image path; it resolves under the workspace root unless absolute.")
     if not io.is_supported_image(image_path):
-        return _err(
+        return err(
             f"unsupported image type {Path(image_path).suffix!r}; "
-            f"supported: {sorted(io.IMAGE_EXTENSIONS)}"
+            f"supported: {sorted(io.IMAGE_EXTENSIONS)}",
+            suggestion="Convert the image to a supported format (PNG or JPG) and pass that instead.",
         )
     if position == "full" or position not in io.POSITION_PRESETS:
-        return _err(
+        return err(
             f"position must be a corner/center preset; got {position!r} "
-            f"(valid: top_left, top_right, bottom_left, bottom_right, center)"
+            f"(valid: top_left, top_right, bottom_left, bottom_right, center)",
+            suggestion="Pass position as one of: top_left, top_right, bottom_left, bottom_right, center.",
         )
     if not 0.0 <= float(opacity) <= 1.0:
-        return _err(f"opacity must be in [0.0, 1.0]; got {opacity}")
+        return err(f"opacity must be in [0.0, 1.0]; got {opacity}", suggestion="Pass opacity as a fraction between 0.0 (invisible) and 1.0 (solid).")
 
     project = parse_project(project_path)
     duration_frames = io.timeline_duration_frames(project)
     if duration_frames <= 0:
-        return _err("project timeline is empty; nothing to watermark")
+        return err("The project timeline is empty, so there is nothing to watermark.", suggestion="Add clips to the timeline first, then apply the watermark.")
 
     try:
         record = create_snapshot(

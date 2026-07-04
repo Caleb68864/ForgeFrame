@@ -143,7 +143,7 @@ def clip_insert(
                 break
 
         if video_playlist is None:
-            return _err("No video playlist found in project")
+            return invalid_input("This project has no video track", "Add a working copy with at least one video track before inserting clips.")
 
         # Build a unique producer ID from the media filename
         import hashlib
@@ -163,9 +163,10 @@ def clip_insert(
 
         patched, report = patch_project(project, [intent], with_report=True)
         if report.all_skipped:
-            return _err(
+            return err(
                 "clip_insert applied no changes: "
-                + "; ".join(s["reason"] for s in report.skipped)
+                + "; ".join(s["reason"] for s in report.skipped),
+                suggestion="Each reason above says why the insert was skipped. Fix the offending track/clip index or timing (project_summary shows what the project actually contains) and retry.",
             )
         manifest = read_manifest(workspace_path)
         slug = manifest.slug or "project"
@@ -310,9 +311,10 @@ def clip_remove(workspace_path: str, clip_index: int, track: int = 0) -> dict:
         intent = RemoveClip(track_ref=playlist.id, clip_index=clip_index)
         patched, _report = patch_project(project, [intent], with_report=True)
         if _report.all_skipped:
-            return _err(
+            return err(
                 "no changes applied: "
-                + "; ".join(s["reason"] for s in _report.skipped)
+                + "; ".join(s["reason"] for s in _report.skipped),
+                suggestion="Each reason above says why an edit was skipped. Fix the offending track/clip index or timing (project_summary shows what the project actually contains) and retry.",
             )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
@@ -352,9 +354,10 @@ def clip_move(workspace_path: str, from_index: int, to_index: int, track: int = 
         intent = MoveClip(track_ref=playlist.id, from_index=from_index, to_index=to_index)
         patched, _report = patch_project(project, [intent], with_report=True)
         if _report.all_skipped:
-            return _err(
+            return err(
                 "no changes applied: "
-                + "; ".join(s["reason"] for s in _report.skipped)
+                + "; ".join(s["reason"] for s in _report.skipped),
+                suggestion="Each reason above says why an edit was skipped. Fix the offending track/clip index or timing (project_summary shows what the project actually contains) and retry.",
             )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
@@ -400,9 +403,10 @@ def clip_split(workspace_path: str, clip_index: int, split_at_seconds: float = 0
         )
         patched, _report = patch_project(project, [intent], with_report=True)
         if _report.all_skipped:
-            return _err(
+            return err(
                 "no changes applied: "
-                + "; ".join(s["reason"] for s in _report.skipped)
+                + "; ".join(s["reason"] for s in _report.skipped),
+                suggestion="Each reason above says why an edit was skipped. Fix the offending track/clip index or timing (project_summary shows what the project actually contains) and retry.",
             )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
@@ -452,9 +456,10 @@ def clip_trim(
         intent = TrimClip(clip_ref=clip_ref, new_in=new_in, new_out=new_out)
         patched, _report = patch_project(project, [intent], with_report=True)
         if _report.all_skipped:
-            return _err(
+            return err(
                 "no changes applied: "
-                + "; ".join(s["reason"] for s in _report.skipped)
+                + "; ".join(s["reason"] for s in _report.skipped),
+                suggestion="Each reason above says why an edit was skipped. Fix the offending track/clip index or timing (project_summary shows what the project actually contains) and retry.",
             )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
@@ -493,9 +498,10 @@ def clip_ripple_delete(workspace_path: str, clip_index: int, track: int = 0) -> 
         intent = RippleDelete(track_ref=playlist.id, clip_index=clip_index)
         patched, _report = patch_project(project, [intent], with_report=True)
         if _report.all_skipped:
-            return _err(
+            return err(
                 "no changes applied: "
-                + "; ".join(s["reason"] for s in _report.skipped)
+                + "; ".join(s["reason"] for s in _report.skipped),
+                suggestion="Each reason above says why an edit was skipped. Fix the offending track/clip index or timing (project_summary shows what the project actually contains) and retry.",
             )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
@@ -543,9 +549,10 @@ def clip_speed(
         intent = SetClipSpeed(track_ref=playlist.id, clip_index=clip_index, speed=speed)
         patched, _report = patch_project(project, [intent], with_report=True)
         if _report.all_skipped:
-            return _err(
+            return err(
                 "no changes applied: "
-                + "; ".join(s["reason"] for s in _report.skipped)
+                + "; ".join(s["reason"] for s in _report.skipped),
+                suggestion="Each reason above says why an edit was skipped. Fix the offending track/clip index or timing (project_summary shows what the project actually contains) and retry.",
             )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
@@ -601,9 +608,10 @@ def audio_fade(
         )
         patched, _report = patch_project(project, [intent], with_report=True)
         if _report.all_skipped:
-            return _err(
+            return err(
                 "no changes applied: "
-                + "; ".join(s["reason"] for s in _report.skipped)
+                + "; ".join(s["reason"] for s in _report.skipped),
+                suggestion="Each reason above says why an edit was skipped. Fix the offending track/clip index or timing (project_summary shows what the project actually contains) and retry.",
             )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
@@ -683,9 +691,10 @@ def track_mute(workspace_path: str, track_index: int, muted: bool = True) -> dic
         intent = SetTrackMute(track_ref=track.id, muted=muted)
         patched, _report = patch_project(project, [intent], with_report=True)
         if _report.all_skipped:
-            return _err(
+            return err(
                 "no changes applied: "
-                + "; ".join(s["reason"] for s in _report.skipped)
+                + "; ".join(s["reason"] for s in _report.skipped),
+                suggestion="Each reason above says why an edit was skipped. Fix the offending track/clip index or timing (project_summary shows what the project actually contains) and retry.",
             )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
@@ -726,9 +735,10 @@ def track_visibility(workspace_path: str, track_index: int, visible: bool = True
         intent = SetTrackVisibility(track_ref=track.id, visible=visible)
         patched, _report = patch_project(project, [intent], with_report=True)
         if _report.all_skipped:
-            return _err(
+            return err(
                 "no changes applied: "
-                + "; ".join(s["reason"] for s in _report.skipped)
+                + "; ".join(s["reason"] for s in _report.skipped),
+                suggestion="Each reason above says why an edit was skipped. Fix the offending track/clip index or timing (project_summary shows what the project actually contains) and retry.",
             )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({
@@ -783,9 +793,10 @@ def gap_insert(
         )
         patched, _report = patch_project(project, [intent], with_report=True)
         if _report.all_skipped:
-            return _err(
+            return err(
                 "no changes applied: "
-                + "; ".join(s["reason"] for s in _report.skipped)
+                + "; ".join(s["reason"] for s in _report.skipped),
+                suggestion="Each reason above says why an edit was skipped. Fix the offending track/clip index or timing (project_summary shows what the project actually contains) and retry.",
             )
         out_path = _save_patched(ws_path, patched, workspace_path)
         return _ok({

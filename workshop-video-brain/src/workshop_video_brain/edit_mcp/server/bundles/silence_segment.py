@@ -76,7 +76,7 @@ def media_segment_at_silence(
     try:
         ws_path = _validate_workspace_path(workspace_path)
         if not source or not source.strip():
-            return _err("source is required (path to a recording).")
+            return err("source is required.", suggestion="Pass source as the path to a recording (audio or video); it resolves under the workspace root unless absolute.")
         src = resolve_under_workspace(ws_path, source)
         if not src.exists():
             return err(f"File not found: {src}", error_type=MISSING_FILE, suggestion="Check the source path; it is resolved relative to the workspace root unless absolute.", path=str(src))
@@ -86,7 +86,8 @@ def media_segment_at_silence(
         # Safety: output must live under media/processed, never media/raw.
         raw_dir = (ws_path / "media" / "raw").resolve()
         if str(out_dir.resolve()).startswith(str(raw_dir)):
-            return _err("Refusing to write takes into media/raw.")
+            return err("Refusing to write takes into media/raw/; media/raw/ is read-only by design.",
+                       suggestion="Point out_dir at a folder under media/processed/ (or elsewhere) instead of media/raw/.")
 
         try:
             result = segment_at_silence(

@@ -265,7 +265,8 @@ def subject_track(
         if len(seed) != 4:
             raise ValueError
     except ValueError:
-        return _err(f"rect must be four space-separated numbers 'x y w h'; got {rect!r}")
+        return err(f"rect must be four space-separated numbers 'x y w h'; got {rect!r}",
+                   suggestion="Pass rect as four space-separated numbers: left top width height, e.g. '320 180 640 360'.")
 
     fps = project.profile.fps or 25.0
     width = project.profile.width
@@ -427,8 +428,9 @@ def subject_zoom(
         elif rect and rect.strip():
             seed = tuple(float(v) for v in rect.split())
             if len(seed) != 4:
-                return _err(
-                    f"rect must be four numbers 'x y w h'; got {rect!r}"
+                return err(
+                    f"rect must be four numbers 'x y w h'; got {rect!r}",
+                    suggestion="Pass rect as four space-separated numbers: left top width height, e.g. '320 180 640 360'.",
                 )
             rect_kf = mt.build_static_zoom_keyframes(
                 seed, width, height, fps, fill=fill,
@@ -436,7 +438,8 @@ def subject_zoom(
             mode = "static"
             keyframe_count = 1
         else:
-            return _err("provide either track_data (follow-zoom) or rect (static punch-in)")
+            return err("provide either track_data (follow-zoom) or rect (static punch-in)",
+                       suggestion="Pass track_data (a JSON array of tracked points) to follow a subject, or rect ('x y w h') to punch in on a fixed region.")
     except (FileNotFoundError, ValueError) as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 

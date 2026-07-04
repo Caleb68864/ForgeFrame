@@ -53,6 +53,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
     _require_workspace,
 )
+from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import ProjectParseError
 from workshop_video_brain.edit_mcp.pipelines import multicam as mc
 from workshop_video_brain.edit_mcp.pipelines import clip_place as cp
 from workshop_video_brain.edit_mcp.pipelines.audio_sync import (
@@ -179,22 +180,28 @@ def multicam_assemble(
 
     sync_mode = (sync or "audio").lower()
     if sync_mode not in ("audio", "none", "manual"):
-        return _err(f"unknown sync mode {sync!r}; use 'audio' or 'none'")
+        return err(f"unknown sync mode {sync!r}; use 'audio' or 'none'", suggestion="Pass sync='audio' to align angles by their audio, or sync='none' to place them as-is.")
 
     if reference < 0 or reference >= len(paths):
-        return _err(
-            f"reference {reference} out of range (got {len(paths)} sources)"
+        return err(
+            f"reference {reference} out of range (got {len(paths)} sources)",
+            suggestion="Pass a reference index that points at one of the provided sources (0-based).",
         )
 
     try:
         ws_path, project_path, project = _load(workspace_path, project_file)
+    except ProjectParseError as exc:
+        return corrupt_project(str(getattr(exc, "path", "") or project_file), exc)
     except (ValueError, FileNotFoundError) as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     resolved = [_resolve(ws_path, s) for s in paths]
     for p in resolved:
         if not p.exists():
-            return _err(f"source not found: {p}")
+            # TOCTOU: a source can vanish between an earlier sync/probe tool and
+            # this call. Name the missing file with a typed error so the failure
+            # points at the upstream deletion, not a generic multicam failure.
+            return missing_file(str(p), "source angle")
 
     fps = project.profile.fps or 25.0
 
@@ -211,9 +218,10 @@ def multicam_assemble(
                 ref_path, path, method="correlate", window_seconds=DEFAULT_WINDOW_SECONDS
             )
             if not res.get("success"):
-                return _err(
+                return err(
                     f"audio sync failed for angle {i} ({path.name}): "
-                    f"{res.get('error', 'unknown error')}"
+                    f"{res.get('error', 'unknown error')}",
+                    suggestion="This angle could not be aligned by audio (it may have no usable audio). Pass sync='none' to place angles without audio alignment.",
                 )
             offsets[i] = float(res["offset_seconds"])
             confidences[i] = float(res["confidence"])
@@ -227,11 +235,15 @@ def multicam_assemble(
     # 3. Source durations -> clip lengths in frames.
     lengths: list[int] = []
     for path in resolved:
+        if not path.exists():
+            # TOCTOU: deleted after the existence sweep / audio sync above.
+            return missing_file(str(path), "source angle")
         dur = _probe_duration_seconds(path)
         if dur is None or dur <= 0:
-            return _err(
-                f"could not probe a positive duration for {path} "
-                f"(ffprobe unavailable or unreadable media)"
+            return media_unreadable(
+                str(path),
+                "ffprobe returned no positive duration (unreadable media or "
+                "ffprobe unavailable)",
             )
         lengths.append(max(1, cp.seconds_to_frames(dur, fps)))
 
@@ -277,7 +289,7 @@ def multicam_assemble(
     try:
         patched = patcher.patch_project(project, intents)
     except (ValueError, IndexError) as exc:
-        return _err(f"failed to stack angles: {exc}")
+        return err(f"failed to stack angles: {exc}", suggestion="Confirm all angle sources are readable video files of compatible size; the one-line cause above says what failed.")
     serialize_project(patched, project_path)
 
     return _ok({
@@ -337,10 +349,12 @@ def multicam_switch(
     try:
         angle_track_map = mc.parse_int_list(angle_tracks)
     except ValueError as exc:
-        return _err(f"invalid angle_tracks: {exc}")
+        return err(f"invalid angle_tracks: {exc}", suggestion="Pass angle_tracks as a JSON array of track indices, e.g. [0, 1, 2].")
 
     try:
         ws_path, project_path, project = _load(workspace_path, project_file)
+    except ProjectParseError as exc:
+        return corrupt_project(str(getattr(exc, "path", "") or project_file), exc)
     except (ValueError, FileNotFoundError) as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
@@ -350,7 +364,7 @@ def multicam_switch(
     if angle_track_map:
         for idx in angle_track_map:
             if idx < 0 or idx >= len(project.playlists):
-                return _err(f"angle_tracks references track {idx} out of range")
+                return err(f"angle_tracks references track {idx}, which does not exist in this project.", suggestion="Pass angle_tracks indices that exist (project_summary shows how many tracks the project has).")
         angle_map = angle_track_map
     else:
         angle_map = [
@@ -358,13 +372,13 @@ def multicam_switch(
             if any(e.producer_id for e in project.playlists[i].entries)
         ]
         if not angle_map:
-            return _err("no video tracks with footage found to switch between")
+            return err("No video tracks with footage were found to switch between.", suggestion="Stack at least two angle tracks with clips before building a multicam program.")
 
     max_angle = max(c.angle for c in parsed_cuts)
     if max_angle >= len(angle_map):
-        return _err(
-            f"cut references angle {max_angle} but only {len(angle_map)} angle "
-            f"track(s) are available"
+        return err(
+            f"A cut references angle {max_angle}, but only {len(angle_map)} angle track(s) are available.",
+            suggestion="Renumber your cuts to reference angles that exist (0-based), or add the missing angle track.",
         )
 
     timeline_end = max(
@@ -381,9 +395,9 @@ def multicam_switch(
         pl_index = angle_map[seg.angle]
         loc = mc.locate_source(project.playlists[pl_index].entries, seg.start_frame)
         if loc is None:
-            return _err(
-                f"angle {seg.angle} (track {pl_index}) has no footage at frame "
-                f"{seg.start_frame}"
+            return err(
+                f"Angle {seg.angle} (track {pl_index}) has no footage at frame {seg.start_frame}.",
+                suggestion="Make sure each angle track has a clip covering every switch point, or adjust the cut times.",
             )
         end = min(seg.end_frame, loc.available_end)
         if end <= seg.start_frame:
@@ -394,7 +408,7 @@ def multicam_switch(
             loc.in_point + length - 1, end, seg.angle,
         ))
     if not placements:
-        return _err("no renderable program segments after locating angle footage")
+        return err("No renderable program segments were produced after locating the angle footage.", suggestion="Check that the angle tracks overlap in time and contain clips at the switch points.")
 
     try:
         snap = create_snapshot(ws_path, project_path, description="before_multicam_switch")
@@ -432,7 +446,7 @@ def multicam_switch(
     try:
         patched = patcher.patch_project(project, intents)
     except (ValueError, IndexError) as exc:
-        return _err(f"failed to build program track: {exc}")
+        return err(f"failed to build program track: {exc}", suggestion="Confirm the angle tracks and switch points are valid; the one-line cause above says what failed.")
     serialize_project(patched, project_path)
 
     return _ok({

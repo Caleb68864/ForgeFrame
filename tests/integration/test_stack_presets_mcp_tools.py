@@ -378,8 +378,10 @@ def test_promote_no_vault_returns_err(tmp_path):
     assert pr["status"] == "error"
     msg = pr["message"]
     assert "Vault root not configured" in msg
-    assert "vault_root" in msg
-    assert "personal_vault" in msg
+    # The concrete config keys now live in the actionable suggestion field.
+    suggestion = pr.get("suggestion", "")
+    assert "vault_root" in suggestion
+    assert "personal_vault" in suggestion
 
 
 def test_promote_embeds_wikilink_from_manifest(tmp_path, monkeypatch):

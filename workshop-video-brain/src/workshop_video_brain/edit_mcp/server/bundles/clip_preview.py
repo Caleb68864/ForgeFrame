@@ -105,16 +105,17 @@ def clips_preview_gif(
 
         fmt = (format or "gif").lower()
         if fmt not in _cp.SUPPORTED_FORMATS:
-            return _err(
+            return err(
                 f"unsupported format {format!r}; expected one of "
-                f"{', '.join(sorted(_cp.SUPPORTED_FORMATS))}."
+                f"{', '.join(sorted(_cp.SUPPORTED_FORMATS))}.",
+                suggestion=f"Pass format as one of: {', '.join(sorted(_cp.SUPPORTED_FORMATS))}.",
             )
         if seconds <= 0:
-            return _err("seconds must be positive.")
+            return err("seconds must be positive.", suggestion="Pass a positive seconds value for how long the preview should be.")
         if fps < 1:
-            return _err("fps must be >= 1.")
+            return err("fps must be >= 1.", suggestion="Pass fps as 1 or more for the preview frame rate.")
         if width < 2:
-            return _err("width must be >= 2.")
+            return err("width must be >= 2.", suggestion="Pass a preview width of at least 2 pixels (e.g. 480).")
 
         src = Path(source)
         if not src.is_absolute():

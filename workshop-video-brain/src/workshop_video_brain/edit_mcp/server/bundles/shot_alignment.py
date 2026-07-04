@@ -73,7 +73,7 @@ def shots_map_to_script(
     try:
         ws = _validate_workspace_path(workspace_path)
         if not steps_file or not steps_file.strip():
-            return _err("steps_file is required (path to a numbered step list).")
+            return err("steps_file is required.", suggestion="Pass steps_file as the path to a numbered step list; it resolves under the workspace root unless absolute.")
         steps_path = resolve_under_workspace(ws, steps_file)
         if not steps_path.exists():
             # Allow an absolute path outside the workspace too.
@@ -81,7 +81,7 @@ def shots_map_to_script(
             if alt.exists():
                 steps_path = alt
             else:
-                return _err(f"Steps file not found: {steps_file}")
+                return err(f"Steps file not found: {steps_file}", suggestion="Check the steps_file path; it resolves under the workspace root unless absolute.")
 
         result = _sa.map_shots_to_script(
             ws,

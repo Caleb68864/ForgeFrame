@@ -226,15 +226,18 @@ def test_clip_place_tool_by_producer_id(project_ws):
     ]
 
 
-def test_clip_place_tool_missing_duration_errors(project_ws):
+def test_clip_place_tool_missing_media_errors(project_ws):
     ws_root, proj_rel = project_ws
-    # a bogus media path with no ffprobe duration and no producer length
+    # A media path that does not exist must fail loudly, naming the missing file
+    # (not silently placing a broken clip nor bailing with a confusing
+    # "duration unknown" message). Regression: composed-workflow propagation.
     res = clip_place(
         str(ws_root), proj_rel, source_or_producer="/nope/missing.mp4", track=1,
         at_seconds=1.0,
     )
     assert res["status"] == "error"
-    assert "out_seconds" in res["message"]
+    assert res["error_type"] == "missing_file"
+    assert "/nope/missing.mp4" in res["message"]
 
 
 def test_clip_place_tool_bad_track(project_ws):

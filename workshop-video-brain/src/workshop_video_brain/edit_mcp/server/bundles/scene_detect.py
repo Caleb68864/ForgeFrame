@@ -64,7 +64,7 @@ def clips_detect_scenes(
     try:
         ws_path = _validate_workspace_path(workspace_path)
         if not source or not source.strip():
-            return _err("source is required (path to a video file).")
+            return err("source is required.", suggestion="Pass source as the path to a video file; it resolves under the workspace root unless absolute.")
         src = resolve_under_workspace(ws_path, source)
         if not src.exists():
             return err(f"File not found: {src}", error_type=MISSING_FILE, suggestion="Check the source path; it is resolved relative to the workspace root unless absolute.", path=str(src))

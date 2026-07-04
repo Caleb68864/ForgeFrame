@@ -79,7 +79,7 @@ def render_review_frames(
     try:
         ws = _validate_workspace_path(workspace_path)
         if not project_file or not project_file.strip():
-            return _err("project_file is required (path to a .kdenlive file).")
+            return err("project_file is required.", suggestion="Pass project_file as the path to a .kdenlive project; it resolves under the workspace root unless absolute.")
         result = review_loop.render_review_frames(
             ws,
             project_file,
@@ -130,7 +130,7 @@ def thumbnail_generate(
     try:
         ws = _validate_workspace_path(workspace_path)
         if not source_or_project or not source_or_project.strip():
-            return _err("source_or_project is required (media file or .kdenlive).")
+            return err("source_or_project is required.", suggestion="Pass a media file or a .kdenlive project path; it resolves under the workspace root unless absolute.")
         result = review_loop.thumbnail_generate(
             ws,
             source_or_project,

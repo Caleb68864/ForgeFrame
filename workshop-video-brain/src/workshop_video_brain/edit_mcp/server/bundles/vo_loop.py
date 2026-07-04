@@ -102,18 +102,18 @@ def vo_plan(
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     if wpm <= 0:
-        return _err("wpm must be > 0")
+        return err("wpm must be > 0", suggestion="Pass a positive words-per-minute rate (e.g. 150) so read time can be estimated.")
 
     script_path = Path(script_file)
     if not script_path.is_absolute():
         script_path = ws_path / script_file
     if not script_path.exists():
-        return _err(f"Script file not found: {script_file}")
+        return err(f"Script file not found: {script_file}", suggestion="Check the script path; it resolves under the workspace root unless absolute.")
 
     try:
         text = script_path.read_text(encoding="utf-8")
     except OSError as exc:
-        return _err(f"Could not read script: {exc}")
+        return err(f"Could not read script: {exc}", suggestion="Make sure the script file is a readable UTF-8 text file.")
 
     plan = _vo.build_plan(text, wpm)
     if plan["cue_count"] == 0:
@@ -242,17 +242,17 @@ def vo_attach(
 
     plan = _read_plan(ws_path)
     if plan is None:
-        return _err("No vo_plan.json found; run vo_plan first")
+        return err("No vo_plan.json found in this workspace.", suggestion="Run the vo_plan step first to generate vo_plan.json, then retry.")
 
     cue = next((c for c in plan["cues"] if c["cue_id"] == cue_id), None)
     if cue is None:
-        return _err(f"Unknown cue_id: {cue_id}")
+        return err(f"Unknown cue_id: {cue_id}", suggestion="Pass a cue_id listed in vo_plan.json; the plan output shows the valid cue ids.")
 
     audio_path = Path(audio_file)
     if not audio_path.is_absolute():
         audio_path = ws_path / audio_file
     if not audio_path.exists():
-        return _err(f"Audio take not found: {audio_file}")
+        return err(f"Audio take not found: {audio_file}", suggestion="Check the take path; record or point at an existing audio take for this cue.")
 
     project_path = ws_path / project_file
     if not project_path.exists():
@@ -331,7 +331,7 @@ def vo_status(workspace_path: str) -> dict:
 
     plan = _read_plan(ws_path)
     if plan is None:
-        return _err("No vo_plan.json found; run vo_plan first")
+        return err("No vo_plan.json found in this workspace.", suggestion="Run the vo_plan step first to generate vo_plan.json, then retry.")
 
     drift_by_cue = {d["cue_id"]: d for d in _vo.compute_drift(plan)}
     rows = []

@@ -147,9 +147,9 @@ def title_card_add(
         if not project_path.exists():
             return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
         if at_seconds < 0:
-            return _err("at_seconds must be >= 0")
+            return err("at_seconds must be >= 0", suggestion="Pass at_seconds as 0 or more (the timeline second to place the title at).")
         if duration_seconds <= 0:
-            return _err("duration_seconds must be > 0")
+            return err("duration_seconds must be > 0", suggestion="Pass a positive duration_seconds for how long the title stays on screen.")
 
         try:
             style_overrides = _load_style(style)
@@ -214,9 +214,10 @@ def title_card_add(
             resolved_track = len(video_playlists)  # index of the new top track
         else:
             if track < 0 or track >= len(video_playlists):
-                return _err(
+                return err(
                     f"track index {track} out of range "
-                    f"(project has {len(video_playlists)} video track(s))"
+                    f"(project has {len(video_playlists)} video track(s))",
+                    suggestion=f"Pass a track within 0-{max(0, len(video_playlists) - 1)}. Use project_summary to see the video tracks.",
                 )
             target = video_playlists[track]
             resolved_track = track

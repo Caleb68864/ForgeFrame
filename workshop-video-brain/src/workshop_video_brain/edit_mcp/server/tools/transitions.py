@@ -114,9 +114,10 @@ def transitions_apply(
             with_report=True,
         )
         if report.all_skipped:
-            return _err(
+            return err(
                 "transitions_apply applied no changes: "
-                + "; ".join(s["reason"] for s in report.skipped)
+                + "; ".join(s["reason"] for s in report.skipped),
+                suggestion="Each reason above says why a transition was skipped. Fix the offending clip index or timing (project_summary shows the clips) and retry.",
             )
         manifest = read_manifest(workspace_path)
         slug = manifest.slug or "project"
@@ -253,9 +254,10 @@ def transitions_apply_at(
             with_report=True,
         )
         if report.all_skipped:
-            return _err(
+            return err(
                 "transitions_apply_at applied no changes: "
-                + "; ".join(s["reason"] for s in report.skipped)
+                + "; ".join(s["reason"] for s in report.skipped),
+                suggestion="Each reason above says why the transition was skipped. Check the time you passed lands on a cut between two clips, then retry.",
             )
         manifest = read_manifest(workspace_path)
         slug = manifest.slug or "project"
@@ -341,11 +343,11 @@ def transitions_apply_between(
                 break
 
         if video_playlist is None:
-            return invalid_input("No video playlist found in project", "This project has no video track. Add a working copy with clips before applying transitions.")
+            return invalid_input("This project has no video track", "Add a working copy with clips before applying transitions.")
 
         entries = [e for e in video_playlist.entries if e.producer_id]
         if len(entries) < 2:
-            return invalid_input("Video playlist has fewer than 2 clips; no transition possible", "A transition needs at least two adjacent clips. Add more clips to the timeline first.", clip_count=len(entries))
+            return invalid_input("This video track has fewer than 2 clips, so there is no cut to place a transition on", "A transition needs at least two adjacent clips. Add more clips to the timeline first.", clip_count=len(entries))
 
         if clip_index >= len(entries) - 1:
             return invalid_index("clip_index", clip_index, f"0-{len(entries) - 2}")
@@ -369,9 +371,10 @@ def transitions_apply_between(
             with_report=True,
         )
         if report.all_skipped:
-            return _err(
+            return err(
                 "transitions_apply_between applied no changes: "
-                + "; ".join(s["reason"] for s in report.skipped)
+                + "; ".join(s["reason"] for s in report.skipped),
+                suggestion="Each reason above says why the transition was skipped. Check both clip indices exist and are adjacent, then retry.",
             )
         manifest = read_manifest(workspace_path)
         slug = manifest.slug or "project"

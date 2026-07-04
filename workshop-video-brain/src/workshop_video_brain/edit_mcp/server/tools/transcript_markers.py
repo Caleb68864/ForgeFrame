@@ -52,16 +52,16 @@ def transcript_generate(workspace_path: str) -> dict:
         p, workspace = _require_workspace(workspace_path)
         import shutil as _shutil
         if not _shutil.which("ffmpeg"):
-            return _err(
-                "ffmpeg is not available on PATH. "
-                "Install FFmpeg before running transcript_generate."
+            return err(
+                "ffmpeg is not available on PATH.",
+                suggestion="Install FFmpeg and make sure it is on your PATH, then run transcript_generate again.",
             )
         try:
             import faster_whisper  # noqa: F401
         except ImportError:
-            return _err(
-                "faster-whisper is not installed. "
-                "Install with: pip install faster-whisper"
+            return err(
+                "faster-whisper is not installed.",
+                suggestion="Install it: pip install faster-whisper (or `uv add faster-whisper`), then run transcript_generate again.",
             )
         from workshop_video_brain.app.config import load_config
         from workshop_video_brain.edit_mcp.pipelines.ingest import run_ingest

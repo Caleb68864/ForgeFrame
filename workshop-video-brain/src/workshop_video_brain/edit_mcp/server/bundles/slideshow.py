@@ -200,7 +200,7 @@ def media_slideshow(
         if not folder.is_absolute():
             folder = ws_path / image_folder
         if not folder.exists() or not folder.is_dir():
-            return _err(f"image_folder not found or not a directory: {folder}")
+            return err(f"image_folder not found or not a directory: {folder}", suggestion="Point image_folder at an existing directory of images; it resolves under the workspace root unless absolute.")
 
         images = _ss.list_images(folder)
         if not images:
@@ -221,11 +221,10 @@ def media_slideshow(
         backend = _ss.choose_backend(images, crossfade_frames, kenburns)
 
         if backend == "filtergraph" and len(images) > _ss.MAX_FILTERGRAPH_IMAGES:
-            return _err(
+            return err(
                 f"{len(images)} images exceeds the {_ss.MAX_FILTERGRAPH_IMAGES}-image "
-                "limit for crossfade/Ken Burns/mixed-name assembly. Use a uniform "
-                "numbered sequence (e.g. frame%05d.png) with no crossfade/kenburns "
-                "to take the scalable pattern backend."
+                "limit for crossfade / Ken Burns / mixed-name assembly.",
+                suggestion="Either reduce the image count, or use a uniform numbered sequence (e.g. frame%05d.png) with no crossfade/kenburns to use the scalable backend."
             )
 
         # Output path in media/processed (never media/raw).

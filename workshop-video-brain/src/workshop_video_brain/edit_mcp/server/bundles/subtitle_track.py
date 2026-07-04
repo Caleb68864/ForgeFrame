@@ -260,7 +260,7 @@ def subtitles_burn_in(
         else:
             source = _resolve(project_file_or_media)
             if not source.exists():
-                return _err(f"Media not found: {project_file_or_media}")
+                return err(f"Media not found: {project_file_or_media}", suggestion="Pass an existing media file or .kdenlive project; it resolves under the workspace root unless absolute.")
             source_kind = "media"
 
         processed = ws / "media" / "processed"

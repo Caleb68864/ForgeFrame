@@ -63,9 +63,9 @@ def render_preview(workspace_path: str) -> dict:
 
         working_copies = ws_path / "projects" / "working_copies"
         if not working_copies.exists():
-            return _err(
-                "No projects/working_copies/ directory found. "
-                "Run project_create_working_copy first."
+            return err(
+                "No projects/working_copies/ directory found in this workspace.",
+                suggestion="Run project_create_working_copy first to make an editable copy of your project.",
             )
         kdenlive_files = sorted(working_copies.glob("*.kdenlive"))
         if not kdenlive_files:
@@ -176,7 +176,8 @@ def render_final_tool(
     except RuntimeError as exc:
         return from_exception(exc)
     except Exception as exc:
-        return _err(f"Render failed: {exc}")
+        return err(f"Render failed: {exc}",
+                   suggestion="Confirm melt and ffmpeg are installed and the project and its media are readable; run project_validate to check for dangling media references, then retry.")
 
 
 @mcp.tool()
@@ -211,7 +212,8 @@ def render_list_profiles() -> dict:
                 profiles.append({"name": name, "codec": "unknown"})
         return _ok({"profiles": profiles})
     except Exception as exc:
-        return _err(f"Failed to list profiles: {exc}")
+        return err(f"Failed to list profiles: {exc}",
+                   suggestion="This is unexpected — the built-in render profiles could not be loaded. Please report it; the full traceback is in the server log.")
 
 
 

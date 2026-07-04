@@ -167,6 +167,9 @@ def render_wrapper_module(effect_def: EffectDef) -> str:
     lines.append("    register_effect_wrapper,")
     lines.append(")")
     lines.append(
+        "from workshop_video_brain.edit_mcp.server.errors import err"
+    )
+    lines.append(
         "from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher"
     )
     lines.append(
@@ -210,7 +213,7 @@ def render_wrapper_module(effect_def: EffectDef) -> str:
         ws_path, _ws = _require_workspace(workspace_path)
         project_path = ws_path / project_file
         if not project_path.exists():
-            return _err(f"Project file not found: {{project_file}}")
+            return err(f"Project file not found: {{project_file}}", suggestion="Pass the path to an existing .kdenlive working copy; it resolves under the workspace root unless absolute. Run project_create_working_copy to make one.")
 
         project = parse_project(project_path)
 

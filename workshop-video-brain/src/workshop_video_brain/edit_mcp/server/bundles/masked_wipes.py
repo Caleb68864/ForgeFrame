@@ -102,7 +102,7 @@ def transition_masked_wipe(
         return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
 
     if duration_frames <= 0:
-        return _err(f"duration_frames must be positive (got {duration_frames})")
+        return err(f"duration_frames must be positive (got {duration_frames})", suggestion="Pass a positive duration_frames for how long the wipe takes.")
     if not luma_file or not luma_file.strip():
         return invalid_input("luma_file must be a non-empty string", suggestion="Pass a non-empty value for this argument.")
 

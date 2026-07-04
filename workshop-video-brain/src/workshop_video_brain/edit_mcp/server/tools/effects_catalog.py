@@ -124,10 +124,9 @@ def effect_list_common() -> dict:
             effect_catalog as _catalog,
         )
     except ModuleNotFoundError:
-        return _err(
-            "Effect catalog not generated. Run: "
-            "uv run workshop-video-brain catalog regenerate "
-            "(or scripts/generate_effect_catalog.py)"
+        return err(
+            "The effect catalog has not been generated yet.",
+            suggestion="Generate it with: uv run workshop-video-brain catalog regenerate (or run scripts/generate_effect_catalog.py).",
         )
     effects = []
     for eff in _catalog.CATALOG.values():
@@ -445,9 +444,11 @@ def effect_stack_preset(
         try:
             parsed = json.loads(tags)
         except json.JSONDecodeError as exc:
-            return _err(f"Invalid tags JSON (expected list[str]): {exc}")
+            return err(f"Invalid tags JSON (expected list[str]): {exc}",
+                       suggestion='Pass tags as a JSON array of strings, e.g. ["retro", "grain"].')
         if not isinstance(parsed, list) or not all(isinstance(t, str) for t in parsed):
-            return _err("tags must be a JSON list of strings")
+            return err("tags must be a JSON list of strings",
+                       suggestion='Pass tags as a JSON array of strings, e.g. ["retro", "grain"].')
         tags_list = parsed
 
     hints_obj = None
@@ -455,13 +456,16 @@ def effect_stack_preset(
         try:
             hints_dict = json.loads(apply_hints)
         except json.JSONDecodeError as exc:
-            return _err(f"Invalid apply_hints JSON (expected dict): {exc}")
+            return err(f"Invalid apply_hints JSON (expected dict): {exc}",
+                       suggestion='Pass apply_hints as a JSON object, e.g. {"target_track": 1}.')
         if not isinstance(hints_dict, dict):
-            return _err("apply_hints must be a JSON object")
+            return err("apply_hints must be a JSON object",
+                       suggestion='Pass apply_hints as a JSON object, e.g. {"target_track": 1}.')
         try:
             hints_obj = stack_presets.ApplyHints(**hints_dict)
         except Exception as exc:  # noqa: BLE001
-            return _err(f"Invalid apply_hints: {exc}")
+            return err(f"Invalid apply_hints: {exc}",
+                       suggestion="apply_hints contains keys ApplyHints does not accept; check the field names against the preset schema.")
 
     project = parse_project(project_path)
     try:
@@ -487,7 +491,8 @@ def effect_stack_preset(
             preset, workspace_root=ws_path, scope="workspace"
         )
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Failed to save preset: {exc}")
+        return err(f"Failed to save preset: {exc}",
+                   suggestion="Check that the workspace is writable and has a stacks/ folder; the one-line cause above says what failed.")
 
     return _ok({
         "path": str(path),
@@ -528,8 +533,9 @@ def effect_stack_apply(
 
     mode_override = mode.strip() or None
     if mode_override is not None and mode_override not in ("append", "prepend", "replace"):
-        return _err(
-            f"mode must be one of: append, prepend, replace; got {mode!r}"
+        return err(
+            f"mode must be one of: append, prepend, replace; got {mode!r}",
+            suggestion="Pass mode as 'append' (add after existing effects), 'prepend' (add before), or 'replace' (swap the whole stack).",
         )
 
     vault_root = _tools_pkg._resolve_vault_root_for_tools()
@@ -546,7 +552,8 @@ def effect_stack_apply(
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
+        return err(f"Snapshot failed: {exc}",
+                   suggestion="A safety snapshot could not be written before applying the preset. Check that projects/snapshots/ is writable, then retry.")
 
     project = parse_project(project_path)
     try:
@@ -589,9 +596,9 @@ def effect_stack_promote(workspace_path: str, name: str) -> dict:
 
     vault_root = _tools_pkg._resolve_vault_root_for_tools()
     if vault_root is None:
-        return _err(
-            "Vault root not configured -- set vault_root in forge-project.json "
-            "or personal_vault in ~/.claude/forge.json"
+        return err(
+            "Vault root not configured.",
+            suggestion="Set vault_root in forge-project.json, or personal_vault in ~/.claude/forge.json, so presets can be promoted to your vault.",
         )
 
     try:
@@ -608,7 +615,8 @@ def effect_stack_promote(workspace_path: str, name: str) -> dict:
     except FileNotFoundError as exc:
         return from_exception(exc)
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Failed to promote preset: {exc}")
+        return err(f"Failed to promote preset: {exc}",
+                   suggestion="Check that the vault root is writable and the preset exists in this workspace (effect_stack_list shows what is available).")
 
     return _ok({
         "workspace_path": str(ws_path / "stacks" / f"{name}.yaml"),
@@ -627,8 +635,9 @@ def effect_stack_list(workspace_path: str, scope: str = "all") -> dict:
     from workshop_video_brain.edit_mcp.pipelines import stack_presets
 
     if scope not in ("workspace", "vault", "all"):
-        return _err(
-            f"scope must be one of: workspace, vault, all; got {scope!r}"
+        return err(
+            f"scope must be one of: workspace, vault, all; got {scope!r}",
+            suggestion="Pass scope='workspace' (this project only), 'vault' (your shared library), or 'all' (both).",
         )
 
     try:

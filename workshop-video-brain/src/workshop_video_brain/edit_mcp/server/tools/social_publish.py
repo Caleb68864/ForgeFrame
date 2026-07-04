@@ -64,7 +64,7 @@ def social_find_clips(
 
         transcripts_dir = ws_path / "transcripts"
         if not transcripts_dir.exists():
-            return _err("No transcripts/ directory found. Run media_ingest first.")
+            return err("No transcripts/ directory found in this workspace.", suggestion="Run media_ingest (which generates transcripts) first, then retry.")
 
         all_segments: list[dict] = []
         all_text_parts: list[str] = []
@@ -154,16 +154,18 @@ def social_clip_post(
         ws_path = _validate_workspace_path(workspace_path)
         manifest_path = ws_path / "reports" / "social" / "clips_manifest.json"
         if not manifest_path.exists():
-            return _err(
-                "No clips manifest found. Run social_generate_package first."
+            return err(
+                "No clips manifest found in this workspace.",
+                suggestion="Run social_generate_package first to create the clips manifest, then retry.",
             )
 
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if not manifest:
-            return _err("Clips manifest is empty.")
+            return err("The clips manifest is empty.", suggestion="Run social_find_clips first to populate candidate clips before generating a package.")
         if clip_index < 0 or clip_index >= len(manifest):
-            return _err(
-                f"clip_index {clip_index} out of range (0-{len(manifest) - 1})."
+            return err(
+                f"clip_index {clip_index} out of range (0-{len(manifest) - 1}).",
+                suggestion=f"Pass a clip_index within 0-{len(manifest) - 1}; the manifest lists that many clips.",
             )
 
         from workshop_video_brain.core.models.social import ClipCandidate

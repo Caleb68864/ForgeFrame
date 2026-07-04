@@ -100,7 +100,7 @@ def media_sync_by_audio(
         return operation_failed(str(exc), cause=exc)
 
     if not source_a or not source_a.strip() or not source_b or not source_b.strip():
-        return _err("Both source_a and source_b are required.")
+        return err("Both source_a and source_b are required.", suggestion="Pass two clips to align: source_a and source_b (paths resolve under the workspace root unless absolute).")
 
     src_a = _resolve(ws_path, source_a)
     src_b = _resolve(ws_path, source_b)

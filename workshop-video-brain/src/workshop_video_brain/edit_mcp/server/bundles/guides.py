@@ -100,7 +100,7 @@ def guide_add(
         if not project_path.exists():
             return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
         if at_seconds < 0:
-            return _err("at_seconds must be >= 0")
+            return err("at_seconds must be >= 0", suggestion="Pass at_seconds as 0 or more (the timeline second to place the guide at).")
 
         project = parse_project(project_path)
         ws_root = _find_workspace_root(project_path)
@@ -175,7 +175,7 @@ def guide_remove(project_file: str, at_seconds_or_label: str) -> dict:
             project, at_seconds_or_label
         )
         if not removed:
-            return _err(f"No guide matched: {at_seconds_or_label}")
+            return err(f"No guide matched: {at_seconds_or_label}", suggestion="Pass a guide label or a time that matches an existing guide; markers_list shows the available guides.")
 
         ws_root = _find_workspace_root(project_path)
         if ws_root:
@@ -227,7 +227,7 @@ def publish_chapters(
     try:
         target = _resolve(project_file_or_workspace)
         if not target.exists():
-            return _err(f"Path not found: {project_file_or_workspace}")
+            return err(f"Path not found: {project_file_or_workspace}", suggestion="Pass an existing .kdenlive project file or a workspace directory; it resolves under the workspace root unless absolute.")
 
         chapters: list[dict] = []
         if target.is_dir():

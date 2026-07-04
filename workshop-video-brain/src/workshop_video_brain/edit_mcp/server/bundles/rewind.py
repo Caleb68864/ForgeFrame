@@ -192,25 +192,29 @@ def effect_rewind(
 
     # Resolve the target clip -> source media + raw playlist position.
     if track < 0 or track >= len(project.playlists):
-        return _err(
-            f"track {track} out of range (project has {len(project.playlists)} tracks)"
+        return err(
+            f"track {track} out of range (project has {len(project.playlists)} tracks)",
+            suggestion=f"Pass a track within 0-{max(0, len(project.playlists) - 1)}. Use project_summary to see the tracks.",
         )
     playlist = project.playlists[track]
     real_entries = [(i, e) for i, e in enumerate(playlist.entries) if e.producer_id]
     if clip_index < 0 or clip_index >= len(real_entries):
-        return _err(
-            f"clip_index {clip_index} out of range (track has {len(real_entries)} clips)"
+        return err(
+            f"clip_index {clip_index} out of range (track has {len(real_entries)} clips)",
+            suggestion=f"Pass a clip_index within 0-{max(0, len(real_entries) - 1)} for this track.",
         )
     raw_index, entry = real_entries[clip_index]
 
     resource = _resolve_producer_resource(project, entry.producer_id)
     if not resource:
-        return _err(f"could not resolve source media for clip {clip_index} on track {track}")
+        return err(f"Could not resolve the source media for clip {clip_index} on track {track}.",
+                   suggestion="This clip has no resolvable producer file (it may be a title or a clip whose media moved). Run project_validate to find dangling media references.")
     source = Path(resource)
     if not source.is_absolute() and not source.exists():
         source = ws_path / resource
     if not source.exists():
-        return _err(f"source media not found: {source}")
+        return err(f"Source media not found: {source}",
+                   suggestion="The file this clip points at is missing (it may have been moved or renamed). Restore it, or re-ingest the media, then retry.")
 
     # Output goes to media/processed -- never media/raw.
     processed_dir = ws_path / "media" / "processed"
@@ -219,7 +223,8 @@ def effect_rewind(
     out_path = processed_dir / out_name
     raw_dir = (ws_path / "media" / "raw").resolve()
     if raw_dir == out_path.resolve() or raw_dir in out_path.resolve().parents:
-        return _err("refusing to write reversed media into media/raw")
+        return err("Refusing to write reversed media into media/raw/; media/raw/ is read-only by design.",
+                   suggestion="Reversed clips are written to media/processed/ automatically; this error means the resolved output path fell inside media/raw/ — check your workspace layout.")
 
     # Render the reversed segment with ffmpeg.
     include_audio = _count_audio_streams(source) > 0
@@ -259,7 +264,7 @@ def effect_rewind(
     try:
         patched = patcher.patch_project(project, [intent])
     except (ValueError, IndexError) as exc:
-        return _err(f"failed to insert reversed clip: {exc}")
+        return err(f"failed to insert reversed clip: {exc}", suggestion="The reversed media rendered but could not be placed on the timeline; the one-line cause above says what failed. Restore the pre-op snapshot with snapshot_restore if needed.")
     serialize_project(patched, project_path)
 
     new_clip_index = clip_index + 1

@@ -94,19 +94,25 @@ def color_apply_lut(
 
     lut = Path(lut_path)
     if not lut.exists():
-        return _err(f"LUT file not found: {lut_path}")
+        return err(f"LUT file not found: {lut_path}",
+                   suggestion="Check the LUT path; it resolves under the workspace root unless absolute. Supported formats are .cube and .3dl.")
 
-    # Snapshot before modify
-    create_snapshot(ws_path, project_path, description=f"before_lut_{lut.stem}")
-
-    project = parse_project(project_path)
+    # Parse + apply in memory BEFORE snapshotting so a corrupt project or a bad
+    # track/clip index fails cleanly (corrupt_project / invalid_input) without
+    # leaving a leaked snapshot of the untouched file behind.
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
     try:
         patched = apply_lut_to_project(
             project, track, clip, str(lut), interp=interp or None
         )
     except (IndexError, ValueError) as exc:
-        return _err(f"Failed to apply LUT: {exc}")
+        return err(f"Failed to apply LUT: {exc}",
+                   suggestion="Check that track and clip point at a real clip (project_summary lists them) and the LUT file is a valid .cube/.3dl.")
 
+    create_snapshot(ws_path, project_path, description=f"before_lut_{lut.stem}")
     serialize_project(patched, project_path)
     return _ok({
         "project_file": project_file,
@@ -194,9 +200,23 @@ def effect_color_wash(
     for svc in COLOR_WASH_SERVICES:
         kid, _eff = _lookup_catalog_by_service(svc)
         if kid is None:
-            return _err(f"missing catalog service: {svc}")
+            return err(f"Effect service '{svc}' is not in the generated catalog.",
+                       suggestion="Regenerate the catalog with `uv run workshop-video-brain catalog regenerate`, or use effect_list_common to pick a known effect.")
         params = dict(next(p for s, p in stack if s == svc))
         resolved.append((svc, kid, params))
+
+    # Parse + validate the target BEFORE snapshotting so a corrupt project or a
+    # bad index fails cleanly without leaving a leaked snapshot behind.
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
+
+    try:
+        existing = patcher.list_effects(project, (track, clip))
+    except (IndexError, ValueError) as exc:
+        return from_exception(exc)
+    first_effect_index = len(existing)
 
     try:
         record = create_snapshot(
@@ -204,15 +224,8 @@ def effect_color_wash(
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
-
-    project = parse_project(project_path)
-
-    try:
-        existing = patcher.list_effects(project, (track, clip))
-    except (IndexError, ValueError) as exc:
-        return from_exception(exc)
-    first_effect_index = len(existing)
+        return err(f"Snapshot failed: {exc}",
+                   suggestion="A safety snapshot could not be written before applying the effect. Check that projects/snapshots/ is writable, then retry.")
 
     inserted = 0
     for svc, kid, params in resolved:
@@ -334,7 +347,10 @@ def effect_color_grade(
         return from_exception(exc)
 
     from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
-    project = parse_project(project_path)
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
     try:
         existing = patcher.list_effects(project, (track, clip))
     except (IndexError, ValueError) as exc:
@@ -347,14 +363,16 @@ def effect_color_grade(
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
+        return err(f"Snapshot failed: {exc}",
+                   suggestion="A safety snapshot could not be written before applying the effect. Check that projects/snapshots/ is writable, then retry.")
 
     applied: list[str] = []
     for service, params in chain:
         try:
             project = apply_effect(project, track, clip, service, params)
         except (IndexError, ValueError) as exc:
-            return _err(f"partial failure after {len(applied)} filters: {exc}")
+            return err(f"partial failure after {len(applied)} filters: {exc}",
+                       suggestion="Some filters applied before this one failed. Restore the pre-op snapshot with snapshot_restore, then retry.")
         applied.append(service)
 
     serialize_project(project, project_path)
@@ -429,11 +447,13 @@ def transition_paper_cutout(
         except json.JSONDecodeError as exc:
             return err(f"Invalid points JSON: {exc}", error_type="bad_json_param", suggestion='Provide a JSON list of [x, y] pairs, e.g. [[0, 0], [0.5, 0.5]].', cause=str(exc))
         if not isinstance(raw, list):
-            return _err("points must be a JSON list of [x, y] pairs")
+            return err("points must be a JSON list of [x, y] pairs",
+                       suggestion='Provide a JSON array of [x, y] pairs, e.g. [[0, 0], [0.5, 0.5]].')
         try:
             points_tuple = tuple((float(p[0]), float(p[1])) for p in raw)
         except (TypeError, ValueError, IndexError) as exc:
-            return _err(f"Invalid points values: {exc}")
+            return err(f"Invalid points values: {exc}",
+                       suggestion='Each point must be a pair of numbers, e.g. [[0, 0], [0.5, 0.5]].')
 
     try:
         ws_path, _ws = _require_workspace(workspace_path)
@@ -444,17 +464,23 @@ def transition_paper_cutout(
     if not project_path.exists():
         return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
+    # Parse BEFORE snapshotting so a corrupt project fails cleanly
+    # (corrupt_project) without leaving a leaked snapshot behind.
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
+    width = project.profile.width
+    height = project.profile.height
+
     try:
         record = create_snapshot(
             ws_path, project_path, description="before_transition_paper_cutout"
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
-
-    project = parse_project(project_path)
-    width = project.profile.width
-    height = project.profile.height
+        return err(f"Snapshot failed: {exc}",
+                   suggestion="A safety snapshot could not be written before applying the effect. Check that projects/snapshots/ is writable, then retry.")
 
     try:
         xmls = paper_cutout.paper_cutout_filter_xml(
@@ -583,7 +609,8 @@ def effect_scifi_greenscreen(
     from workshop_video_brain.workspace import create_snapshot
 
     if tolerance_far < tolerance_near:
-        return _err("tolerance_far must be >= tolerance_near")
+        return err("tolerance_far must be >= tolerance_near",
+                   suggestion="tolerance_far is the outer edge of the key and must be at least tolerance_near. Raise tolerance_far or lower tolerance_near.")
 
     # Validate all colors up front (clear message, no snapshot on failure).
     try:
@@ -591,7 +618,8 @@ def effect_scifi_greenscreen(
         if spill_correction:
             masking.color_to_mlt_hex(spill_target_color)
     except ValueError:
-        return _err(_VALID_COLOR_FORMATS_MSG)
+        return err(_VALID_COLOR_FORMATS_MSG,
+                   suggestion="Pass colors as hex, e.g. '#00FF00' for green or '#00FF00FF' with alpha.")
 
     # Build the tuneable param dicts (also validates numeric ranges).
     try:
@@ -625,7 +653,8 @@ def effect_scifi_greenscreen(
     for svc in services:
         kid, _eff = _lookup_catalog_by_service(svc)
         if kid is None:
-            return _err(f"missing catalog service: {svc}")
+            return err(f"Effect service '{svc}' is not in the generated catalog.",
+                       suggestion="Regenerate the catalog with `uv run workshop-video-brain catalog regenerate`, or use effect_list_common to pick a known effect.")
 
     try:
         ws_path, _ws = _require_workspace(workspace_path)
@@ -636,6 +665,18 @@ def effect_scifi_greenscreen(
     if not project_path.exists():
         return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
+    # Parse + validate the target BEFORE snapshotting so a corrupt project or a
+    # bad index fails cleanly without leaving a leaked snapshot behind.
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
+    try:
+        existing = patcher.list_effects(project, (track, clip))
+    except (IndexError, ValueError) as exc:
+        return from_exception(exc)
+    first_effect_index = len(existing)
+
     # Single snapshot before writing.
     try:
         record = create_snapshot(
@@ -643,14 +684,8 @@ def effect_scifi_greenscreen(
         )
         snapshot_id = record.snapshot_id
     except Exception as exc:  # noqa: BLE001
-        return _err(f"Snapshot failed: {exc}")
-
-    project = parse_project(project_path)
-    try:
-        existing = patcher.list_effects(project, (track, clip))
-    except (IndexError, ValueError) as exc:
-        return from_exception(exc)
-    first_effect_index = len(existing)
+        return err(f"Snapshot failed: {exc}",
+                   suggestion="A safety snapshot could not be written before applying the effect. Check that projects/snapshots/ is writable, then retry.")
 
     # Build the ordered XML for each filter. The advanced key reuses the
     # masking pipeline function (same one behind effect_chroma_key_advanced).

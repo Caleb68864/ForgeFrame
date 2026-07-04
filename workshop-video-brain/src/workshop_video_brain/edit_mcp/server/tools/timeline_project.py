@@ -62,7 +62,8 @@ def timeline_build_review(workspace_path: str, mode: str = "ranked") -> dict:
 
         markers_dir = ws_path / "markers"
         if not markers_dir.exists():
-            return _err("No markers/ directory found. Run markers_auto_generate first.")
+            return err("No markers/ directory found in this workspace.",
+                       suggestion="Run markers_auto_generate first to detect scene and chapter markers.")
 
         markers: list[Marker] = []
         for mf in markers_dir.glob("*_markers.json"):
@@ -74,7 +75,8 @@ def timeline_build_review(workspace_path: str, mode: str = "ranked") -> dict:
                 pass
 
         if not markers:
-            return _err("No markers found. Run markers_auto_generate first.")
+            return err("No markers found in this workspace.",
+                       suggestion="Run markers_auto_generate first to detect scene and chapter markers.")
 
         kdenlive_path = build_review_timeline(
             markers=markers,
@@ -115,7 +117,8 @@ def timeline_build_selects(workspace_path: str, min_confidence: float = 0.5) -> 
         try:
             min_confidence = float(min_confidence)
         except (TypeError, ValueError):
-            return _err(f"min_confidence must be a number, got: {min_confidence!r}")
+            return err(f"min_confidence must be a number, got: {min_confidence!r}",
+                       suggestion="Pass min_confidence as a number between 0 and 1, e.g. 0.6.")
         import json as _json
         from workshop_video_brain.core.models.markers import Marker, MarkerConfig
         from workshop_video_brain.edit_mcp.pipelines.selects_timeline import (
@@ -125,7 +128,8 @@ def timeline_build_selects(workspace_path: str, min_confidence: float = 0.5) -> 
 
         markers_dir = ws_path / "markers"
         if not markers_dir.exists():
-            return _err("No markers/ directory found. Run markers_auto_generate first.")
+            return err("No markers/ directory found in this workspace.",
+                       suggestion="Run markers_auto_generate first to detect scene and chapter markers.")
 
         markers: list[Marker] = []
         for mf in markers_dir.glob("*_markers.json"):
@@ -137,7 +141,8 @@ def timeline_build_selects(workspace_path: str, min_confidence: float = 0.5) -> 
                 pass
 
         if not markers:
-            return _err("No markers found. Run markers_auto_generate first.")
+            return err("No markers found in this workspace.",
+                       suggestion="Run markers_auto_generate first to detect scene and chapter markers.")
 
         config = MarkerConfig()
         selects = build_selects(markers, config, min_confidence=min_confidence)
@@ -236,9 +241,9 @@ def project_validate(workspace_path: str) -> dict:
 
         working_copies = ws_path / "projects" / "working_copies"
         if not working_copies.exists():
-            return _err(
-                "No projects/working_copies/ directory found. "
-                "Run project_create_working_copy first."
+            return err(
+                "No projects/working_copies/ directory found in this workspace.",
+                suggestion="Run project_create_working_copy first to make an editable copy of your project.",
             )
         kdenlive_files = sorted(working_copies.glob("*.kdenlive"))
         if not kdenlive_files:
@@ -432,9 +437,11 @@ def forgeframe_init(
         from workshop_video_brain.app.init_system import initialize_forgeframe
 
         if not vault_path or not vault_path.strip():
-            return _err("vault_path must be a non-empty string")
+            return err("vault_path must be a non-empty string",
+                       suggestion="Pass the path to your Obsidian vault (the folder ForgeFrame writes notes into).")
         if not projects_root or not projects_root.strip():
-            return _err("projects_root must be a non-empty string")
+            return err("projects_root must be a non-empty string",
+                       suggestion="Pass the path to the folder where ForgeFrame should store projects and working copies.")
 
         media_lib = _Path(media_library) if media_library and media_library.strip() else None
         result = initialize_forgeframe(
@@ -497,7 +504,8 @@ def project_new(
     """
     try:
         if not title or not title.strip():
-            return _err("title must be a non-empty string")
+            return err("title must be a non-empty string",
+                       suggestion="Pass a project title, e.g. \"Zippered Bikepacking Pouch\".")
         from workshop_video_brain.edit_mcp.pipelines.new_project import create_new_project
         result = create_new_project(
             title=title,

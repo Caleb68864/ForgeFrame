@@ -87,7 +87,7 @@ def music_beat_grid(
     if not ffmpeg_available():
         return missing_binary("ffmpeg", "apt install ffmpeg (Debian/Ubuntu) or brew install ffmpeg (macOS).")
     if not 0.0 <= float(sensitivity) <= 1.0:
-        return _err(f"sensitivity must be in [0.0, 1.0]; got {sensitivity}")
+        return err(f"sensitivity must be in [0.0, 1.0]; got {sensitivity}", suggestion="Pass sensitivity as a fraction between 0.0 (only strong beats) and 1.0 (every beat).")
 
     src = _resolve_source(ws_path, source)
     if src is None:
@@ -134,7 +134,7 @@ def markers_from_beats(
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     if every_n < 1:
-        return _err("every_n must be >= 1")
+        return err("every_n must be >= 1", suggestion="Pass every_n as 1 or more (place a marker on every Nth beat).")
 
     if beat_file:
         bf = Path(beat_file)
@@ -143,12 +143,12 @@ def markers_from_beats(
     else:
         bf = ws_path / "reports" / "beat_grid.json"
     if not bf.exists():
-        return _err(f"Beat-grid file not found: {bf}")
+        return err(f"Beat-grid file not found: {bf}", suggestion="Check the beat-grid path; it resolves under the workspace root unless absolute.")
 
     try:
         payload = json.loads(bf.read_text(encoding="utf-8"))
     except (ValueError, OSError) as exc:
-        return _err(f"Could not read beat file: {exc}")
+        return err(f"Could not read beat file: {exc}", suggestion="Make sure the beat file is valid JSON produced by the beat-detection step.")
 
     beats = payload.get("beats", []) if isinstance(payload, dict) else payload
     if not isinstance(beats, list) or not beats:

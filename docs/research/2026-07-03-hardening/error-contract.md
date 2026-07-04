@@ -111,3 +111,41 @@ is only the outer net.
      result (`skipped_intents` style). NEVER a fake success.
 4. Do not rename existing `message` text; enrich by adding keys only.
 5. Do not touch exact-dict-asserted error paths.
+
+## Message style guide (Pass 3b — match this voice)
+
+Every `message` + `suggestion` you write must clear this bar. User-facing catalog:
+`vault/Research/MCP Error Catalog.md`.
+
+**`message` — WHAT broke, concretely.**
+- Interpolate the offending subject: the path, the index, the bad value. Not
+  "index out of range" but `track 7 out of range (project has 4 tracks)`.
+- Plain sentence, no internal jargon. Say "video track", not "playlist"; say
+  "this project has no video track", not "no video playlist found in project".
+  Never name private helpers (`_resolve_playlist`, `_parse_*`) or MLT/producer
+  internals in the message.
+- State the fact, not the fix. The fix lives in `suggestion`.
+
+**`suggestion` — WHAT TO DO next, imperative, in user language.**
+- Name a real tool or command when one exists: "Run `project_create_working_copy`",
+  "Use `project_summary` to see the tracks", "Restore a snapshot with `snapshot_restore`",
+  "Install it: `uv pip install faster-whisper`".
+- For bad JSON, show a valid example: `[{"frame": 0, "value": 1.0}]`.
+- For a path, say where it resolves: "it resolves under the workspace root unless absolute".
+- Never filler. Banned: "check your input", "try again", "something went wrong",
+  "see the docs", "invalid input".
+
+**Normalize families — one phrasing per situation across all tools.** Established:
+- Missing binary → `<name> is not available on PATH.` + "Install …".
+- No working copy → "Run `project_create_working_copy` first…".
+- Missing source media → `Source … not found: <path>` + "…resolves under the workspace root unless absolute."
+- `media/raw/` write guard → "Refusing to overwrite … media/raw/ is read-only by design." + "Pass a different `output_name`…".
+- Index → keep the substring `out of range`; add the real counts and a `0-N` range.
+- Bad JSON → `bad_json_param`, message "… is not valid JSON" / "… must be a JSON <shape>", suggestion carries the example.
+- Snapshot write guard → "Snapshot failed: <cause>" + "…`projects/snapshots/` is writable…".
+
+**Constraints when editing.** Tests substring-match many messages and a few
+assert the *exact* dict (`effect_info` not-found/empty — leave bare). Preserve
+pinned substrings; only move guidance into `suggestion` when the wording is
+strictly clearer, and update that one assertion if so. Add `suggestion` string
+content freely; do not invent new `error_type` values or rename dict keys.

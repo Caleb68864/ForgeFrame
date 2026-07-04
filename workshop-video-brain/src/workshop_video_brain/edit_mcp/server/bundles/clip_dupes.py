@@ -259,11 +259,12 @@ def clips_find_duplicates(
 
         method = (method or "phash").lower()
         if method not in {"phash", "signature"}:
-            return _err(
-                f"unknown method {method!r}; expected 'phash' or 'signature'."
+            return err(
+                f"unknown method {method!r}; expected 'phash' or 'signature'.",
+                suggestion="Pass method='phash' (perceptual hash, always available) or method='signature' (needs FFmpeg's MPEG-7 signature filter).",
             )
         if frames_per_clip < 1:
-            return _err("frames_per_clip must be >= 1.")
+            return err("frames_per_clip must be >= 1.", suggestion="Pass frames_per_clip as 1 or more (how many frames to sample from each clip when comparing).")
 
         clips = _list_clips(source)
         if len(clips) < 2:
@@ -281,10 +282,9 @@ def clips_find_duplicates(
 
         if method == "signature":
             if not _cd.has_signature_filter():
-                return _err(
-                    "method='signature' requires the FFmpeg MPEG-7 'signature' "
-                    "filter, which this build does not expose. Rebuild FFmpeg "
-                    "with the signature filter, or use method='phash'."
+                return err(
+                    "method='signature' requires the FFmpeg MPEG-7 'signature' filter, which this FFmpeg build does not expose.",
+                    suggestion="Use method='phash' instead, or rebuild FFmpeg with the signature filter enabled.",
                 )
             groups = _find_signature(clips, source)
             hashed = len(clips)

@@ -51,14 +51,18 @@ def workspace_create(title: str, media_root: str, vault_path: str = "") -> dict:
     """
     try:
         if not title or not title.strip():
-            return _err("title must be a non-empty string")
+            return err("title must be a non-empty string",
+                       suggestion="Pass a title for the workspace, e.g. \"My Bench Build\".")
         if not media_root or not media_root.strip():
-            return _err("media_root must be a non-empty string")
+            return err("media_root must be a non-empty string",
+                       suggestion="Pass the path to the folder holding your source recordings.")
         media_root_path = Path(media_root)
         if not media_root_path.exists():
-            return _err(f"media_root does not exist: {media_root}")
+            return err(f"media_root does not exist: {media_root}",
+                       suggestion="Check the path is correct; it must point at an existing folder of source media.")
         if not media_root_path.is_dir():
-            return _err(f"media_root is not a directory: {media_root}")
+            return err(f"media_root is not a directory: {media_root}",
+                       suggestion="Point media_root at a folder, not a single file.")
         from workshop_video_brain.workspace.manager import WorkspaceManager
         config = {"vault_path": vault_path} if vault_path else {}
         workspace = WorkspaceManager.create(
@@ -129,15 +133,15 @@ def media_ingest(workspace_path: str) -> dict:
         p, workspace = _require_workspace(workspace_path)
         raw_dir = p / "media" / "raw"
         if not raw_dir.exists():
-            return _err(
-                f"media/raw directory not found at {workspace_path}. "
-                "Create and populate media/raw/ before running ingest."
+            return err(
+                f"media/raw/ does not exist in this workspace: {raw_dir}",
+                suggestion="Create media/raw/ and copy your source recordings into it, then run media_ingest again.",
             )
         import shutil as _shutil
         if not _shutil.which("ffmpeg"):
-            return _err(
-                "ffmpeg is not available on PATH. "
-                "Install FFmpeg before running media_ingest."
+            return err(
+                "ffmpeg is not available on PATH.",
+                suggestion="Install FFmpeg and make sure it is on your PATH (e.g. `sudo pacman -S ffmpeg` or from https://ffmpeg.org/download.html), then run media_ingest again.",
             )
         from workshop_video_brain.app.config import load_config
         from workshop_video_brain.edit_mcp.pipelines.ingest import run_ingest
@@ -282,7 +286,8 @@ def media_check_vfr(workspace_path: str) -> dict:
     except (ValueError, FileNotFoundError) as exc:
         return from_exception(exc)
     except Exception as exc:
-        return _err(f"VFR check failed: {exc}")
+        return err(f"VFR check failed: {exc}",
+                   suggestion="Confirm ffprobe is installed and the workspace media is readable, then retry.")
 
 
 @mcp.tool()
@@ -310,7 +315,8 @@ def media_transcode_cfr(
         if not source.is_absolute():
             source = ws_root / source
         if not source.exists():
-            return _err(f"Source file not found: {source}")
+            return err(f"Source file not found: {source}",
+                       suggestion="Check the file_path; it resolves under the workspace root unless absolute.")
 
         from workshop_video_brain.edit_mcp.pipelines.vfr_check import transcode_to_cfr
         fps = target_fps if target_fps > 0 else None
@@ -321,4 +327,5 @@ def media_transcode_cfr(
     except RuntimeError as exc:
         return from_exception(exc)
     except Exception as exc:
-        return _err(f"Transcode failed: {exc}")
+        return err(f"Transcode failed: {exc}",
+                   suggestion="Confirm ffmpeg is installed and the source is a valid video file, then retry.")

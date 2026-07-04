@@ -93,6 +93,18 @@ def execute_render(
     if log_path:
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Record whether the output file already existed *before* this run so an
+    # interrupted/failed render can never leave a half-written file behind for a
+    # downstream tool (qc_check, a re-render, publish_bundle) to mistake for a
+    # finished artifact. A file that this run newly created is, by definition,
+    # partial when the render did not succeed.
+    out_path = Path(running_job.output_path) if running_job.output_path else None
+    output_preexisted = bool(out_path and out_path.exists())
+
+    def _fail() -> RenderJob:
+        _discard_partial_output(out_path, output_preexisted)
+        return update_job_status(running_job, JobStatus.failed)
+
     cmd = _command_override or _build_command(running_job, profile)
 
     logger.info("Render command: %s", " ".join(cmd))
@@ -124,7 +136,7 @@ def execute_render(
                 result.returncode,
                 result.stderr[-500:],
             )
-            return update_job_status(running_job, JobStatus.failed)
+            return _fail()
 
     except subprocess.TimeoutExpired:
         msg = f"Render timed out after {timeout_seconds}s."
@@ -135,7 +147,7 @@ def execute_render(
                 f"TIMEOUT after {timeout_seconds}s\n",
                 encoding="utf-8",
             )
-        return update_job_status(running_job, JobStatus.failed)
+        return _fail()
 
     except FileNotFoundError as exc:
         binary = cmd[0] if cmd else "render binary"
@@ -151,7 +163,7 @@ def execute_render(
                 f"ERROR: {msg}\n",
                 encoding="utf-8",
             )
-        return update_job_status(running_job, JobStatus.failed)
+        return _fail()
 
     except Exception as exc:
         logger.exception("Unexpected render error: %s", exc)
@@ -161,7 +173,26 @@ def execute_render(
                 f"UNEXPECTED ERROR: {exc}\n",
                 encoding="utf-8",
             )
-        return update_job_status(running_job, JobStatus.failed)
+        return _fail()
+
+
+def _discard_partial_output(out_path: Path | None, output_preexisted: bool) -> None:
+    """Delete a half-written render output left by a failed/interrupted run.
+
+    Only removes a file this run created (``output_preexisted`` is False): a
+    pre-existing output is never touched. Best-effort — a cleanup failure is
+    logged, never raised, so it cannot mask the real render failure.
+    """
+    if out_path is None or output_preexisted:
+        return
+    try:
+        if out_path.exists():
+            out_path.unlink()
+            logger.warning(
+                "Removed partial render output after failed render: %s", out_path
+            )
+    except OSError as exc:  # pragma: no cover - defensive
+        logger.warning("Could not remove partial render output %s: %s", out_path, exc)
 
 
 def _build_command(job: RenderJob, profile: RenderProfile) -> list[str]:

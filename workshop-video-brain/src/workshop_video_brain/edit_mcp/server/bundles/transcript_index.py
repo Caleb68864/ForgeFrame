@@ -79,6 +79,17 @@ def transcript_search(
     segment + start/end seconds where the query text appears, ranked so
     exact/fuller matches come first. Auto-builds the index if it is missing.
 
+    STALENESS CONTRACT (pinned behavior): the FTS index is a *derived,
+    rebuildable* cache; the ``transcripts/*.json`` files are the source of
+    truth. This tool auto-builds the index only when it is entirely **missing**;
+    it does NOT reconcile the index against the transcript files on every query
+    (that would defeat the point of an index). Therefore, if a transcript JSON is
+    deleted or edited *after* the index was built, this search can return **stale
+    hits** for that clip until the index is rebuilt. Run ``transcript_index_build``
+    (incremental — it prunes clips whose JSON has disappeared and re-reads changed
+    ones) to reconcile. Downstream consumers that must not act on stale hits
+    (e.g. ``shots_map_to_script``) should call ``transcript_index_build`` first.
+
     Args:
         workspace_path: Path to the workspace root directory.
         query: Free-text search string.

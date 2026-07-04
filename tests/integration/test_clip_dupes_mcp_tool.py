@@ -139,7 +139,8 @@ class TestSignatureMethod:
         )
         assert res["status"] == "error"
         assert "signature" in res["message"].lower()
-        assert "phash" in res["message"].lower()  # actionable alternative
+        # actionable alternative now lives in the suggestion field
+        assert "phash" in res.get("suggestion", "").lower()
 
     def test_signature_method_runs_and_reports(self, tmp_path):
         if not bundle._cd.has_signature_filter():

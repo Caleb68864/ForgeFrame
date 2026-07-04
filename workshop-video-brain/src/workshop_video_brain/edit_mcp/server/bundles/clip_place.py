@@ -52,7 +52,10 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _err, _require_workspace
 from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
-from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
+from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import (
+    parse_project,
+    ProjectParseError,
+)
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
 from workshop_video_brain.edit_mcp.pipelines import clip_place as cp
 from workshop_video_brain.workspace import create_snapshot
@@ -188,11 +191,13 @@ def clip_place(
     """
     try:
         ws_path, project_path, project = _load(workspace_path, project_file)
+    except ProjectParseError as exc:
+        return corrupt_project(str(getattr(exc, "path", "") or project_file), exc)
     except (ValueError, FileNotFoundError) as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     if mode not in ("overwrite", "insert"):
-        return _err(f"mode must be 'overwrite' or 'insert', got {mode!r}")
+        return err(f"mode must be 'overwrite' or 'insert', got {mode!r}", suggestion="Pass mode='overwrite' to replace whatever is under the clip, or mode='insert' to push later clips right.")
 
     try:
         playlist = _resolve_track(project, track)
@@ -203,6 +208,14 @@ def clip_place(
     producer_id, source_path, duration_s = _resolve_source(
         project, source_or_producer, ws_path
     )
+
+    # If the source resolved to a media *path* (not an existing producer id) and
+    # that file does not exist, fail loudly naming the file instead of silently
+    # placing a clip that references missing media (which would only surface as a
+    # cryptic melt error at render time) or bailing with a confusing
+    # "duration unknown" message.
+    if source_path and not Path(source_path).exists():
+        return missing_file(source_path, "source media")
 
     try:
         at_frame = cp.seconds_to_frames(at_seconds, fps)
@@ -217,15 +230,17 @@ def clip_place(
     else:
         plen = _producer_length_frames(project, producer_id, fps)
         if plen is None:
-            return _err(
-                "out_seconds not given and source duration is unknown "
-                "(ffprobe unavailable and no producer 'length'); pass out_seconds"
+            return err(
+                "out_seconds was not given and the source duration is unknown "
+                "(ffprobe is unavailable and the producer has no 'length').",
+                suggestion="Pass out_seconds explicitly, or install ffprobe so the duration can be detected automatically.",
             )
         out_point = in_point + plen - 1
 
     if out_point < in_point:
-        return _err(
-            f"computed out frame {out_point} < in frame {in_point}; check in/out_seconds"
+        return err(
+            f"The computed out frame ({out_point}) is before the in frame ({in_point}).",
+            suggestion="out_seconds must be greater than in_seconds; check the in/out points you passed.",
         )
 
     try:
@@ -249,7 +264,7 @@ def clip_place(
     try:
         patched = patcher.patch_project(project, [intent])
     except (ValueError, IndexError) as exc:
-        return _err(f"failed to place clip: {exc}")
+        return err(f"failed to place clip: {exc}", suggestion="Check the target track exists and the timing is valid (project_summary shows the tracks); the one-line cause above says what failed.")
     serialize_project(patched, project_path)
 
     placed = next(
@@ -310,18 +325,20 @@ def clip_move_to(
     """
     try:
         ws_path, project_path, project = _load(workspace_path, project_file)
+    except ProjectParseError as exc:
+        return corrupt_project(str(getattr(exc, "path", "") or project_file), exc)
     except (ValueError, FileNotFoundError) as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     if mode not in ("overwrite", "insert"):
-        return _err(f"mode must be 'overwrite' or 'insert', got {mode!r}")
+        return err(f"mode must be 'overwrite' or 'insert', got {mode!r}", suggestion="Pass mode='overwrite' to replace whatever is under the clip, or mode='insert' to push later clips right.")
     try:
         src = _resolve_track(project, from_track)
         dst = _resolve_track(project, to_track)
     except ValueError as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
     if from_track == to_track:
-        return _err("from_track and to_track are the same; use clip_move for same-track moves")
+        return err("from_track and to_track are the same track.", suggestion="Use clip_move for same-track moves; clip_place across tracks needs a different to_track.")
 
     try:
         cp.clip_at_index(src.entries, clip_index)  # validate
@@ -355,7 +372,7 @@ def clip_move_to(
     try:
         patched = patcher.patch_project(project, [intent])
     except (ValueError, IndexError) as exc:
-        return _err(f"failed to move clip: {exc}")
+        return err(f"failed to move clip: {exc}", suggestion="Check the source clip index and destination track/timing (project_summary lists them); the one-line cause above says what failed.")
     serialize_project(patched, project_path)
 
     return _ok({
@@ -407,11 +424,13 @@ def clip_place_matched(
     """
     try:
         ws_path, project_path, project = _load(workspace_path, project_file)
+    except ProjectParseError as exc:
+        return corrupt_project(str(getattr(exc, "path", "") or project_file), exc)
     except (ValueError, FileNotFoundError) as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
     if mode not in ("overwrite", "insert"):
-        return _err(f"mode must be 'overwrite' or 'insert', got {mode!r}")
+        return err(f"mode must be 'overwrite' or 'insert', got {mode!r}", suggestion="Pass mode='overwrite' to replace whatever is under the clip, or mode='insert' to push later clips right.")
     try:
         playlist = _resolve_track(project, track)
         ref_playlist = _resolve_track(project, match_track)
@@ -426,6 +445,10 @@ def clip_place_matched(
 
     fps = project.profile.fps or 25.0
     producer_id, source_path, _duration_s = _resolve_source(project, source, ws_path)
+
+    # Reject a missing media source before touching the project (see clip_place).
+    if source_path and not Path(source_path).exists():
+        return missing_file(source_path, "source media")
 
     # Match length exactly: in-point 0, out-point ref_length - 1.
     in_point = 0
@@ -451,7 +474,7 @@ def clip_place_matched(
     try:
         patched = patcher.patch_project(project, [intent])
     except (ValueError, IndexError) as exc:
-        return _err(f"failed to place matched clip: {exc}")
+        return err(f"failed to place matched clip: {exc}", suggestion="Check the matched source and destination track/timing; the one-line cause above says what failed.")
     serialize_project(patched, project_path)
 
     return _ok({

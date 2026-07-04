@@ -140,9 +140,9 @@ def speed_ramp(
     or an error dict.
     """
     if engine not in ("segments", "timeremap"):
-        return _err(f"engine {engine!r} must be 'segments' or 'timeremap'")
+        return err(f"engine {engine!r} must be 'segments' or 'timeremap'", suggestion="Pass engine='segments' (cut into speed steps) or engine='timeremap' (smooth ramp).")
     if image_mode not in sr.IMAGE_MODES:
-        return _err(f"image_mode {image_mode!r} must be one of {sr.IMAGE_MODES}")
+        return err(f"image_mode {image_mode!r} must be one of {sr.IMAGE_MODES}", suggestion=f"Pass image_mode as one of: {sr.IMAGE_MODES}.")
     try:
         ws_path, _ws = _require_workspace(workspace_path)
     except (ValueError, FileNotFoundError) as exc:
@@ -201,7 +201,7 @@ def speed_ramp(
                 image_mode=image_mode, pitch=pitch_compensation,
             )
         except (ValueError, IndexError) as exc:
-            return _err(f"failed to apply timeremap ramp: {exc}")
+            return err(f"failed to apply timeremap ramp: {exc}", suggestion="Check the clip index and ramp keyframes are valid; the one-line cause above says what failed. Restore the pre-op snapshot with snapshot_restore if needed.")
         patched = project
     else:
         from workshop_video_brain.core.models.timeline import SpeedRamp
@@ -215,7 +215,7 @@ def speed_ramp(
         try:
             patched = patcher.patch_project(project, [intent])
         except (ValueError, IndexError) as exc:
-            return _err(f"failed to apply speed ramp: {exc}")
+            return err(f"failed to apply speed ramp: {exc}", suggestion="Check the clip index and speed points are valid; the one-line cause above says what failed. Restore the pre-op snapshot with snapshot_restore if needed.")
     serialize_project(patched, project_path)
 
     return _ok({
