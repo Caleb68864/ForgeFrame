@@ -54,7 +54,7 @@ After drafting, output:
 
 The JSON is produced by calling the Python engine:
 ```
-from production_brain.skills.outline import generate_outline
+from workshop_video_brain.production_brain.skills.outline import generate_outline
 md, data = generate_outline(
     idea=<user_idea>,
     project_type=<detected_type or None>,

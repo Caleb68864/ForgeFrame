@@ -20,7 +20,14 @@ These two subsystems are deliberately separated:
 | `server.py` | MCP server entry point. Imports tools and resources modules to register them with FastMCP. | `server.py` |
 | `app/cli.py` | Click CLI. Mirrors MCP tool capabilities for command-line use. | `app/cli.py` |
 
-**Rule:** `edit_mcp` must not import from `production_brain`. `production_brain` must not import from `edit_mcp`. Both may import from `workspace` and `core`.
+**Rule (see [ADR 005](adr/005-production-brain-boundary.md) -- supersedes the old
+two-way wall):** the layering is `core < edit_mcp.adapters < edit_mcp.pipelines <
+production_brain.{skills,notes} < edit_mcp.server < app`. Concretely:
+`production_brain` **may** import `edit_mcp.pipelines`/`adapters`/`core` (planning
+consumes analysis) but **never** `edit_mcp.server`. `edit_mcp` **may** import
+`production_brain` **only via function-local (lazy) imports** (the orchestration
+escape hatch in `new_project`/`publishing`/`server/tools`), never at module level.
+Enforced by `tests/unit/test_module_boundaries.py`.
 
 ---
 

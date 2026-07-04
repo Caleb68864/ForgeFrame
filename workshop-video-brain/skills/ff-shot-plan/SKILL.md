@@ -105,7 +105,7 @@ Output:
 2. Structured dict via Python engine
 
 ```python
-from production_brain.skills.shot_plan import generate_shot_plan
+from workshop_video_brain.production_brain.skills.shot_plan import generate_shot_plan
 md, data = generate_shot_plan(
     outline_or_script=<dict>,
     gear_constraints=<"no overhead rig" or None>,

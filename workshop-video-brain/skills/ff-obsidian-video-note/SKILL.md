@@ -110,7 +110,7 @@ Check if a note already exists at `vault_path / vault_note_path`.
 5. Call the Python engine:
 
 ```python
-from production_brain.skills.video_note import create_or_update_note
+from workshop_video_brain.production_brain.skills.video_note import create_or_update_note
 from pathlib import Path
 
 note_path = create_or_update_note(
@@ -144,7 +144,7 @@ When updating an existing note:
    section, or any custom frontmatter keys.
 
 ```python
-from production_brain.skills.video_note import create_or_update_note
+from workshop_video_brain.production_brain.skills.video_note import create_or_update_note
 
 note_path = create_or_update_note(
     workspace_root=Path(workspace_root),

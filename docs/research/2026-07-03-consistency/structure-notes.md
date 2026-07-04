@@ -793,3 +793,70 @@ scripts smoke parse + all 10 `tools.<name>` references resolve; full suite
 `uv run pytest tests/ -q` twice-run **4200 passed / 1 skipped** (matches Pass 4
 baseline); **201 live tools** before and after. `git diff` confined to
 `tools/__init__.py` (this section aside). No commit made (per instruction).
+
+---
+
+## Consolidation-3 -- resolve the production_brain <-> edit_mcp coupling (Phase C, ADR 005)
+
+Executes the opinion's Phase C (`docs/plans/2026-07-03-codebase-restructuring-opinion.md`
+section 3.4 / section 4): document + enforce the boundary, fix the latently-broken
+skill-helper import prefixes. No `production_brain`/`edit_mcp` *source* moved
+(the opinion's verdict was "amend via ADR, no code move"). Baseline suite
+unchanged: **4200 passed / 1 skipped** before; **4204 passed / 1 skipped** after
+(+4 = the new `tests/unit/test_module_boundaries.py`).
+
+**Coupling map (AST import-graph audit, both directions).** The coupling **runs
+both ways** but is shallow and layered:
+- **Forward, `production_brain` -> `edit_mcp` (2 edges):** `skills/broll.py:12`
+  **module-level** -> `edit_mcp.pipelines.broll_suggestions`; `skills/pattern.py:27`
+  lazy -> `edit_mcp.pipelines.pattern_brain`. Both target *pipelines* only
+  (planning consumes analysis).
+- **Reverse, `edit_mcp` -> `production_brain` (12 edges, ALL function-local):**
+  `pipelines/new_project.py` (x7 -> `skills.{video_note,outline,script,shot_plan}`
+  + `notes.updater`), `pipelines/publishing.py` (x2 -> `notes.frontmatter`),
+  `server/tools/{broll,transcript_markers,assembly_titles}.py` (x3 -> `skills.
+  {broll,voiceover,pattern}`). Every reverse edge is lazy *on purpose* -- a
+  module-level reverse import would form an import-time cycle against the forward
+  edge. This is the load-bearing smell the opinion identified.
+
+**Decision: BLESS, not decouple (ADR 005 written).** Rationale: the coupling is
+one-directional at the *layer* level (planning depends downward on analysis) with
+a single deliberately-lazy reverse escape hatch for orchestration; decoupling
+`new_project`'s note-generation orchestration is exactly the ~40-80h feature-domain
+restructure the opinion rejected, for zero correctness gain. Blessing names the
+true direction + escape hatch honestly and cheaply. **Layering:** `core <
+edit_mcp.adapters < edit_mcp.pipelines < production_brain.{skills,notes} <
+edit_mcp.server < app`. Two enforced rules: (1) `edit_mcp -> production_brain`
+lazy-only (no module-level); (2) `production_brain` may import
+`edit_mcp.pipelines/adapters/core` but **never** `edit_mcp.server`. **No reverse
+edges fixed** (none needed -- all 12 already conform to Rule 1; the 2 forward
+edges conform to Rule 2). `docs/adr/004-two-module-architecture.md` got a
+superseded-in-part banner pointing at ADR 005; `docs/ai-handoff.md`'s stale
+two-way-wall rule was rewritten to the ADR-005 layering. `CLAUDE.md` and the
+`plugin-authoring` skill state no boundary claim -- nothing to update there.
+
+**Enforcement test.** `tests/unit/test_module_boundaries.py` (4 tests, 0.47s)
+walks module ASTs (no imports/side effects), classifying each edge as module-level
+vs function-local via a function-nesting visitor. Asserts Rule 1, Rule 2, and a
+positive characterization (every forward edge targets pipelines/adapters/core).
+Proven non-no-op: the AST classifier correctly tags `broll.py:12` MODULE-level and
+all 12 reverse edges + `pattern.py:27` lazy.
+
+**Skill-helper prefix normalization (the actual code fix).** The skills-refresh
+flag was real: SKILL.md Python helpers used two prefixes -- canonical
+`from workshop_video_brain.production_brain.skills.X` **and** bare
+`from production_brain.skills.X`. The bare form is **latently broken**: the
+installed top-level package is `workshop_video_brain` (`packages =
+["src/workshop_video_brain"]`), so `import production_brain` raises
+`ModuleNotFoundError` -- proven at the shell. **6 latent breaks fixed** across 5
+files: `ff-rough-cut-review` (review), `ff-tutorial-script` (script),
+`ff-video-idea-to-outline` (outline), `ff-shot-plan` (shot_plan),
+`ff-obsidian-video-note` (video_note x2). All normalized to the fully-qualified
+form. Post-fix: **0** short-prefix occurrences remain; **16** canonical imports
+across 12 skills. Import smoke over all 12 referenced helper modules (every
+symbol) under the canonical prefix: **FAILS = 0** (all resolve, all symbols
+present).
+
+**Verification.** Full suite `uv run pytest tests/ -q`: **4204 passed / 1
+skipped** (was 4200/1 + the 4 new boundary tests). New import-graph test green;
+per-helper import smoke green (12/12). No commit made (per instruction).

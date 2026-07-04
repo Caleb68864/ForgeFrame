@@ -78,7 +78,7 @@ Output:
 2. Structured dict via Python engine
 
 ```python
-from production_brain.skills.script import generate_script
+from workshop_video_brain.production_brain.skills.script import generate_script
 md, data = generate_script(
     outline_data=<outline_dict>,
     tone="practical",
