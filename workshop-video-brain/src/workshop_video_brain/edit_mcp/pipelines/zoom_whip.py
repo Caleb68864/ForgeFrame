@@ -108,6 +108,18 @@ def _full_rect(width: float, height: float) -> list[float]:
     return [0, 0, round(float(width), 3), round(float(height), 3), 1]
 
 
+def clip_frame_length(project, track: int, clip_index: int) -> int:
+    """Frame length of a real clip on a video track (``out_point - in_point + 1``).
+
+    ``clip_index`` counts only real (producer-backed) entries. Pure model read;
+    lives here so the bundle stays a thin shell.
+    """
+    playlist = project.playlists[track]
+    real = [e for e in playlist.entries if e.producer_id]
+    entry = real[clip_index]
+    return int(entry.out_point) - int(entry.in_point) + 1
+
+
 def build_zoom_whip_plan(
     *,
     fps: float,

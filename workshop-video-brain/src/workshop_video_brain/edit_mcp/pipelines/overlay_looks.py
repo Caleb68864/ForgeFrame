@@ -52,6 +52,9 @@ from workshop_video_brain.core.models.kdenlive import (
     Producer,
 )
 from workshop_video_brain.edit_mcp.pipelines import clip_place as _cp
+from workshop_video_brain.edit_mcp.pipelines._common import (
+    check_unit_interval as _check_unit,
+)
 from workshop_video_brain.edit_mcp.pipelines.keyframes import (
     Keyframe,
     _format_scalar,
@@ -79,13 +82,8 @@ def overlay_geometry(width: int, height: int, opacity: float) -> str:
     return f"0/0:{int(width)}x{int(height)}:{int(round(op * 100))}"
 
 
-def _check_unit(name: str, value: object) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"{name} must be numeric in [0.0, 1.0]; got {value!r}")
-    v = float(value)
-    if not 0.0 <= v <= 1.0:
-        raise ValueError(f"{name} must be in [0.0, 1.0]; got {v}")
-    return v
+# ``_check_unit`` is imported from ``pipelines/_common`` (check_unit_interval);
+# the identical copy that lived here was merged in the consistency pass.
 
 
 # ---------------------------------------------------------------------------
@@ -101,44 +99,25 @@ def overlay_producer_id(media_path: str) -> str:
     return f"{stem}_{h}"
 
 
-def insert_overlay_clip(
+def append_clip_to_playlist(
     project: KdenliveProject,
-    overlay_track: int,
+    playlist,
     media_path: str,
     at_frame: int,
     duration_frames: int,
 ) -> int:
-    """Insert ``media_path`` onto the ``overlay_track``-th video playlist.
+    """Append ``media_path`` to an already-resolved playlist via ``clip_place``.
 
-    Appends the overlay entry ``[0, duration_frames - 1]`` after the playlist's
-    existing content, preceded by a blank gap of ``at_frame`` frames (so the clip
-    lands ``at_frame`` frames past the current track end). Ensures a producer
-    exists for the media. Mutates ``project`` in place and returns the *real*-clip
-    index of the inserted entry on that playlist (usable as ``(overlay_track,
-    index)`` for clip-filter ops).
-
-    The placement runs through the canonical ``clip_place`` engine
-    (``pipelines/clip_place.plan_overwrite``): the append-with-leading-gap is
-    expressed as an overwrite placement at absolute frame ``track_end + at_frame``
-    (past the track end, so the engine emits the pad blank + clip), replacing the
-    former hand-rolled model-level blank-pad insert (SYNTHESIS gap #6 migration).
+    Shared model-level tail for :func:`insert_overlay_clip` (video) and
+    ``vo_loop.insert_take_clip`` (audio): ensures a producer exists for the
+    media, then expresses the append-with-leading-gap as an overwrite placement
+    at absolute frame ``track_end + at_frame`` through the canonical
+    ``clip_place.plan_overwrite`` engine (so the engine emits the pad blank +
+    clip). Mutates ``project``/``playlist`` in place and returns the *real*-clip
+    index of the inserted entry. Callers own the ``at_frame``/``duration_frames``
+    validation and the video-vs-audio playlist resolution so their error messages
+    stay specific.
     """
-    if at_frame < 0:
-        raise ValueError(f"at_frame must be >= 0; got {at_frame}")
-    if duration_frames <= 0:
-        raise ValueError(f"duration_frames must be > 0; got {duration_frames}")
-
-    vps = video_playlists(project)
-    if not vps:
-        raise ValueError("No video playlists found in project")
-    if overlay_track < 0 or overlay_track >= len(vps):
-        raise ValueError(
-            f"overlay_track {overlay_track} out of range "
-            f"(project has {len(vps)} video track(s)); add a track above the "
-            f"base footage first (track_add)"
-        )
-    playlist = vps[overlay_track]
-
     producer_id = overlay_producer_id(media_path)
     if producer_id not in {p.id for p in project.producers}:
         project.producers.append(
@@ -156,6 +135,43 @@ def insert_overlay_clip(
     result = _cp.plan_overwrite(playlist.entries, at, clip)
     playlist.entries = result.entries
     return result.placed_index
+
+
+def insert_overlay_clip(
+    project: KdenliveProject,
+    overlay_track: int,
+    media_path: str,
+    at_frame: int,
+    duration_frames: int,
+) -> int:
+    """Insert ``media_path`` onto the ``overlay_track``-th video playlist.
+
+    Appends the overlay entry ``[0, duration_frames - 1]`` after the playlist's
+    existing content, preceded by a blank gap of ``at_frame`` frames (so the clip
+    lands ``at_frame`` frames past the current track end). Ensures a producer
+    exists for the media. Mutates ``project`` in place and returns the *real*-clip
+    index of the inserted entry on that playlist (usable as ``(overlay_track,
+    index)`` for clip-filter ops). The model-level placement is shared with
+    ``vo_loop.insert_take_clip`` via :func:`append_clip_to_playlist`.
+    """
+    if at_frame < 0:
+        raise ValueError(f"at_frame must be >= 0; got {at_frame}")
+    if duration_frames <= 0:
+        raise ValueError(f"duration_frames must be > 0; got {duration_frames}")
+
+    vps = video_playlists(project)
+    if not vps:
+        raise ValueError("No video playlists found in project")
+    if overlay_track < 0 or overlay_track >= len(vps):
+        raise ValueError(
+            f"overlay_track {overlay_track} out of range "
+            f"(project has {len(vps)} video track(s)); add a track above the "
+            f"base footage first (track_add)"
+        )
+    playlist = vps[overlay_track]
+    return append_clip_to_playlist(
+        project, playlist, media_path, at_frame, duration_frames
+    )
 
 
 # ---------------------------------------------------------------------------

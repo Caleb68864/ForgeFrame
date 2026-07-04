@@ -42,30 +42,12 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _validate_workspace_path,
 )
 from workshop_video_brain.edit_mcp.pipelines import clip_preview as _cp
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_frame_geometry
 
 
-def _probe_frame_geometry(path: Path) -> tuple[int | None, int | None, int | None]:
-    """Return (width, height, counted_frames) for a rendered preview."""
-    try:
-        out = subprocess.run(
-            [
-                "ffprobe", "-v", "error",
-                "-select_streams", "v:0",
-                "-count_frames",
-                "-show_entries", "stream=width,height,nb_read_frames",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(path),
-            ],
-            capture_output=True, text=True, check=False,
-        )
-        vals = out.stdout.split()
-        if len(vals) >= 3:
-            return int(vals[0]), int(vals[1]), int(vals[2])
-        if len(vals) == 2:
-            return int(vals[0]), int(vals[1]), None
-    except (ValueError, OSError):
-        pass
-    return None, None, None
+# ffprobe frame-geometry probe relocated to ``adapters/ffmpeg/probe``; delegate
+# kept so in-module callers resolve the same name.
+_probe_frame_geometry = probe_frame_geometry
 
 
 @mcp.tool()

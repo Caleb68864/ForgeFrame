@@ -32,6 +32,10 @@ can keyframe those afterwards with ``effect_keyframe_set_scalar``.
 """
 from __future__ import annotations
 
+from workshop_video_brain.edit_mcp.pipelines._common import (
+    check_unit_interval as _check_unit,
+)
+
 
 # Named wash colours -> normalized ``frei0r.colorize`` hue (0.0..1.0). MLT stores
 # frei0r params normalized regardless of the frei0r display range (0..360 deg).
@@ -88,13 +92,8 @@ def resolve_hue(color: object) -> float:
     raise ValueError(f"color must be a name or float in [0.0, 1.0]; got {color!r}")
 
 
-def _check_unit(name: str, value: object) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"{name} must be numeric in [0.0, 1.0]; got {value!r}")
-    v = float(value)
-    if not 0.0 <= v <= 1.0:
-        raise ValueError(f"{name} must be in [0.0, 1.0]; got {v}")
-    return v
+# ``_check_unit`` is imported from ``pipelines/_common`` (check_unit_interval);
+# the identical copy that lived here was merged in the consistency pass.
 
 
 def color_wash_params(

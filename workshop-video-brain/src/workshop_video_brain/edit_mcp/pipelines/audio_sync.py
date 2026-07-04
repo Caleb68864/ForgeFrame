@@ -38,6 +38,8 @@ from pathlib import Path
 
 import numpy as np
 
+from workshop_video_brain.edit_mcp.pipelines._common import parabolic_peak_offset
+
 logger = logging.getLogger(__name__)
 
 # Decode/analysis defaults.  8 kHz mono is plenty for envelope alignment and
@@ -200,15 +202,11 @@ def _normalize(series: np.ndarray) -> np.ndarray:
 def _parabolic_refine(corr: np.ndarray, peak: int) -> float:
     """Sub-sample peak position via 3-point parabolic interpolation.
 
-    Returns a fractional offset in ``[-0.5, 0.5]`` to add to ``peak``.
+    Returns a fractional offset in ``[-0.5, 0.5]`` to add to ``peak``. Thin
+    delegate to the shared ``_common.parabolic_peak_offset`` (canonical home);
+    ``beat_grid`` imports the same helper as ``_parabolic_peak``.
     """
-    if peak <= 0 or peak >= corr.size - 1:
-        return 0.0
-    left, mid, right = corr[peak - 1], corr[peak], corr[peak + 1]
-    denom = left - 2.0 * mid + right
-    if denom == 0.0:
-        return 0.0
-    return 0.5 * (left - right) / denom
+    return parabolic_peak_offset(corr, peak)
 
 
 def cross_correlate_lag(ref: np.ndarray, target: np.ndarray) -> tuple[float, float]:

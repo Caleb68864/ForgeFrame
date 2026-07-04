@@ -17,9 +17,6 @@ additive.
 from __future__ import annotations
 
 import hashlib
-import json
-import shutil
-import subprocess
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
@@ -46,6 +43,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _err, _require_workspace
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import run_ffmpeg
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import count_audio_streams
 from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
 from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
@@ -64,26 +62,9 @@ def _resolve_producer_resource(project, producer_id: str) -> str | None:
     return None
 
 
-def _count_audio_streams(path: Path) -> int:
-    """Number of audio streams in ``path`` via ffprobe (0 if ffprobe missing)."""
-    if shutil.which("ffprobe") is None:
-        return 0
-    try:
-        proc = subprocess.run(
-            [
-                "ffprobe", "-v", "error",
-                "-select_streams", "a",
-                "-show_entries", "stream=index",
-                "-of", "json", str(path),
-            ],
-            capture_output=True, text=True, check=False,
-        )
-        if proc.returncode != 0:
-            return 0
-        data = json.loads(proc.stdout or "{}")
-        return len(data.get("streams", []))
-    except (OSError, ValueError):
-        return 0
+# ffprobe audio-stream count relocated to ``adapters/ffmpeg/probe``; delegate
+# kept so in-module callers resolve the same name.
+_count_audio_streams = count_audio_streams
 
 
 # VHS-look effects layered onto the reversed clip when ``vhs_overlay`` is set.

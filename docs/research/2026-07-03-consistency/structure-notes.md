@@ -243,3 +243,173 @@ unification landed; public units unchanged).
 - Project-file-first entry-point subfamily (guides + `effect_pan_zoom` +
   `title_card_add` + `publish_chapters`) is a deliberate addressing style, not a
   bug — but it's the one place the `workspace_path`-first convention bends.
+
+---
+
+## Pass 3 (2026-07-03) — layering enforcement (model → pipeline → tool)
+
+Push-down pass: move leaked logic (XML construction, ffmpeg/ffprobe command
+building, model-manipulation math) out of the thin `server/bundles` +
+`server/tools` shell layer into pipelines / the ffprobe adapter / shared
+`_common`. **No tool signature or behaviour changes**; every relocation keeps a
+same-name delegate in the origin module (or a re-export shim). Baseline before:
+4205 passed / 1 skipped (brief cited 4204; a test was added since). Live tool
+count **201** (unchanged, verified via `mcp.list_tools()`).
+
+### Job 1 — leak census (server/bundles + server/tools)
+
+Method: enumerated every module-level `def _helper` in the shell layer and
+classified its body as shell (param validation, error mapping, snapshot
+bookkeeping, envelope assembly, calling a pipeline/adapter) vs **leaked** logic
+(XML element construction, ffprobe/ffmpeg argv building + parsing, model-span
+math done inline). Only `import xml.etree` and direct `subprocess`/ffprobe argv
+in the shell layer are hard leaks; the ranked offenders were the ones carrying
+those.
+
+| Module (layer) | Leak kind | Leaked-LOC before | after | Pushed to |
+|---|---|--:|--:|---|
+| `bundles/zoom_whip.py` | filter-XML builder + clip-frame model read | ~24 | ~8 (delegates) | `_common.make_filter_element_xml`; `pipelines/zoom_whip.clip_frame_length` |
+| `bundles/_pipeline_errors.py` | `has_video_stream` ffprobe (misfiled) | ~23 | 0 (re-export shim) | `adapters/ffmpeg/probe.has_video_stream` |
+| `bundles/clip_preview.py` | `_probe_frame_geometry` ffprobe | ~22 | 1 (delegate) | `adapters/ffmpeg/probe.probe_frame_geometry` |
+| `bundles/rewind.py` | `_count_audio_streams` ffprobe | ~20 | 1 (delegate) | `adapters/ffmpeg/probe.count_audio_streams` |
+| `bundles/motion_track.py` | `_build_transform_xml` (ET) | ~18 | ~5 (delegate) | `_common.make_filter_element_xml` |
+| `bundles/pan_zoom.py` | `_build_transform_xml` (ET) | ~16 | ~5 (delegate) | `_common.make_filter_element_xml` |
+| `bundles/subtitle_track.py` | `_project_frame_count` timeline-span math | ~10 | ~4 (parse+delegate) | `pipelines/subtitle_track.timeline_frame_length` |
+
+Also merged (pipeline-internal, Job 3): `loudnorm_two_pass._has_video_stream`
+(~18→1) now delegates to the same `probe.has_video_stream`.
+
+**Not pushed (judged shell-appropriate, documented):**
+- `bundles/rewind._apply_vhs_overlay` — *composes other MCP tools*
+  (`effect_glitch_stack`/`effect_oldfilm`/`effect_frei0r_scanline0r`) and
+  collects their result envelopes. Tool-orchestration, not raw logic; belongs in
+  the shell.
+- `bundles/clip_dupes._hash_clip_phash` / `_find_phash` — the *command
+  construction* + hashing/clustering already live in `pipelines/clip_dupes`
+  (`frame_extract_command`, `frame_timestamps`, `dhash_from_image`,
+  `cluster_by_distance`, …); the bundle only runs the subprocess and threads the
+  temp-dir loop. Executing a pipeline-built argv is adapter/orchestration work.
+- `bundles/subtitle_track._escape_ff` (2 lines, single call site) and the
+  `tools/audio.py` / `tools/clips_nle.py` subprocess hits (ffmpeg run
+  orchestration through the sanctioned runner) — below the offender bar.
+- `server/tools_helpers._build_filter_xml` (server-layer XML with id
+  normalization) is used by many tools and was blessed as the shared kernel in
+  Pass 1; leaving it (see Pass 5 note) — it is the *richer* sibling of the two
+  new `_common` builders.
+
+### Job 2 — logic pushed down (LOC moved)
+
+New canonical homes created/extended:
+- `pipelines/_common.py` (+~85): `make_filter_element_xml` (transform/keyframe
+  filter XML with `kdenlive_id` property child; `include_service_prop` flag
+  covers both the pan/zoom+motion-track shape and the zoom-whip shape —
+  **byte-identical** to the three hand-rolled builders, asserted at build time),
+  `check_unit_interval`, `keyword_match_strength`, `parabolic_peak_offset`.
+- `adapters/ffmpeg/probe.py` (+~75): `has_video_stream`, `count_audio_streams`,
+  `probe_frame_geometry` — the natural home for pure ffprobe helpers, beside
+  `probe_duration_seconds`/`probe_format_duration` from Pass 1.
+- `pipelines/zoom_whip.clip_frame_length`, `pipelines/subtitle_track.timeline_frame_length`.
+
+All origin call-sites keep a same-name delegate (`_build_transform_xml`,
+`_filter_xml`, `_clip_frames`, `_count_audio_streams`, `_probe_frame_geometry`,
+`_project_frame_count`, `_has_video_stream`) so monkeypatch targets and any
+in-module references are unaffected. ET import removed from all three transform
+bundles; `subprocess`/`json`/`shutil` imports dropped where they became unused
+(`rewind`, `_pipeline_errors`).
+
+### Job 3 — deferred pipeline-internal merges (from Pass 1)
+
+- **`insert_overlay_clip` (overlay_looks) vs `insert_take_clip` (vo_loop)** — the
+  13 identical normalized statements (producer-ensure → `PlacedClip` →
+  `clip_place.plan_overwrite` → assign entries → return placed index) extracted
+  to **`overlay_looks.append_clip_to_playlist(project, playlist, …)`** (owner).
+  `insert_overlay_clip` keeps its video-playlist resolution + validation and
+  calls it; `insert_take_clip` keeps its audio-playlist resolution + validation
+  and delegates (importing the shared tail). `at_frame`/`duration_frames`
+  validation deliberately stays in each public fn so error precedence is
+  unchanged. `vo_loop` shed now-unused `Producer`/`clip_place`/`overlay_producer_id`
+  imports.
+- **`_parabolic_peak` (beat_grid) ≡ `_parabolic_refine` (audio_sync)** — the
+  3-point sub-sample parabola extracted to **`_common.parabolic_peak_offset`**.
+  `audio_sync._parabolic_refine` (kept — it is unit-tested by name) and
+  `beat_grid._parabolic_peak` (imported alias) both delegate to it.
+- **mono-PCM decode overlap** — *already resolved*: `beat_grid` imports
+  `decode_mono_pcm` (+`energy_envelope`/`onset_envelope`) from `audio_sync`; there
+  is a single copy. No action; documented.
+- **`_check_unit` (overlay_looks, color_wash)** → `_common.check_unit_interval`
+  (both import as `_check_unit`). **`_match_strength` (auto_mark,
+  broll_suggestions)** → `_common.keyword_match_strength` (both import as
+  `_match_strength`). Bodies were byte-identical (docstrings differed only).
+- **`has_video_stream` relocation** — moved from `bundles/_pipeline_errors.py`
+  (a misfile per Pass-1 note) to `adapters/ffmpeg/probe.py`; `_pipeline_errors`
+  re-exports it so `bundles/stabilize.py`'s import is untouched.
+
+### Job 4 — reach-around census (direct XML/model mutation vs sanctioned APIs)
+
+Grepped the shell + pipeline layers for direct `.entries`/`.playlists`/
+`.producers`/`.filters` mutation and inline `ET` outside the sanctioned modules
+(`clip_place`, `patcher`, `effect_stack`, `_common` XML builders).
+
+- **Clean after this pass:** the only inline `ET` in the shell layer was the
+  three transform bundles — now routed through `_common.make_filter_element_xml`.
+  No bundle mutates `.entries` directly; all placement goes through
+  `clip_place.plan_overwrite` (the `target.entries = result.entries` assignments
+  in `titles`/`image_overlay` assign a *clip_place engine result*, not a
+  hand-rolled edit).
+- **Sanctioned exceptions (documented, NOT migrated):**
+  - **Model-level producer registration** in `bundles/titles.py`,
+    `bundles/image_overlay.py`, `bundles/speed_ramp.py` (`project.producers.append(
+    Producer(...))` for title/image/time-remap-chain producers). Blessed —
+    predates the clip_place migration; there is no producer-registration pipeline
+    API and placement itself already uses `clip_place`.
+  - **New-track/playlist creation** in `titles`/`image_overlay` (overlay title
+    track) and `multicam` (`project.playlists.append(Playlist(...))` for camera +
+    program tracks). Structural track creation (the `track_add` operation), not a
+    clip-placement reach-around.
+  - **`speed_ramp` entry rebinding** (`entry.producer_id/in_point/out_point = …`)
+    — the timeremap engine swapping a clip's producer to its chain producer; no
+    `clip_place` equivalent exists for an in-place producer swap.
+  - **Timeline-builder appends** (`replay_generator`, `selects_timeline`,
+    `review_timeline`, `assembly`) `video/audio_playlist.entries.append(...)` —
+    these *build a fresh sequential timeline from scratch*, where append is the
+    natural primitive and `plan_overwrite` (an into-existing-timeline op) would be
+    overkill. These live in the pipeline layer (sanctioned) and are greenfield
+    construction. Left as-is.
+
+### Verification
+
+- Full suite `uv run pytest tests/ -q`: **4204 passed / 1 skipped** + 1 external
+  render flake under load (`test_pan_zoom_render::test_transition_rect_zoom_moves_pixels`)
+  that **passes isolated** — same load-flaky class as the known
+  `test_clip_place_render` one (which likewise failed in the isolated external
+  batch run and passed alone; both green solo). Total 4205 tests = pre-pass
+  baseline (4205 passed / 1 skipped before edits). Tool count **201**
+  (live `mcp.list_tools()`).
+- Byte-identity of the three relocated filter-XML builders asserted against the
+  original hand-rolled ET output before running the suite.
+
+### Deltas / carry-forward for Pass 5
+
+- **`server/tools_helpers.py` is now doubly a mixed kernel**: it still holds
+  `_build_filter_xml` (server-layer XML construction with id normalization) next
+  to workspace/response/effect/media helpers. With `_common` now owning three
+  pipeline-layer filter builders (`make_filter_xml`, `make_filter_element_xml`)
+  the id-normalizing `_build_filter_xml` is the last XML builder stranded in the
+  server layer — Pass 5 should decide whether it moves down to `_common` (it is
+  imported by several tools, so it is churn, not a no-op) and/or whether
+  `tools_helpers` splits into `_workspace`/`_responses`/`_effects` as flagged in
+  Pass 1.
+- **bundles/ vs tools/ split still looks coherent** but is *not* a
+  logic-vs-shell boundary — both are the thin shell; the difference is only
+  "1 tool per file / auto-imported" (`bundles/`) vs "grouped multi-tool modules"
+  (`tools/`). After this pass both layers are close to pure shells (validation +
+  error map + snapshot + pipeline call). Pass 5 could reasonably **merge the two
+  directories** (or at least document that `bundles/` = single-tool shells,
+  `tools/` = grouped shells) since the leak that justified treating `bundles/`
+  as "where logic hid" is now drained.
+- The `_common` module has grown to ~156 LOC spanning conversions
+  (`seconds_to_frames`, `seconds_to_mmss`), XML builders, validation, text
+  heuristics and DSP (`parabolic_peak_offset`). Still cohesive as "pipeline-layer
+  primitives" but watch for the same multi-domain drift that hit
+  `tools_helpers`; a `_common/` package split (`_xml`, `_time`, `_text`,
+  `_dsp`) is a Pass-5 option if it keeps growing.

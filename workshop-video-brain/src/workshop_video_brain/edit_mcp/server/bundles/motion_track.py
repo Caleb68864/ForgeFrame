@@ -28,7 +28,10 @@ import json
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
-from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
+from workshop_video_brain.edit_mcp.pipelines._common import (
+    make_filter_element_xml,
+    seconds_to_frames,
+)
 from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     tool_guard,
     from_exception,
@@ -325,23 +328,11 @@ def subject_track(
 # ---------------------------------------------------------------------------
 
 def _build_transform_xml(track: int, clip_index: int, rect_kf: str) -> str:
-    import xml.etree.ElementTree as ET
-
-    root = ET.Element(
-        "filter",
-        {
-            "mlt_service": _MLT_SERVICE,
-            "track": str(track),
-            "clip_index": str(clip_index),
-        },
+    """Delegate to the shared transform-filter builder (XML lives in pipelines)."""
+    return make_filter_element_xml(
+        _MLT_SERVICE, _KDENLIVE_ID, (track, clip_index),
+        [(_RECT_PROPERTY, rect_kf)],
     )
-    svc = ET.SubElement(root, "property", {"name": "mlt_service"})
-    svc.text = _MLT_SERVICE
-    kid = ET.SubElement(root, "property", {"name": "kdenlive_id"})
-    kid.text = _KDENLIVE_ID
-    rect = ET.SubElement(root, "property", {"name": _RECT_PROPERTY})
-    rect.text = rect_kf
-    return ET.tostring(root, encoding="unicode")
 
 
 def _load_tracked_keyframes(track_data: str, ws_path: Path):

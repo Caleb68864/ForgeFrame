@@ -297,6 +297,94 @@ def probe_format_duration(path: Path, *, log_label: str = "duration probe") -> f
         return None
 
 
+def has_video_stream(path: Path | str) -> bool | None:
+    """Return True/False if *path* has a video stream, or None if undeterminable.
+
+    Used by video-only tools (stabilize/denoise) to refuse an audio-only file
+    up front rather than emit a bogus "stabilized" audio track. ``None`` (ffprobe
+    missing / errored) means "cannot tell" -- callers should not block on it.
+
+    Natural home for this pure ffprobe helper; it previously lived in
+    ``server/bundles/_pipeline_errors.py`` (which now re-exports it for back-compat).
+    """
+    try:
+        proc = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-select_streams", "v",
+                "-show_entries", "stream=codec_type",
+                "-of", "csv=p=0",
+                str(path),
+            ],
+            capture_output=True, text=True, check=False, timeout=60,
+        )
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    return "video" in proc.stdout
+
+
+def count_audio_streams(path: Path | str) -> int:
+    """Number of audio streams in *path* via ffprobe (0 if ffprobe missing/errors).
+
+    Best-effort: any failure (missing binary, nonzero exit, unparseable JSON)
+    returns ``0``. Shared by bundles that branch on whether a source carries
+    audio (e.g. the rewind tool reversing audio only when present).
+    """
+    import shutil
+
+    if shutil.which("ffprobe") is None:
+        return 0
+    try:
+        proc = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-select_streams", "a",
+                "-show_entries", "stream=index",
+                "-of", "json", str(path),
+            ],
+            capture_output=True, text=True, check=False,
+        )
+        if proc.returncode != 0:
+            return 0
+        data = json.loads(proc.stdout or "{}")
+        return len(data.get("streams", []))
+    except (OSError, ValueError):
+        return 0
+
+
+def probe_frame_geometry(
+    path: Path | str,
+) -> tuple[int | None, int | None, int | None]:
+    """Return ``(width, height, counted_frames)`` for a video via ffprobe.
+
+    Uses ``-count_frames`` so the frame count is exact (decodes the stream).
+    Any element is ``None`` when ffprobe is missing, errors, or the output
+    cannot be parsed. Shared by preview/verification bundles.
+    """
+    try:
+        out = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-select_streams", "v:0",
+                "-count_frames",
+                "-show_entries", "stream=width,height,nb_read_frames",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True, text=True, check=False,
+        )
+        vals = out.stdout.split()
+        if len(vals) >= 3:
+            return int(vals[0]), int(vals[1]), int(vals[2])
+        if len(vals) == 2:
+            return int(vals[0]), int(vals[1]), None
+    except (ValueError, OSError):
+        pass
+    return None, None, None
+
+
 @dataclass
 class LoudnessResult:
     """Loudness measurement result."""

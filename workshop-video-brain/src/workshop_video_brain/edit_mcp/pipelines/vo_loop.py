@@ -29,12 +29,10 @@ import re
 import subprocess
 from pathlib import Path
 
-from workshop_video_brain.core.models.kdenlive import (
-    KdenliveProject,
-    Producer,
+from workshop_video_brain.core.models.kdenlive import KdenliveProject
+from workshop_video_brain.edit_mcp.pipelines.overlay_looks import (
+    append_clip_to_playlist,
 )
-from workshop_video_brain.edit_mcp.pipelines import clip_place as _cp
-from workshop_video_brain.edit_mcp.pipelines.overlay_looks import overlay_producer_id
 
 DEFAULT_WPM = 150.0
 DEFAULT_FPS = 25.0
@@ -278,23 +276,11 @@ def insert_take_clip(
         )
     playlist = aps[audio_track]
 
-    producer_id = overlay_producer_id(media_path)
-    if producer_id not in {p.id for p in project.producers}:
-        project.producers.append(
-            Producer(
-                id=producer_id,
-                resource=media_path,
-                properties={"resource": media_path},
-            )
-        )
-
-    clip = _cp.PlacedClip(
-        producer_id=producer_id, in_point=0, out_point=duration_frames - 1
+    # Model-level placement is shared with ``overlay_looks.insert_overlay_clip``
+    # (13 identical statements merged in the consistency pass).
+    return append_clip_to_playlist(
+        project, playlist, media_path, at_frame, duration_frames
     )
-    at = _cp.playlist_length(playlist.entries) + at_frame
-    result = _cp.plan_overwrite(playlist.entries, at, clip)
-    playlist.entries = result.entries
-    return result.placed_index
 
 
 def seconds_to_frames(seconds: float, fps: float) -> int:

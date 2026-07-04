@@ -249,6 +249,22 @@ def active_subtitle_index(project: KdenliveProject) -> str:
     return str(project.subtitles[0].id)
 
 
+def timeline_frame_length(project: KdenliveProject, default: int = 250) -> int:
+    """Best-effort timeline length in frames (longest playlist), else *default*.
+
+    Sums each playlist's real+blank entry spans and returns the maximum, used to
+    bound a headless melt render. Pure model read; the bundle owns the parse +
+    parse-failure fallback.
+    """
+    max_len = 0
+    for playlist in project.playlists:
+        total = sum(
+            max(0, e.out_point - e.in_point + 1) for e in playlist.entries
+        )
+        max_len = max(max_len, total)
+    return max_len if max_len > 0 else default
+
+
 def attach_subtitle(
     project: KdenliveProject,
     sidecar_path: str,

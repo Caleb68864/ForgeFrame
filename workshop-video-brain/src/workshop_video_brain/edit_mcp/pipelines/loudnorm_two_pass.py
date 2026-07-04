@@ -35,6 +35,7 @@ from pathlib import Path
 
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import (
     LoudnessResult,
+    has_video_stream,
     measure_loudness,
 )
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
@@ -145,23 +146,15 @@ def _measure_thresh(path: Path) -> float | None:
 
 
 def _has_video_stream(path: Path) -> bool:
-    """Return True if *path* contains at least one video stream (ffprobe)."""
-    try:
-        proc = subprocess.run(
-            [
-                "ffprobe", "-v", "error",
-                "-select_streams", "v",
-                "-show_entries", "stream=codec_type",
-                "-of", "csv=p=0",
-                str(path),
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except (OSError, ValueError):
-        return False
-    return "video" in proc.stdout
+    """Return True if *path* contains at least one video stream (ffprobe).
+
+    Thin delegate to the shared ``adapters/ffmpeg/probe.has_video_stream``; the
+    adapter returns ``None`` when it cannot tell (ffprobe missing/errored), which
+    this collapses to ``False`` to preserve the original bool contract (treat
+    "unknown" as audio-only). Kept as a module-local name because the loudnorm
+    tests monkeypatch ``_has_video_stream`` directly.
+    """
+    return has_video_stream(path) is True
 
 
 def parse_pass2_result(stderr: str) -> dict:

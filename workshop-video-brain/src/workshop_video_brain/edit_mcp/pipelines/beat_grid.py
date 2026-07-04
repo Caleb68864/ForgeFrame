@@ -18,6 +18,9 @@ from pathlib import Path
 
 import numpy as np
 
+from workshop_video_brain.edit_mcp.pipelines._common import (
+    parabolic_peak_offset as _parabolic_peak,
+)
 from workshop_video_brain.edit_mcp.pipelines.audio_sync import (
     decode_mono_pcm,
     energy_envelope,
@@ -84,15 +87,9 @@ def detect_onset_peaks(
 # Tempo via autocorrelation
 # ---------------------------------------------------------------------------
 
-def _parabolic_peak(y: np.ndarray, i: int) -> float:
-    """Sub-sample peak offset in [-0.5, 0.5] via 3-point parabola around ``i``."""
-    if i <= 0 or i >= y.size - 1:
-        return 0.0
-    left, mid, right = y[i - 1], y[i], y[i + 1]
-    denom = left - 2.0 * mid + right
-    if denom == 0.0:
-        return 0.0
-    return 0.5 * (left - right) / denom
+# ``_parabolic_peak`` is imported above from ``pipelines/_common``
+# (parabolic_peak_offset); the identical copy that lived here was merged in the
+# consistency pass. ``audio_sync._parabolic_refine`` shares the same canonical.
 
 
 def _local_argmax(acf: np.ndarray, lag: int, radius: int = 3) -> tuple[int, float]:

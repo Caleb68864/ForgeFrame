@@ -11,8 +11,6 @@ Snapshot-before-write; returns ``_ok``/``_err`` dicts.
 """
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET
-
 from workshop_video_brain.server import mcp
 from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     tool_guard,
@@ -39,6 +37,7 @@ from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
 from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
 from workshop_video_brain.edit_mcp.pipelines import zoom_whip as _zw
+from workshop_video_brain.edit_mcp.pipelines._common import make_filter_element_xml
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _err,
     _ok,
@@ -54,25 +53,20 @@ def _filter_xml(
     clip_index: int,
     props: dict[str, str],
 ) -> str:
-    """Serialize a root-level ``<filter>`` associated to (track, clip_index)."""
-    filt = ET.Element(
-        "filter",
-        {"mlt_service": service, "track": str(track), "clip_index": str(clip_index)},
+    """Serialize a root-level ``<filter>`` associated to (track, clip_index).
+
+    Thin delegate to the shared pipeline builder (kid property + props, no
+    explicit ``mlt_service`` property child -- the zoom-whip shape).
+    """
+    return make_filter_element_xml(
+        service, kdenlive_id, (track, clip_index), list(props.items()),
+        include_service_prop=False,
     )
-    kid = ET.SubElement(filt, "property", {"name": "kdenlive_id"})
-    kid.text = kdenlive_id
-    for name, value in props.items():
-        prop = ET.SubElement(filt, "property", {"name": name})
-        prop.text = str(value)
-    return ET.tostring(filt, encoding="unicode")
 
 
-def _clip_frames(project, track: int, clip_index: int) -> int:
-    """Frame length of a clip on a video track (out_point - in_point + 1)."""
-    playlist = project.playlists[track]
-    real = [e for e in playlist.entries if e.producer_id]
-    entry = real[clip_index]
-    return int(entry.out_point) - int(entry.in_point) + 1
+# Model-read helper relocated to ``pipelines/zoom_whip.py``; kept as a delegate
+# so any in-module callers / tests resolving ``_clip_frames`` still work.
+_clip_frames = _zw.clip_frame_length
 
 
 @mcp.tool()

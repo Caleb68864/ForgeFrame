@@ -14,10 +14,12 @@ preserving the pipeline's own ``error`` text under ``message``.
 from __future__ import annotations
 
 import logging
-import subprocess
 from pathlib import Path
 from typing import Any
 
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import (
+    has_video_stream as has_video_stream,  # re-export: canonical home is the ffprobe adapter
+)
 from workshop_video_brain.edit_mcp.server.errors import (
     VALID_ERROR_TYPES,
     OPERATION_FAILED,
@@ -26,30 +28,9 @@ from workshop_video_brain.edit_mcp.server.errors import (
 
 logger = logging.getLogger("workshop_video_brain.edit_mcp.tools")
 
-
-def has_video_stream(path: Path | str) -> bool | None:
-    """Return True/False if *path* has a video stream, or None if undeterminable.
-
-    Used by video-only tools (stabilize/denoise) to refuse an audio-only file
-    up front rather than emit a bogus "stabilized" audio track. ``None`` (ffprobe
-    missing / errored) means "cannot tell" -- callers should not block on it.
-    """
-    try:
-        proc = subprocess.run(
-            [
-                "ffprobe", "-v", "error",
-                "-select_streams", "v",
-                "-show_entries", "stream=codec_type",
-                "-of", "csv=p=0",
-                str(path),
-            ],
-            capture_output=True, text=True, check=False, timeout=60,
-        )
-    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
-        return None
-    if proc.returncode != 0:
-        return None
-    return "video" in proc.stdout
+# ``has_video_stream`` was relocated to ``adapters/ffmpeg/probe.py`` (its natural
+# pure-ffprobe home) and is re-exported above so existing importers
+# (``bundles/stabilize.py``) keep working unchanged.
 
 
 def cleanup_partial_output(*paths: Path | str | None) -> None:

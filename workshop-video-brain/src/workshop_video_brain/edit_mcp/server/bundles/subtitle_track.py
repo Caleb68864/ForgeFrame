@@ -329,16 +329,14 @@ def subtitles_burn_in(
 
 
 def _project_frame_count(project_path: Path) -> int:
-    """Best-effort timeline length in frames for bounding a melt render."""
+    """Best-effort timeline length in frames for bounding a melt render.
+
+    Parses the project (I/O stays in the bundle) and delegates the max-span
+    model math to ``pipelines/subtitle_track.timeline_frame_length``; any parse
+    failure falls back to the same 250-frame default.
+    """
     try:
         project = parse_project(project_path)
-        max_len = 0
-        for playlist in project.playlists:
-            total = sum(
-                max(0, e.out_point - e.in_point + 1)
-                for e in playlist.entries
-            )
-            max_len = max(max_len, total)
-        return max_len if max_len > 0 else 250
     except Exception:
         return 250
+    return st.timeline_frame_length(project, default=250)
