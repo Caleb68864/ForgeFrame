@@ -30,6 +30,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     bad_json_param,
     corrupt_project,
     operation_failed,
+    from_exception,
     media_unreadable,
     MISSING_FILE,
     MISSING_BINARY,
@@ -158,15 +159,12 @@ def effect_light_leak(
     if resolved_overlay == target_track:
         return err("overlay_track must differ from target_track", suggestion="Put the overlay on a different track from the footage it sits over; pass a distinct overlay_track index.")
 
+    # Parse BEFORE snapshotting so a corrupt project fails cleanly
+    # (corrupt_project) without leaving a leaked snapshot behind.
     try:
-        record = create_snapshot(
-            ws_path, project_path, description="before_effect_light_leak"
-        )
-        snapshot_id = record.snapshot_id
-    except Exception as exc:  # noqa: BLE001
-        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
-
-    project = parse_project(project_path)
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
     fps = project.profile.fps or 25.0
     width, height = project.profile.width, project.profile.height
 
@@ -231,6 +229,17 @@ def effect_light_leak(
         )
     except ValueError as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
+
+    # Snapshot only now -- after a successful parse + all preconditions/mutations
+    # -- and just before serialization, so a corrupt/invalid project never leaks
+    # a snapshot of the untouched file.
+    try:
+        record = create_snapshot(
+            ws_path, project_path, description="before_effect_light_leak"
+        )
+        snapshot_id = record.snapshot_id
+    except Exception as exc:  # noqa: BLE001
+        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
     serialize_project(updated, project_path)
     return _ok({
@@ -336,7 +345,12 @@ def effect_day_to_night(
                 suggestion="Pass blend_mode as one of the listed sky-overlay modes (e.g. 'screen' or 'add').",
             )
 
-    project = parse_project(project_path)
+    # Parse BEFORE snapshotting so a corrupt project fails cleanly
+    # (corrupt_project) without leaving a leaked snapshot behind.
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
     fps = project.profile.fps or 25.0
     width, height = project.profile.width, project.profile.height
 

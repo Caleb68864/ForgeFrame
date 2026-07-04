@@ -30,6 +30,7 @@ from pathlib import Path
 from workshop_video_brain.server import mcp
 from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     tool_guard,
+    from_exception,
     err,
     missing_file,
     missing_binary,
@@ -165,6 +166,8 @@ def subject_locate_frames(
         entry, _real_index, producer = _resolve_clip(project, track, clip_index)
     except (FileNotFoundError, IndexError, ValueError) as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
 
     source = _producer_resource(ws_path, producer)
     if source is None or not source.exists():
@@ -255,6 +258,8 @@ def subject_track(
         entry, _real_index, producer = _resolve_clip(project, track, clip_index)
     except (FileNotFoundError, IndexError, ValueError) as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
 
     source = _producer_resource(ws_path, producer)
     if source is None or not source.exists():
@@ -410,6 +415,8 @@ def subject_zoom(
         _entry, _real_index, _producer = _resolve_clip(project, track, clip_index)
     except (FileNotFoundError, IndexError, ValueError) as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
 
     fps = project.profile.fps or 25.0
     width = project.profile.width

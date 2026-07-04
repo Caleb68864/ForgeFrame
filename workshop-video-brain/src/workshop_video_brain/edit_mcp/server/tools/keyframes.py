@@ -239,7 +239,10 @@ def effect_find(
     if not project_path.exists():
         return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
-    project = parse_project(project_path)
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
     try:
         idx = effect_find_pipe.find(project, (track, clip), name)
     except LookupError as exc:

@@ -22,6 +22,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     corrupt_project,
     operation_failed,
     media_unreadable,
+    from_exception,
     MISSING_FILE,
     MISSING_BINARY,
     INVALID_INDEX,
@@ -100,11 +101,12 @@ def composite_split_screen(
     except ValueError as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
-    record = create_snapshot(
-        ws_path, proj_path, description=f"before_split_screen_{layout}"
-    )
+    # Parse BEFORE snapshotting so a corrupt project fails cleanly.
+    try:
+        project = parse_project(proj_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
 
-    project = parse_project(proj_path)
     try:
         updated, cells = apply_split_screen(
             project,
@@ -119,6 +121,10 @@ def composite_split_screen(
         )
     except (ValueError, KeyError) as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
+
+    record = create_snapshot(
+        ws_path, proj_path, description=f"before_split_screen_{layout}"
+    )
 
     serialize_project(updated, proj_path)
     return _ok({

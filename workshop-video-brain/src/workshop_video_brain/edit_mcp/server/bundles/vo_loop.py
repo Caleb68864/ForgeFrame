@@ -38,6 +38,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     corrupt_project,
     operation_failed,
     media_unreadable,
+    from_exception,
     MISSING_FILE,
     MISSING_BINARY,
     INVALID_INDEX,
@@ -139,15 +140,12 @@ def vo_plan(
         project_path = ws_path / project_file
         if not project_path.exists():
             return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
+        # Parse BEFORE snapshotting so a corrupt project fails cleanly.
         try:
-            record = create_snapshot(
-                ws_path, project_path, description="before_vo_plan"
-            )
-            snapshot_id = record.snapshot_id
-        except Exception as exc:  # noqa: BLE001
-            return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
+            project = parse_project(project_path)
+        except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+            return from_exception(exc)
 
-        project = parse_project(project_path)
         for cue in plan["cues"]:
             project = _guides.add_guide(
                 project,
@@ -158,6 +156,15 @@ def vo_plan(
             guide_info.append(
                 {"cue_id": cue["cue_id"], "at_seconds": cue["start_seconds"]}
             )
+
+        try:
+            record = create_snapshot(
+                ws_path, project_path, description="before_vo_plan"
+            )
+            snapshot_id = record.snapshot_id
+        except Exception as exc:  # noqa: BLE001
+            return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
+
         serialize_project(project, project_path)
         placement = "guides"
     else:
@@ -263,15 +270,12 @@ def vo_attach(
     except RuntimeError as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
+    # Parse BEFORE snapshotting so a corrupt project fails cleanly.
     try:
-        record = create_snapshot(
-            ws_path, project_path, description="before_vo_attach"
-        )
-        snapshot_id = record.snapshot_id
-    except Exception as exc:  # noqa: BLE001
-        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
 
-    project = parse_project(project_path)
     fps = project.profile.fps or _vo.DEFAULT_FPS
     at_frame = _vo.seconds_to_frames(cue["start_seconds"], fps)
     dur_frames = max(1, _vo.seconds_to_frames(actual_seconds, fps))
@@ -282,6 +286,14 @@ def vo_attach(
         )
     except ValueError as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
+
+    try:
+        record = create_snapshot(
+            ws_path, project_path, description="before_vo_attach"
+        )
+        snapshot_id = record.snapshot_id
+    except Exception as exc:  # noqa: BLE001
+        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
     serialize_project(project, project_path)
 

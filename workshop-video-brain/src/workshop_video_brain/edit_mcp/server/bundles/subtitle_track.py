@@ -36,6 +36,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     bad_json_param,
     corrupt_project,
     operation_failed,
+    from_exception,
     media_unreadable,
     MISSING_FILE,
     MISSING_BINARY,
@@ -163,7 +164,13 @@ def subtitles_attach(
         srt = _resolve_srt(workspace_path, srt_path)
         subtitle_style = st.SubtitleStyle.from_input(style)
 
-        project = parse_project(project_path)
+        # Parse BEFORE snapshotting so a corrupt project fails cleanly
+        # (corrupt_project) instead of the outer generic handler, and without
+        # leaving a leaked snapshot behind.
+        try:
+            project = parse_project(project_path)
+        except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+            return from_exception(exc)
         width = project.profile.width or 1920
         height = project.profile.height or 1080
 

@@ -33,6 +33,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     bad_json_param,
     corrupt_project,
     operation_failed,
+    from_exception,
     media_unreadable,
     MISSING_FILE,
     MISSING_BINARY,
@@ -142,7 +143,12 @@ def track_volume(
     except (ValueError, FileNotFoundError) as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
-    project = parse_project(project_path)
+    # Parse BEFORE snapshotting so a corrupt project fails cleanly
+    # (corrupt_project) without leaving a leaked snapshot behind.
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
     verr = _validate_track(project, track)
     if verr:
         return verr
@@ -212,7 +218,12 @@ def track_pan(
     except (ValueError, FileNotFoundError) as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
-    project = parse_project(project_path)
+    # Parse BEFORE snapshotting so a corrupt project fails cleanly
+    # (corrupt_project) without leaving a leaked snapshot behind.
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
     verr = _validate_track(project, track)
     if verr:
         return verr
@@ -273,7 +284,12 @@ def track_eq(
     except (ValueError, FileNotFoundError) as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
-    project = parse_project(project_path)
+    # Parse BEFORE snapshotting so a corrupt project fails cleanly
+    # (corrupt_project) without leaving a leaked snapshot behind.
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
     verr = _validate_track(project, track)
     if verr:
         return verr
@@ -400,7 +416,12 @@ def audio_duck(
     except (ValueError, FileNotFoundError) as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
-    project = parse_project(project_path)
+    # Parse BEFORE snapshotting so a corrupt project fails cleanly
+    # (corrupt_project) without leaving a leaked snapshot behind.
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
     for label, idx in (("music_track", music_track), ("voice_track", voice_track)):
         if idx < 0 or idx >= len(project.playlists):
             return err(

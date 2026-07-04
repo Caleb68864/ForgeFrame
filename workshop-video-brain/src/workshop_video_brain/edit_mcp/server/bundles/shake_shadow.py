@@ -36,6 +36,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     corrupt_project,
     operation_failed,
     media_unreadable,
+    from_exception,
     MISSING_FILE,
     MISSING_BINARY,
     INVALID_INDEX,
@@ -114,7 +115,11 @@ def effect_camera_shake(
     if not project_path.exists():
         return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
 
-    project = parse_project(project_path)
+    # Parse BEFORE snapshotting so a corrupt project fails cleanly.
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
     fps = project.profile.fps or 25.0
     width = project.profile.width
     height = project.profile.height
@@ -252,16 +257,12 @@ def effect_drop_shadow(
     except ValueError as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
-    # Snapshot before write.
+    # Parse BEFORE snapshotting so a corrupt project fails cleanly.
     try:
-        record = create_snapshot(
-            ws_path, project_path, description="before_effect_drop_shadow"
-        )
-        snapshot_id = record.snapshot_id
-    except Exception as exc:  # noqa: BLE001
-        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
 
-    project = parse_project(project_path)
     xml = _build_filter_xml(
         mlt_service=DROP_SHADOW_SERVICE,
         kdenlive_id="dropshadow",
@@ -278,6 +279,15 @@ def effect_drop_shadow(
         )
     except (IndexError, ValueError) as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
+
+    # Snapshot before write.
+    try:
+        record = create_snapshot(
+            ws_path, project_path, description="before_effect_drop_shadow"
+        )
+        snapshot_id = record.snapshot_id
+    except Exception as exc:  # noqa: BLE001
+        return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
     serialize_project(project, project_path)
     return _ok({

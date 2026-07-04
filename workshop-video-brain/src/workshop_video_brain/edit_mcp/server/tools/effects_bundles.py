@@ -92,17 +92,12 @@ def effect_glitch_stack(
         params = dict(next(p for s, p in stack if s == svc))
         resolved.append((svc, kid, params))
 
-    # Single snapshot
+    # Parse + build the stack in memory BEFORE snapshotting so a corrupt
+    # project or a bad index fails cleanly without leaking a snapshot.
     try:
-        record = create_snapshot(
-            ws_path, project_path, description="before_effect_glitch_stack"
-        )
-        snapshot_id = record.snapshot_id
-    except Exception as exc:  # noqa: BLE001
-        return err(f"Snapshot failed: {exc}",
-                   suggestion="A safety snapshot could not be written before applying the effects. Check that projects/snapshots/ is writable, then retry.")
-
-    project = parse_project(project_path)
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
 
     try:
         existing = patcher.list_effects(project, (track, clip))
@@ -129,6 +124,16 @@ def effect_glitch_stack(
                 suggestion="Some filters applied before this one failed. Restore the pre-op snapshot with snapshot_restore to get back to a clean state, then retry.",
             )
         inserted += 1
+
+    # Single snapshot, taken only after the in-memory edit succeeded.
+    try:
+        record = create_snapshot(
+            ws_path, project_path, description="before_effect_glitch_stack"
+        )
+        snapshot_id = record.snapshot_id
+    except Exception as exc:  # noqa: BLE001
+        return err(f"Snapshot failed: {exc}",
+                   suggestion="A safety snapshot could not be written before applying the effects. Check that projects/snapshots/ is writable, then retry.")
 
     serialize_project(project, project_path)
     return _ok({
@@ -209,7 +214,10 @@ def effect_hologram(
     if not project_path.exists():
         return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
-    project = parse_project(project_path)
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
     fps = project.profile.fps or 25.0
 
     # Resolve the flicker window (default -1 => end of clip).
@@ -460,17 +468,12 @@ def flash_cut_montage(
         return err("Effect service 'avfilter.negate' is not in the generated catalog.",
                    suggestion="Regenerate the catalog with `uv run workshop-video-brain catalog regenerate`; this bundle needs the avfilter.negate effect.")
 
-    # Snapshot ONCE before anything
+    # Parse + perform the splits/filters in memory BEFORE snapshotting so a
+    # corrupt project or a bad index fails cleanly without leaking a snapshot.
     try:
-        record = create_snapshot(
-            ws_path, project_path, description="before_flash_cut_montage"
-        )
-        snapshot_id = record.snapshot_id
-    except Exception as exc:  # noqa: BLE001
-        return err(f"Snapshot failed: {exc}",
-                   suggestion="A safety snapshot could not be written before applying the effects. Check that projects/snapshots/ is writable, then retry.")
-
-    project = parse_project(project_path)
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
 
     try:
         playlist = _resolve_playlist(project, track)
@@ -556,6 +559,16 @@ def flash_cut_montage(
                     suggestion="Some pieces were processed before this one failed. Restore the pre-op snapshot with snapshot_restore, then retry.",
                 )
 
+    # Snapshot ONCE, only after the parse + all in-memory edits succeeded.
+    try:
+        record = create_snapshot(
+            ws_path, project_path, description="before_flash_cut_montage"
+        )
+        snapshot_id = record.snapshot_id
+    except Exception as exc:  # noqa: BLE001
+        return err(f"Snapshot failed: {exc}",
+                   suggestion="A safety snapshot could not be written before applying the effects. Check that projects/snapshots/ is writable, then retry.")
+
     serialize_project(project, project_path)
     return _ok({
         "split_clip_indices": piece_indices,
@@ -598,6 +611,9 @@ def _reorder_impl(
 
     try:
         project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
+    try:
         stack_len = len(patcher.list_effects(project, (track, clip)))
     except (ValueError, IndexError, KeyError) as exc:
         return from_exception(exc)

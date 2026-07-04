@@ -33,6 +33,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     bad_json_param,
     corrupt_project,
     operation_failed,
+    from_exception,
     media_unreadable,
     MISSING_FILE,
     MISSING_BINARY,
@@ -250,7 +251,12 @@ def overlay_insert(
     if not 0.0 <= float(opacity) <= 1.0:
         return err(f"opacity must be in [0.0, 1.0]; got {opacity}", suggestion="Pass opacity as a fraction between 0.0 (invisible) and 1.0 (solid).")
 
-    project = parse_project(project_path)
+    # Parse BEFORE snapshotting so a corrupt project fails cleanly
+    # (corrupt_project) without leaving a leaked snapshot behind.
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
     fps = project.profile.fps or 25.0
     at_frame = max(0, round(at_seconds * fps))
     duration_frames = max(1, round(duration_seconds * fps))
@@ -350,7 +356,12 @@ def watermark_apply(
     if not 0.0 <= float(opacity) <= 1.0:
         return err(f"opacity must be in [0.0, 1.0]; got {opacity}", suggestion="Pass opacity as a fraction between 0.0 (invisible) and 1.0 (solid).")
 
-    project = parse_project(project_path)
+    # Parse BEFORE snapshotting so a corrupt project fails cleanly
+    # (corrupt_project) without leaving a leaked snapshot behind.
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
     duration_frames = io.timeline_duration_frames(project)
     if duration_frames <= 0:
         return err("The project timeline is empty, so there is nothing to watermark.", suggestion="Add clips to the timeline first, then apply the watermark.")

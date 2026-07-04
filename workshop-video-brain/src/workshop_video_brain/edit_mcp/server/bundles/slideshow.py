@@ -20,6 +20,7 @@ from pathlib import Path
 from workshop_video_brain.server import mcp
 from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     tool_guard,
+    from_exception,
     err,
     missing_file,
     missing_binary,
@@ -44,6 +45,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _validate_workspace_path,
 )
+from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import ProjectParseError
 from workshop_video_brain.edit_mcp.pipelines import slideshow as _ss
 from workshop_video_brain.edit_mcp.server.bundles._pipeline_errors import (
     cleanup_partial_output as _cleanup_partial,
@@ -87,6 +89,10 @@ def _resolve_profile(
             width = proj.profile.width or width
             height = proj.profile.height or height
             fps = proj.profile.fps or fps
+    except ProjectParseError:
+        # A corrupt user project must fail loudly, not silently fall back to
+        # defaults; surface it to the tool body which routes to corrupt_project.
+        raise
     except Exception:
         pass
 
@@ -290,5 +296,7 @@ def media_slideshow(
             "probed_duration_seconds": _probe_duration(output_path),
             "ingestable": True,
         })
+    except ProjectParseError as exc:
+        return from_exception(exc)
     except Exception as exc:
         return operation_failed(str(exc), cause=exc)

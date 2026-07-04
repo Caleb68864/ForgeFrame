@@ -23,6 +23,7 @@ from __future__ import annotations
 from workshop_video_brain.server import mcp
 from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     tool_guard,
+    from_exception,
     err,
     missing_file,
     missing_binary,
@@ -152,7 +153,10 @@ def speed_ramp(
     if not project_path.exists():
         return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
 
-    project = parse_project(project_path)
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
 
     n_tracks = len(project.playlists)
     if track < 0 or track >= n_tracks:

@@ -30,6 +30,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     corrupt_project,
     operation_failed,
     media_unreadable,
+    from_exception,
     MISSING_FILE,
     MISSING_BINARY,
     INVALID_INDEX,
@@ -241,7 +242,18 @@ def mask_generate_and_apply(
     except (ValueError, TypeError) as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
-    # 3. Snapshot + patch + serialize (mirrors mask_set_from_file).
+    # 3. Parse + patch + snapshot + serialize (mirrors mask_set_from_file).
+    # Parse BEFORE snapshotting so a corrupt project fails cleanly.
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
+
+    try:
+        patcher.insert_effect_xml(project, (track, clip), xml, position=0)
+    except (IndexError, ValueError) as exc:
+        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
+
     try:
         record = create_snapshot(
             ws_path, project_path, description="before_mask_generate_and_apply"
@@ -250,11 +262,6 @@ def mask_generate_and_apply(
     except Exception as exc:  # noqa: BLE001
         return operation_failed(f"Snapshot failed: {exc}", cause=exc, suggestion="Ensure the workspace is writable and has free disk space so a pre-edit snapshot can be created.")
 
-    project = parse_project(project_path)
-    try:
-        patcher.insert_effect_xml(project, (track, clip), xml, position=0)
-    except (IndexError, ValueError) as exc:
-        return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
     serialize_project(project, project_path)
 
     return _ok({

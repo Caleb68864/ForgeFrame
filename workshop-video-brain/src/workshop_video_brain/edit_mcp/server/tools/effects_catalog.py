@@ -226,7 +226,10 @@ def effects_copy(
     if not project_path.exists():
         return err(f"Project file not found: {project_file}", error_type="missing_file", suggestion="Create a working copy with project_create_working_copy, or check the project path.", path=str(project_file))
 
-    project = parse_project(project_path)
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
     try:
         stack = stack_ops.serialize_stack(project, (track, clip))
     except IndexError as exc:
@@ -467,7 +470,10 @@ def effect_stack_preset(
             return err(f"Invalid apply_hints: {exc}",
                        suggestion="apply_hints contains keys ApplyHints does not accept; check the field names against the preset schema.")
 
-    project = parse_project(project_path)
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
     try:
         preset = stack_presets.serialize_clip_to_preset(
             project,
@@ -546,6 +552,19 @@ def effect_stack_apply(
     except FileNotFoundError as exc:
         return from_exception(exc)
 
+    # Parse + apply the preset in memory BEFORE snapshotting so a corrupt
+    # project or a bad index fails cleanly without leaking a snapshot.
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
+    try:
+        result = stack_presets.apply_preset(
+            project, (track, clip), preset, mode_override=mode_override
+        )
+    except (ValueError, IndexError) as exc:
+        return from_exception(exc)
+
     try:
         record = create_snapshot(
             ws_path, project_path, description=f"before_apply_{name}"
@@ -554,14 +573,6 @@ def effect_stack_apply(
     except Exception as exc:  # noqa: BLE001
         return err(f"Snapshot failed: {exc}",
                    suggestion="A safety snapshot could not be written before applying the preset. Check that projects/snapshots/ is writable, then retry.")
-
-    project = parse_project(project_path)
-    try:
-        result = stack_presets.apply_preset(
-            project, (track, clip), preset, mode_override=mode_override
-        )
-    except (ValueError, IndexError) as exc:
-        return from_exception(exc)
 
     serialize_project(project, project_path)
 

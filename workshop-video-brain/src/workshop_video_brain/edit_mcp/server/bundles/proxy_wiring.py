@@ -23,6 +23,7 @@ from pathlib import Path
 from workshop_video_brain.server import mcp
 from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     tool_guard,
+    from_exception,
     err,
     missing_file,
     missing_binary,
@@ -135,7 +136,10 @@ def proxy_attach(
             return invalid_input(f"Workspace path is not a directory: {workspace_path}", suggestion="Pass an existing workspace directory (the folder that holds workspace.yaml).", path=workspace_path)
 
         project_path = _resolve_project(workspace_path, project_file)
-        project = parse_project(project_path)
+        try:
+            project = parse_project(project_path)
+        except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+            return from_exception(exc)
 
         _, report = pw.attach_proxies(
             project,
@@ -204,7 +208,10 @@ def proxy_detach(
             return invalid_input(f"Workspace path is not a directory: {workspace_path}", suggestion="Pass an existing workspace directory (the folder that holds workspace.yaml).", path=workspace_path)
 
         project_path = _resolve_project(workspace_path, project_file)
-        project = parse_project(project_path)
+        try:
+            project = parse_project(project_path)
+        except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+            return from_exception(exc)
 
         _, report = pw.detach_proxies(project, source=source, all_clips=all_clips)
 
@@ -257,7 +264,10 @@ def proxy_status(workspace_path: str, project_file: str = "") -> dict:
             return invalid_input(f"Workspace path is not a directory: {workspace_path}", suggestion="Pass an existing workspace directory (the folder that holds workspace.yaml).", path=workspace_path)
 
         project_path = _resolve_project(workspace_path, project_file)
-        project = parse_project(project_path)
+        try:
+            project = parse_project(project_path)
+        except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+            return from_exception(exc)
 
         rows = pw.proxy_status(project, _proxy_dir(ws))
         producers = [

@@ -30,6 +30,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     bad_json_param,
     corrupt_project,
     operation_failed,
+    from_exception,
     media_unreadable,
     MISSING_FILE,
     MISSING_BINARY,
@@ -156,7 +157,13 @@ def title_card_add(
         except ValueError as exc:
             return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
-        project = parse_project(project_path)
+        # Parse BEFORE snapshotting so a corrupt project fails cleanly
+        # (corrupt_project) instead of the outer generic operation_failed, and
+        # without leaving a leaked snapshot behind.
+        try:
+            project = parse_project(project_path)
+        except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+            return from_exception(exc)
         new = project.model_copy(deep=True)
         prof = new.profile
         fps = prof.fps or 25.0

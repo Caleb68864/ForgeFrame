@@ -38,6 +38,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     corrupt_project,
     operation_failed,
     media_unreadable,
+    from_exception,
     MISSING_FILE,
     MISSING_BINARY,
     INVALID_INDEX,
@@ -108,11 +109,12 @@ def transition_masked_wipe(
 
     end_frame = start_frame + duration_frames
 
-    record = create_snapshot(
-        ws_path, proj_path, description="before_masked_wipe"
-    )
+    # Parse BEFORE snapshotting so a corrupt project fails cleanly.
+    try:
+        project = parse_project(proj_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
 
-    project = parse_project(proj_path)
     try:
         updated = apply_masked_wipe(
             project,
@@ -126,6 +128,10 @@ def transition_masked_wipe(
         )
     except ValueError as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
+
+    record = create_snapshot(
+        ws_path, proj_path, description="before_masked_wipe"
+    )
 
     serialize_project(updated, proj_path)
 
@@ -181,9 +187,12 @@ def effect_luma_key(
     if not proj_path.exists():
         return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
 
-    record = create_snapshot(ws_path, proj_path, description="before_luma_key")
+    # Parse BEFORE snapshotting so a corrupt project fails cleanly.
+    try:
+        project = parse_project(proj_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
 
-    project = parse_project(proj_path)
     try:
         updated = apply_luma_key(
             project,
@@ -195,6 +204,8 @@ def effect_luma_key(
         )
     except (ValueError, IndexError) as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
+
+    record = create_snapshot(ws_path, proj_path, description="before_luma_key")
 
     serialize_project(updated, proj_path)
     return _ok({

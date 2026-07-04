@@ -25,6 +25,7 @@ from pathlib import Path
 from workshop_video_brain.server import mcp
 from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     tool_guard,
+    from_exception,
     err,
     missing_file,
     missing_binary,
@@ -188,7 +189,10 @@ def effect_rewind(
     except ValueError as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
-    project = parse_project(project_path)
+    try:
+        project = parse_project(project_path)
+    except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+        return from_exception(exc)
 
     # Resolve the target clip -> source media + raw playlist position.
     if track < 0 or track >= len(project.playlists):

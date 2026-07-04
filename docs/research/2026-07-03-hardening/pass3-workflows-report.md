@@ -154,3 +154,100 @@ message; now asserts `missing_file` naming the media path).
 - Full suite: **4179 passed, 1 skipped** (`uv run pytest tests/ -q -p no:randomly`,
   204 s) — baseline was `4159 passed, 1 skipped`; +20 = 4179, **zero regressions,
   zero failures**.
+
+---
+
+# Closeout sweep — complete `parse_project` census (Pass 3 closeout)
+
+The Pass-3a follow-up recommendation ("sweep the remainder to guarantee
+`corrupt_project` everywhere") is now **done**. Every `parse_project(` call site
+across `server/bundles/`, `server/tools/`, and the shared
+`server/tools_helpers.py` was enumerated and classified. `ProjectParseError`
+subclasses `Exception` directly (not `ValueError`), so pre-existing
+`except (ValueError, FileNotFoundError)` clauses never caught it — every such
+site was silently letting a corrupt project fall through to `tool_guard`'s
+generic `operation_failed`. All are now routed to `corrupt_project`.
+
+## Classification buckets
+- **(a) guarded** — parse already routes `ProjectParseError → corrupt_project`
+  (via `except ProjectParseError → corrupt_project(...)` or the shared
+  `errors.from_exception(exc)`), and any `create_snapshot` runs *after* a
+  successful parse+validate. Left untouched.
+- **(b) unguarded parse** — `ProjectParseError` escaped to `operation_failed`.
+  Fixed by wrapping the parse: `try: project = parse_project(...) except
+  Exception as exc: return from_exception(exc)` (routes to `corrupt_project`,
+  message text preserved). For shared `_load`/`_resolve_project` helpers, the
+  guard was added at each tool call site.
+- **(c) snapshot-before-parse** — `create_snapshot` ran *before* the parse, so a
+  corrupt project both mis-reported `operation_failed` *and leaked a snapshot of
+  the untouched file*. Fixed by reordering to
+  parse(guarded) → validate → snapshot → serialize (matching
+  `bundles/clip_place.py` / `tools/effects_color.py`).
+
+## Site census
+
+| bucket | count |
+|---|---:|
+| **Total `parse_project(` call sites** | **63** |
+| (a) already guarded — left | 24 |
+| best-effort helper (`subtitle_track._project_frame_count`) — intentionally left | 1 |
+| (b) unguarded parse — **fixed** | 26 |
+| (c) snapshot-before-parse — **fixed** | 12 |
+| **Total fixed** | **38** |
+
+`subtitle_track._project_frame_count` is a private best-effort helper that
+returns a fallback frame count (bounds a melt render); it never surfaces an
+error dict and takes no snapshot, so on a corrupt project it returns the
+fallback rather than an error — left as-is by design. The primary parse in that
+module (`subtitles_attach`) is guarded.
+
+### Fixed-by-file
+| file | fixed-b | fixed-c |
+|---|---:|---:|
+| bundles/image_overlay.py | 2 | 0 |
+| bundles/overlay_looks.py | 1 | 1 |
+| bundles/timeline_audio.py | 4 | 0 |
+| bundles/titles.py | 1 | 0 |
+| bundles/subtitle_track.py | 1 | 0 |
+| bundles/shake_shadow.py | 1 | 1 |
+| bundles/masked_wipes.py | 0 | 2 |
+| bundles/shape_alpha_mask.py | 0 | 1 |
+| bundles/vo_loop.py | 0 | 2 |
+| bundles/split_screen.py | 0 | 1 |
+| bundles/ai_mask.py | 0 | 1 |
+| bundles/proxy_wiring.py | 3 | 0 |
+| bundles/guides.py | 4 | 0 |
+| bundles/motion_track.py | 1 | 0 |
+| bundles/speed_ramp.py | 1 | 0 |
+| bundles/rewind.py | 1 | 0 |
+| bundles/slideshow.py | 1 | 0 |
+| tools/effects_catalog.py | 2 | 1 |
+| tools/effects_bundles.py | 2 | 2 |
+| tools/keyframes.py | 1 | 0 |
+| **totals** | **26** | **12** |
+
+20 modules fixed. The (a)-guarded set (unchanged): `clip_place`, `multicam`,
+`effects_color` (Pass-2/3a), `zoom_whip`, `pan_zoom`, `compositing_masking`,
+`transitions`, `timeline_project`, `clips_nle`, `tools_helpers`
+(`_load_latest_project`, guarded at all `clips_nle`/`render` callers), and the
+already-correct paths in `effects_catalog`/`effects_bundles`/`keyframes`.
+
+## Tests
+New file `tests/integration/test_faults_corrupt_sweep.py` — **24 parametrized
+cases**, one or more representative newly-fixed tool per module. Each feeds a
+truncated `.kdenlive` and asserts: `error_type == corrupt_project`, an
+actionable non-generic `suggestion`, no traceback, project bytes byte-identical,
+and **`projects/snapshots/` empty** (no leaked snapshot). 18 of the 20 fixed
+modules are covered here (16) plus `motion_track`/`speed_ramp` via the existing
+`test_faults_bundles.py::_CORRUPT_PROJECT_TOOLS`. Two fixed modules are covered
+structurally only: `ai_mask.mask_generate_and_apply` (matte generation is
+engine-gated and returns `missing_dependency` before the parse when rembg is
+absent) and `slideshow.media_slideshow` (image/ffmpeg-gated, no `project_file`
+arg) — for both, the snapshot-leak fix is real; the `corrupt_project` route is
+reachable only once the pre-parse engine/image gates pass.
+
+## Test counts (closeout)
+- New: **24** tests in `tests/integration/test_faults_corrupt_sweep.py`, all pass.
+- Full suite: **4203 passed, 1 skipped** (`uv run pytest tests/ -q
+  -p no:randomly`, 201 s) — baseline `4179 passed, 1 skipped`; +24 = 4203,
+  **zero regressions, zero failures**. Nothing committed.

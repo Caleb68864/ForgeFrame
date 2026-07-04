@@ -16,6 +16,7 @@ from pathlib import Path
 from workshop_video_brain.server import mcp
 from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     tool_guard,
+    from_exception,
     err,
     missing_file,
     missing_binary,
@@ -102,7 +103,10 @@ def guide_add(
         if at_seconds < 0:
             return err("at_seconds must be >= 0", suggestion="Pass at_seconds as 0 or more (the timeline second to place the guide at).")
 
-        project = parse_project(project_path)
+        try:
+            project = parse_project(project_path)
+        except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+            return from_exception(exc)
         ws_root = _find_workspace_root(project_path)
         if ws_root:
             create_snapshot(ws_root, project_path, description="before_guide_add")
@@ -141,7 +145,10 @@ def guide_list(project_file: str) -> dict:
         project_path = _resolve(project_file)
         if not project_path.exists():
             return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
-        project = parse_project(project_path)
+        try:
+            project = parse_project(project_path)
+        except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+            return from_exception(exc)
         return _ok(
             {
                 "guides": guides_pipeline.list_guides(project),
@@ -170,7 +177,10 @@ def guide_remove(project_file: str, at_seconds_or_label: str) -> dict:
         if not project_path.exists():
             return err(f"Project file not found: {project_file}", error_type=MISSING_FILE, suggestion="Check the project path is correct and resolved under the workspace root; run project_list to see available projects.", path=project_file)
 
-        project = parse_project(project_path)
+        try:
+            project = parse_project(project_path)
+        except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+            return from_exception(exc)
         new_project, removed = guides_pipeline.remove_guide(
             project, at_seconds_or_label
         )
@@ -235,7 +245,10 @@ def publish_chapters(
             if ws_root is None:
                 ws_root = _find_workspace_root(target)
         else:
-            project = parse_project(target)
+            try:
+                project = parse_project(target)
+            except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
+                return from_exception(exc)
             chapters.extend(
                 guides_pipeline.collect_project_guide_chapters(project)
             )
