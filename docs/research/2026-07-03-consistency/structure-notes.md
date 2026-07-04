@@ -612,3 +612,100 @@ LOC, 201 live tools, suite green (per Pass 4's twice-run 4200 passed / 1 skipped
 Passes 1-4 landed code (duplication drain, API/units consistency, layering
 enforcement, test consolidation); Pass 5 is synthesis only. No further appends —
 this document is closed.
+
+---
+
+## Consolidation-1 -- split the `tools_helpers` multi-domain kernel (Phase A)
+
+Executes the opinion's Phase A (`docs/plans/2026-07-03-codebase-restructuring-opinion.md`
+section 3.2 / section 4). Pure code movement, zero behavior change, patcher-split
+shim pattern. Baseline suite unchanged: **4200 passed / 1 skipped**, **201 live
+tools**, both before and after (twice-run post-split). `git diff --stat` confined
+to `pipelines/_common.py`, `server/tools_helpers.py` (deleted), and the new
+`server/tools_helpers/` package.
+
+**Module map (new `server/tools_helpers/` package -- was 357 LOC single file).**
+
+| Module | LOC | Names (public + private re-exported) |
+|---|--:|---|
+| `__init__.py` (shim) | 76 | re-exports all 19 names below; accurate `__all__` |
+| `_responses.py` | 14 | `_ok`, `_err` |
+| `_workspace.py` | 83 | `_validate_workspace_path`, `_require_workspace`, `find_workspace_root`, `find_source_or_latest` |
+| `_projects.py` | 99 | `_VERSION_SUFFIX_RE`, `_project_version_key`, `latest_project`, `_get_video_playlists`, `_load_latest_project`, `_save_patched`, `_resolve_playlist` |
+| `_effects.py` | 130 | `__wrapped_effects__`, `register_effect_wrapper`, `apply_simple_effect`, `_lookup_catalog_by_service` |
+| `_xml.py` | 16 | `_build_filter_xml` (re-export from `_common`), `_VALID_COLOR_FORMATS_MSG` |
+| **total** | **418** | +61 vs 357 = added module headers/docstrings only, **zero logic delta** |
+
+`pipelines/_common.py`: **156 -> 204 LOC** (+48, the relocated `_build_filter_xml`).
+Still under the section 3.3 >250-LOC / 5th-domain split trigger, but closer --
+`_common` now holds three filter builders (`make_filter_xml`,
+`make_filter_element_xml`, `_build_filter_xml`) plus time/text/dsp; **watch the
+trigger** (xml is the 4th domain; a 5th landing or crossing 250 LOC fires the
+`_common/` package split).
+
+Intra-package deps (no cycles): `_projects`->`_workspace` (`_validate_workspace_path`);
+`_effects`->`_responses`+`_workspace` (`_ok`/`_err`/`_require_workspace`);
+`_xml`->`pipelines/_common`. Shim imports submodules in dependency order.
+
+**Module-level state check.** The one stateful object is `_effects.__wrapped_effects__`
+(a list `register_effect_wrapper` appends to). Single-instance semantics preserved:
+the decorator and the list live in the same submodule; `register_effect_wrapper`
+mutates it in place (`.append`), and the shim re-exports the *same* list object.
+Verified live -- `import workshop_video_brain.server` then
+`from ...tools_helpers import __wrapped_effects__` returns the populated registry
+(the `test_effect_wrapper_gen` `>= 20` assertion passes).
+
+**Importer census (~80 modules; all `from ...tools_helpers import (names)`, no
+attribute-style access, so the shim covers 100%).** Frequency by name:
+`_ok`/`_err` 51, `register_effect_wrapper` 45, `apply_simple_effect` 23,
+`_validate_workspace_path` 21, `_require_workspace` 21, `latest_project` 16,
+`_load_latest_project` 4, `find_source_or_latest` 4, `_VALID_COLOR_FORMATS_MSG` 3,
+`_save_patched` 3, `_resolve_playlist` 3, `_lookup_catalog_by_service` 3,
+`find_workspace_root` 3, `_build_filter_xml` 3, `__wrapped_effects__` 2,
+`_get_video_playlists` 1. Importer classes: `server/tools/*` (incl.
+`tools/__init__` which re-exports 7 of these into its 133-name surface, and
+`effects_bundles` -> `_build_filter_xml` x5 call sites), `server/bundles/*`,
+`pipelines/effect_wrappers/*` (22 generated, via `register_effect_wrapper` +
+`apply_simple_effect`; `effect_wrapper_gen` template emits that import verbatim --
+**no template change needed**), `pipelines/render_final`, `server/resources`,
+`app/cli`, tests (`test_latest_project`, `test_effect_wrapper_gen`). **No
+monkeypatch targets `tools_helpers`** -- the `_resolve_vault_root_for_tools`
+monkeypatch sites live on `server.tools`, outside this surface.
+
+**XML-builder unification verdict: NOT unified (three distinct shapes; relocated
+verbatim).** The opinion said "fold `_build_filter_xml` into `_common`"; the task
+asked to merge with `make_filter_xml`/`make_filter_element_xml` *only if same
+shape*. They are not:
+- `make_filter_xml(mlt_service, clip_ref, props)` -> root + props, **no** svc/kid
+  property children.
+- `make_filter_element_xml(mlt_service, kdenlive_id, clip_ref, props, *, include_service_prop=True)`
+  -> root + optional svc prop + kid prop + props (`str()`-coerced), **no** id
+  normalization.
+- `_build_filter_xml(mlt_service, kdenlive_id, track, clip, props)` -> **id
+  normalization** (avfilter./frei0r. -> kid=svc; affine+transform w/o
+  transition.rect -> qtblend) + always svc + kid + props (verbatim value).
+
+Unifying would force a signature change at every call site (tuple `clip_ref` vs
+separate `track`/`clip` ints; `str()` vs verbatim; a normalize flag), violating
+the pure-movement / byte-identity contract. So `_build_filter_xml` was relocated
+**byte-identically** (verbatim body incl. its local `import ... as _ET`) as a
+third distinct builder in `_common`, consistent with the Pass-3 decision to keep
+`make_filter_xml`/`make_filter_element_xml` as separate builders. Byte-identity
+asserted against 6 pre-move reference outputs (all normalization branches) plus
+the two sibling builders -- **all match**; the shim's `_build_filter_xml` `is`
+the `_common` function object (single definition). A future true unification (one
+builder, union of features) remains *possible* but is **deferred** -- it is not
+pure movement.
+
+**Deviations from the opinion's shape: none material.** Followed the opinion's
+exact 5-module naming (`_workspace`, `_responses`, `_effects`, `_projects`,
+`_xml`). Placement judgment calls (opinion did not enumerate every name):
+media finders (`find_workspace_root`, `find_source_or_latest`) -> `_workspace`
+(path resolution); catalog lookup (`_lookup_catalog_by_service`) -> `_effects`
+(serves effect application; no separate `_catalog` module created, staying within
+the named 5); `_VALID_COLOR_FORMATS_MSG` -> `_xml` (its original neighbor was
+`_build_filter_xml`). Nothing deferred beyond the optional future XML-builder
+unification noted above. Phases B (auto-discover `tools/`) and C (ADR-005 / docs)
+untouched -- out of scope for this pass.
+
+**No commit made** (per instruction). Working tree carries the split for review.

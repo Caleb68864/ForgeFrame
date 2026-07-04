@@ -42,8 +42,8 @@ def make_filter_xml(
     Emits ``<filter mlt_service=.. track=.. clip_index=..>`` with one
     ``<property name=..>text</property>`` child per ``(name, text)`` in *props*.
     This is the simple builder shared by the masking / shape-alpha / paper-cutout
-    pipelines; the richer, id-normalizing variant lives in
-    ``server/tools_helpers._build_filter_xml``.
+    pipelines; the richer, id-normalizing variant is :func:`_build_filter_xml`
+    below (re-exported from ``server/tools_helpers``).
     """
     track, clip = clip_ref
     root = ET.Element(
@@ -99,6 +99,54 @@ def make_filter_element_xml(
         el = ET.SubElement(root, "property", {"name": name})
         el.text = str(value)
     return ET.tostring(root, encoding="unicode")
+
+
+def _build_filter_xml(mlt_service: str, kdenlive_id: str, track: int, clip: int,
+                      props: list[tuple[str, str]]) -> str:
+    """Build a Kdenlive/MLT ``<filter>`` XML string with the usual attrs.
+
+    ``mlt_service`` / ``kdenlive_id`` are normalised to the installed-repository
+    (dot-form) asset ids via :func:`normalize_effect_id` so Kdenlive resolves
+    them without a "Fixed" pass.
+
+    Richest of the three filter builders here (cf. :func:`make_filter_xml`,
+    :func:`make_filter_element_xml`): it id-normalises then always emits both an
+    ``mlt_service`` and a ``kdenlive_id`` property child.  Relocated verbatim
+    from ``server/tools_helpers`` (consolidation pass 1) and re-exported from
+    there to keep the historical import surface intact.
+    """
+    import xml.etree.ElementTree as _ET
+    # Normalise to installed-repository (dot-form) asset ids so Kdenlive resolves
+    # the effect without a "Fixed" pass:
+    #   * avfilter.*/frei0r.*  -> kdenlive_id = mlt_service (dot form)
+    #   * the Transform effect (affine + kdenlive_id="transform" + 5-value rect)
+    #     is qtblend in modern Kdenlive (FIX-2b).  pan_zoom / motion tracking use
+    #     ``transition.rect`` (kdenlive_id != "transform") and are untouched.
+    _prop_names = tuple(name for name, _ in props)
+    if mlt_service.startswith(("avfilter.", "frei0r.")):
+        kdenlive_id = mlt_service
+    elif (
+        mlt_service == "affine"
+        and kdenlive_id == "transform"
+        and "transition.rect" not in _prop_names
+    ):
+        mlt_service, kdenlive_id = "qtblend", "qtblend"
+    root = _ET.Element(
+        "filter",
+        {
+            "mlt_service": mlt_service,
+            "track": str(track),
+            "clip_index": str(clip),
+        },
+    )
+    svc = _ET.SubElement(root, "property", {"name": "mlt_service"})
+    svc.text = mlt_service
+    kid = _ET.SubElement(root, "property", {"name": "kdenlive_id"})
+    kid.text = kdenlive_id
+    for name, value in props:
+        prop = _ET.SubElement(root, "property", {"name": name})
+        prop.text = value
+    return _ET.tostring(root, encoding="unicode")
 
 
 def check_unit_interval(name: str, value: object) -> float:
