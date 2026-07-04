@@ -2,9 +2,7 @@
 from __future__ import annotations
 
 import json
-from uuid import UUID
 
-import pytest
 
 from workshop_video_brain.core.models.enums import MarkerCategory
 from workshop_video_brain.core.models.markers import Marker, MarkerConfig
@@ -15,7 +13,6 @@ from workshop_video_brain.edit_mcp.pipelines.review_timeline import (
     rank_markers,
 )
 from workshop_video_brain.edit_mcp.pipelines.selects_timeline import (
-    SelectsEntry,
     build_selects,
     selects_to_json,
     selects_to_markdown,

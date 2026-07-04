@@ -5,8 +5,6 @@ This is a template engine — it structures provided data, not an LLM call.
 """
 from __future__ import annotations
 
-import json
-import textwrap
 
 
 def generate_outline(

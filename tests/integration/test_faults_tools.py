@@ -17,7 +17,6 @@ are either proven harmless (documented intentional passthrough) or fixed.
 from __future__ import annotations
 
 import hashlib
-import json
 import shutil
 from pathlib import Path
 
@@ -36,24 +35,20 @@ from workshop_video_brain.edit_mcp.server.tools import (
     # timeline_project
     project_summary, snapshot_restore, project_validate, timeline_build_review,
     # transitions
-    transitions_apply, transitions_apply_at, transitions_apply_between,
+    transitions_apply_at, transitions_apply_between,
     # clips_nle
     clip_insert, clip_remove, clip_move, clip_split, clip_speed, track_add,
     track_mute, track_visibility, gap_insert, audio_fade, clips_search,
     # render
-    render_status, qc_check, project_setup_profile, project_match_source,
+    render_status, qc_check, project_match_source,
     # audio
     audio_analyze, audio_normalize, audio_compress,
     # broll
-    broll_suggest, broll_library_search,
+    broll_library_search,
     # assembly_titles
     pacing_analyze, replay_generate, title_cards_generate,
     # social_publish
-    publish_titles, social_find_clips, publish_note,
-    # keyframes
-    effect_keyframe_set_scalar, effect_find, effect_keyframe_set_rect,
-    # compositing_masking
-    mask_set, mask_set_shape, composite_set, composite_pip, mask_apply,
+    publish_titles, social_find_clips, effect_keyframe_set_scalar, effect_find, mask_set, mask_set_shape, composite_set, composite_pip, mask_apply,
     effect_chroma_key, composite_wipe,
     # effects_catalog
     effect_add, effect_reorder, effect_stack_apply,

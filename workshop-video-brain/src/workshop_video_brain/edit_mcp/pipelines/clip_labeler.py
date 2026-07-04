@@ -65,9 +65,7 @@ def _extract_topics(text: str, max_topics: int = 8) -> list[str]:
             if word not in _STOP_WORDS:
                 word_counts[word] += 1
 
-    min_topics = 5
     candidates = word_counts.most_common(max_topics)
-    # Return at least min_topics if available, otherwise all
     result = [word for word, _ in candidates]
     return result[:max_topics]
 

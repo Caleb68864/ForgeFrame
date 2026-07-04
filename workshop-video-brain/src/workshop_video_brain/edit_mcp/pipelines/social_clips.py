@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-import uuid
 from pathlib import Path
 
 from workshop_video_brain.core.models.social import ClipCandidate, ClipExport, SocialPost

@@ -1,13 +1,10 @@
 """Tests for marker rules module (PL-03)."""
 from __future__ import annotations
 
-import pytest
 
 from workshop_video_brain.core.models.enums import MarkerCategory
 from workshop_video_brain.core.models.markers import MarkerConfig, MarkerRule
 from workshop_video_brain.edit_mcp.pipelines.marker_rules import (
-    DEFAULT_RULES,
-    DEFAULT_WEIGHTS,
     default_config,
 )
 

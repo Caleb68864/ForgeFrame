@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from workshop_video_brain.core.models.color import ColorAnalysis
 
 
 # --- fixtures ---------------------------------------------------------------

@@ -5,7 +5,6 @@ import json
 import warnings
 from pathlib import Path
 
-import pytest
 
 from workshop_video_brain.edit_mcp.pipelines.new_project import (
     create_new_project,

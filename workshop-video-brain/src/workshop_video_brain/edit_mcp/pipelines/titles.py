@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
 

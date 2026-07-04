@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import re
 
-import pytest
 
 from workshop_video_brain.core.utils.naming import slugify, timestamp_prefix
 

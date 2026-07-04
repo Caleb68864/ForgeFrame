@@ -10,7 +10,6 @@ from workshop_video_brain.core.models.project import RenderJob
 from workshop_video_brain.edit_mcp.adapters.render.executor import (
     check_codec_available,
     execute_render,
-    DEFAULT_TIMEOUT_SECONDS,
 )
 from workshop_video_brain.edit_mcp.adapters.render.profiles import RenderProfile
 

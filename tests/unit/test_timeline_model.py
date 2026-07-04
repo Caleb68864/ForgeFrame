@@ -1,7 +1,6 @@
 """Tests for all TimelineIntent subclasses (MD-13)."""
 from __future__ import annotations
 
-import pytest
 from workshop_video_brain.core.models.timeline import (
     AddClip,
     AddComposition,

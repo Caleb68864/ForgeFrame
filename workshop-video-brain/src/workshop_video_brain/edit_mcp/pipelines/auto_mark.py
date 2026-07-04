@@ -8,7 +8,7 @@ from pathlib import Path
 
 from workshop_video_brain.core.models.enums import MarkerCategory
 from workshop_video_brain.core.models.markers import Marker, MarkerConfig, MarkerRule
-from workshop_video_brain.core.models.transcript import Transcript, TranscriptSegment
+from workshop_video_brain.core.models.transcript import Transcript
 from workshop_video_brain.edit_mcp.pipelines._common import (
     keyword_match_strength as _match_strength,
 )

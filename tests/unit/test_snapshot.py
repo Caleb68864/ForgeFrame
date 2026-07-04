@@ -78,7 +78,7 @@ class TestSnapshotProtectedPaths:
         """Restore must not overwrite files in media/raw."""
         # Create a snapshot manually pointing at media/raw
         from workshop_video_brain.core.models.project import SnapshotRecord
-        import uuid, yaml
+        import uuid
         snap_dir = workspace / "projects" / "snapshots" / "fake-snap"
         snap_dir.mkdir(parents=True)
         record = SnapshotRecord(

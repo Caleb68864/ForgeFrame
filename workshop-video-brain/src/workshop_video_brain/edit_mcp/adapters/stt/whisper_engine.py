@@ -1,7 +1,6 @@
 """Whisper STT engine adapter with faster-whisper primary and whisper fallback."""
 from __future__ import annotations
 
-import json
 import logging
 import subprocess
 from pathlib import Path

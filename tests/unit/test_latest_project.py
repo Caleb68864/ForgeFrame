@@ -4,7 +4,6 @@ from __future__ import annotations
 import os
 import time
 
-import pytest
 
 from workshop_video_brain.edit_mcp.server.tools_helpers import latest_project
 

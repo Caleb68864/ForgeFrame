@@ -38,23 +38,12 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     err,
     missing_file,
     missing_binary,
-    missing_dependency,
-    invalid_index,
     invalid_input,
-    bad_json_param,
-    corrupt_project,
     operation_failed,
     media_unreadable,
-    MISSING_FILE,
-    MISSING_BINARY,
-    INVALID_INDEX,
-    INVALID_INPUT,
-    CORRUPT_PROJECT,
     MISSING_DEPENDENCY,
-    BAD_JSON_PARAM,
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
-    _err,
     _ok,
     _validate_workspace_path,
 )
@@ -190,7 +179,7 @@ def subject_locate_frames(
         return missing_binary("ffmpeg", str(exc))
     except mt.FrameExtractionError as exc:
         return media_unreadable(str(source), cause=exc)
-    except FileNotFoundError as exc:
+    except FileNotFoundError:
         return missing_file(str(source), what="clip source media")
     except RuntimeError as exc:
         return operation_failed(str(exc), cause=exc)

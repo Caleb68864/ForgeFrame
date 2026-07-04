@@ -4,7 +4,6 @@ Covers cell geometry math across 1080p / 4K / vertical profiles, gap and
 border handling, crop modes (fit vs stretch), and the ``apply_split_screen``
 composite wiring (via a mocked ``apply_composite``).
 """
-from copy import deepcopy
 from unittest.mock import patch
 
 import pytest

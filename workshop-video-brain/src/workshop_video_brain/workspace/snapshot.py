@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-import yaml
 
 from workshop_video_brain.core.models.project import SnapshotRecord
 from workshop_video_brain.core.utils.naming import slugify, timestamp_prefix

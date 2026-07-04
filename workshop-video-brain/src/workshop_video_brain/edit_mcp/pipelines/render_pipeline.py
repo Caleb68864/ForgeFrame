@@ -10,12 +10,10 @@ from pathlib import Path
 
 import yaml
 
-from workshop_video_brain.core.models.enums import JobStatus
 from workshop_video_brain.core.models.project import RenderJob
 from workshop_video_brain.edit_mcp.adapters.render.executor import execute_render
 from workshop_video_brain.edit_mcp.adapters.render.jobs import (
     create_render_job,
-    update_job_status,
 )
 from workshop_video_brain.edit_mcp.adapters.render.profiles import (
     RenderProfile,

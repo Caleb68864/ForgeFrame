@@ -5,7 +5,6 @@ writes a JSON report into ``reports/`` -- no snapshots, no project writes.
 """
 from __future__ import annotations
 
-from pathlib import Path
 
 from workshop_video_brain.edit_mcp.pipelines.analysis_common import (
     iter_media_files,
@@ -15,7 +14,6 @@ from workshop_video_brain.edit_mcp.pipelines.analysis_common import (
 )
 from workshop_video_brain.edit_mcp.pipelines.qc_scan import scan_batch
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
-    _err,
     _ok,
     _validate_workspace_path,
 )
@@ -23,22 +21,7 @@ from workshop_video_brain.server import mcp
 from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     tool_guard,
     err,
-    missing_file,
-    missing_binary,
-    missing_dependency,
-    invalid_index,
-    invalid_input,
-    bad_json_param,
-    corrupt_project,
     operation_failed,
-    media_unreadable,
-    MISSING_FILE,
-    MISSING_BINARY,
-    INVALID_INDEX,
-    INVALID_INPUT,
-    CORRUPT_PROJECT,
-    MISSING_DEPENDENCY,
-    BAD_JSON_PARAM,
 )
 
 

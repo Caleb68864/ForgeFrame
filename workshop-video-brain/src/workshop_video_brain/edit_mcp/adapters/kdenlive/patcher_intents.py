@@ -11,7 +11,6 @@ compatibility shim.
 """
 from __future__ import annotations
 
-import copy
 import logging
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -1230,8 +1229,6 @@ def _apply_add_effect(project: KdenliveProject, intent: AddEffect) -> None:
             intent.clip_index, playlist.id, len(real_entries),
         )
         return
-
-    entry = real_entries[intent.clip_index]
 
     # Build filter XML
     # Filters are OpaqueElement objects with position_hint="after_tractor",

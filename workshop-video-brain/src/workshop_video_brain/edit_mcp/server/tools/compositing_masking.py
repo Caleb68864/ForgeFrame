@@ -25,7 +25,6 @@ from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
-    _err,
     _require_workspace,
     _VALID_COLOR_FORMATS_MSG,
 )
@@ -363,7 +362,6 @@ def mask_set(
     ``params`` is a JSON-encoded dict. A snapshot is created before writing.
     """
     from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
-    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
     from workshop_video_brain.edit_mcp.pipelines import masking
 
     if type not in _VALID_MASK_TYPES:
@@ -437,7 +435,6 @@ def mask_set_shape(
     pairs (polygon only). A snapshot is created before writing.
     """
     from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
-    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
     from workshop_video_brain.edit_mcp.pipelines import masking
 
     if shape not in _VALID_MASK_SHAPES:
@@ -526,7 +523,6 @@ def mask_apply(
     ``mask_start`` form and inserts a ``mask_apply`` after the target filter.
     """
     from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
-    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
     from workshop_video_brain.edit_mcp.pipelines import masking
 
     prelude = _masking_prelude(workspace_path, project_file, "before_mask_apply")
@@ -552,7 +548,7 @@ def mask_apply(
         result = masking.apply_mask_to_effect(
             project, (track, clip), mask_effect_index, target_effect_index
         )
-    except IndexError as exc:
+    except IndexError:
         available = filters
         return invalid_index(
             "effect_index", mask_effect_index if not (0 <= mask_effect_index < len(filters)) else target_effect_index,
@@ -578,7 +574,6 @@ def effect_chroma_key(
 ) -> dict:
     """Append a basic ``chroma`` key filter to a clip's effect stack."""
     from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
-    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
     from workshop_video_brain.edit_mcp.pipelines import masking
 
     try:
@@ -618,7 +613,6 @@ def effect_chroma_key_advanced(
 ) -> dict:
     """Append an ``avfilter.hsvkey`` advanced chroma filter to a clip."""
     from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
-    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
     from workshop_video_brain.edit_mcp.pipelines import masking
 
     nf = nonfinite_guard(
@@ -676,7 +670,6 @@ def effect_object_mask(
     ``mask_set_from_file`` (Shape Alpha).
     """
     from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
-    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
     from workshop_video_brain.edit_mcp.pipelines import masking
 
     nf = nonfinite_guard(threshold=threshold)

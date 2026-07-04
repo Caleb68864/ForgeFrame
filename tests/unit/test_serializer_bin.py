@@ -13,10 +13,8 @@ Covers:
 from __future__ import annotations
 
 import re
-import uuid
 import xml.etree.ElementTree as ET
 
-import pytest
 
 from workshop_video_brain.core.models.kdenlive import (
     KdenliveProject,

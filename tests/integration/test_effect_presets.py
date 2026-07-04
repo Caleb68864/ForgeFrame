@@ -5,7 +5,6 @@ Covers SR-13..SR-23 of the Effect Wrappers test plan.
 from __future__ import annotations
 
 import shutil
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest

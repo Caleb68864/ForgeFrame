@@ -25,7 +25,6 @@ from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
-    _err,
     _load_latest_project,
 )
 from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
@@ -64,9 +63,8 @@ def transitions_apply(
             return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
         from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_versioned
-        from workshop_video_brain.core.models.transitions import TransitionPreset, TransitionType
+        from workshop_video_brain.core.models.transitions import TransitionPreset
         from workshop_video_brain.core.models.timeline import AddTransition
-        from workshop_video_brain.core.utils.naming import slugify
         from workshop_video_brain.workspace.manifest import read_manifest
 
         _, project, latest = _load_latest_project(workspace_path)

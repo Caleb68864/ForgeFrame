@@ -8,13 +8,10 @@ files are touched here -- the FFmpeg-gated empirical proof lives in
 """
 from __future__ import annotations
 
-import asyncio
 
 import numpy as np
-import pytest
 
 from workshop_video_brain.edit_mcp.pipelines import audio_sync as A
-from workshop_video_brain.server import mcp
 
 
 # ---------------------------------------------------------------------------

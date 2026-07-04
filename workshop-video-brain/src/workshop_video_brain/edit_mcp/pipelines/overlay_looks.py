@@ -45,7 +45,6 @@ Honest-subset notes
 from __future__ import annotations
 
 import hashlib
-from typing import Any
 
 from workshop_video_brain.core.models.kdenlive import (
     KdenliveProject,

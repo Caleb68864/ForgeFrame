@@ -19,7 +19,7 @@ from pathlib import Path
 
 from PIL import Image, ImageStat
 
-from tests._testkit import requires_melt_ffmpeg as pytestmark, unwrap
+from tests._testkit import unwrap
 
 from workshop_video_brain.core.models.kdenlive import (
     KdenliveProject,
@@ -30,7 +30,6 @@ from workshop_video_brain.core.models.kdenlive import (
     Track,
 )
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
-from workshop_video_brain.edit_mcp.pipelines import review_loop as rl
 from workshop_video_brain.edit_mcp.server.bundles.review_loop import (
     render_review_frames,
     thumbnail_generate,

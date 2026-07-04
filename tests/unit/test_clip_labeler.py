@@ -7,12 +7,10 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from workshop_video_brain.core.models.clips import ClipLabel
 from workshop_video_brain.core.models.enums import MarkerCategory
 from workshop_video_brain.core.models.transcript import Transcript, TranscriptSegment
 from workshop_video_brain.edit_mcp.pipelines.clip_labeler import (
     _calculate_speech_density,
-    _clean_summary,
     _detect_content_type,
     _detect_shot_type,
     _extract_topics,

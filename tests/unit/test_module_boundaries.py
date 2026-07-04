@@ -32,7 +32,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-import pytest
 
 # tests/unit/<this> -> parents[2] == repo root; source lives under
 # workshop-video-brain/src/workshop_video_brain (see pyproject `pythonpath`).

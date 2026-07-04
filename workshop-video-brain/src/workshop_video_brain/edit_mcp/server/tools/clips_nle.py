@@ -25,7 +25,6 @@ from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
-    _err,
     latest_project,
     _load_latest_project,
     _save_patched,
@@ -389,7 +388,7 @@ def clip_split(workspace_path: str, clip_index: int, split_at_seconds: float = 0
         ws_path, project, latest = _load_latest_project(workspace_path)
         # clip_split operates on the first video playlist
         playlist = _resolve_playlist(project, 0)
-        real = _validate_clip_index(playlist, clip_index)
+        _validate_clip_index(playlist, clip_index)
 
         fps = project.profile.fps or 25.0
         split_at_frame = seconds_to_frames(split_at_seconds, fps)

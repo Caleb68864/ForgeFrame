@@ -25,7 +25,6 @@ from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
-    _err,
     _require_workspace,
 )
 
@@ -38,10 +37,6 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 # ---------------------------------------------------------------------------
 def _keyframes_from_json(raw: str) -> list:
     """Parse the JSON-encoded keyframes payload to a list of Keyframe objects."""
-    from workshop_video_brain.edit_mcp.pipelines.keyframes import (
-        Keyframe,
-        normalize_time,
-    )
 
     data = json.loads(raw)
     if not isinstance(data, list):

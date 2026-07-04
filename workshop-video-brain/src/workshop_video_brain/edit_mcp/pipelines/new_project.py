@@ -183,7 +183,7 @@ def create_new_project(
     # ------------------------------------------------------------------
     # Step 2: Create workspace with standard folder structure
     # ------------------------------------------------------------------
-    workspace = WorkspaceManager.create(
+    WorkspaceManager.create(
         title=title,
         media_root=str(workspace_path / "media" / "raw"),
         workspace_root=str(workspace_path),

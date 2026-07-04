@@ -1,10 +1,9 @@
 """Tests for the full render pipeline."""
 from __future__ import annotations
 
-import os
 from dataclasses import asdict
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 

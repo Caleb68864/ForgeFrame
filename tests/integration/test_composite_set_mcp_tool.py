@@ -21,9 +21,7 @@ fastmcp = pytest.importorskip("fastmcp", reason="fastmcp not installed")
 
 from workshop_video_brain.edit_mcp.server import tools
 from workshop_video_brain.edit_mcp.server.tools import (
-    composite_pip,
     composite_set,
-    composite_wipe,
     workspace_create,
 )
 from workshop_video_brain.edit_mcp.pipelines.compositing import BLEND_MODES

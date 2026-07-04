@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from datetime import datetime
 from pathlib import Path
 
 from workshop_video_brain.core.models.enums import JobStatus

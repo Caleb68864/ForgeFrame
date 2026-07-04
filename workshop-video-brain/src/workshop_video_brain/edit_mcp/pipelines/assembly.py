@@ -529,7 +529,6 @@ def assemble_timeline(
         ))
 
         step_duration_frames = out_frames - in_frames + 1
-        step_start_frame = current_frame
 
         # Add insert clips to V1, overlapping the primary's time range
         # V1 might have gaps up to the step start — pad if needed

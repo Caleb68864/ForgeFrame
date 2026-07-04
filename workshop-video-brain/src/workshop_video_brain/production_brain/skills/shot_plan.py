@@ -47,8 +47,6 @@ def _build_shot_plan_dict(source: dict, gear_constraints: str | None) -> dict:
     title = source.get("title", "Untitled Project")
     # Support both outline (teaching_beats) and script (steps) dicts
     beats = source.get("teaching_beats") or source.get("steps") or []
-    materials = source.get("materials") or source.get("materials_section", {}).get("materials", [])
-    tools = source.get("tools") or source.get("materials_section", {}).get("tools", [])
 
     no_overhead = gear_constraints and "overhead" in gear_constraints.lower()
 
@@ -87,7 +85,6 @@ def _build_shot_plan_dict(source: dict, gear_constraints: str | None) -> dict:
     for i, beat in enumerate(beats):
         num = beat.get("number", i + 1)
         beat_title = beat.get("title", f"Step {num}")
-        description = beat.get("description", "")
         beat_ref = f"Step {num}"
 
         # A-roll for complex explanation beats

@@ -2,10 +2,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 
 from workshop_video_brain.core.models.youtube import ChannelStats, VideoAnalytics, YouTubeVideo
 from workshop_video_brain.edit_mcp.pipelines.youtube_analytics import (

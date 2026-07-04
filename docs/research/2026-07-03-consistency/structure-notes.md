@@ -987,3 +987,98 @@ behavior change. Baseline unchanged: **4204 passed / 1 skipped** before and afte
 `tests/integration/external/builders.py`, `tests/_testkit.py` (docstring).
 **(docs):** `CLAUDE.md`. **Notes document appended; every listed carry-forward
 closed with a verdict.**
+
+---
+
+## Consolidation-5 (2026-07-04) — final dead-weight sweep + coherence close (CLOSING SECTION)
+
+Final sweep before real-world dogfooding. Bias: **removal + document-truth**, no
+new construction. No commit made (working tree carries the sweep).
+
+### Dead-weight removed (by class)
+
+| Class | Detector | Count | Disposition |
+|---|---|--:|---|
+| Unused imports (F401) | `ruff --select F401` | **~715** | Auto-removed (`ruff --fix`, safe only). Dominated by the hardening-pass boilerplate **error-vocabulary block** in ~30 `server/bundles/*` (each imported the full `errors.py` constructor set; only `tool_guard`/`err`/`operation_failed`+used ones kept) plus the per-`tools/*` unused `_err`, stray stdlib/typing/model imports (`json`, `Path`, `yaml`, `Any`, `datetime`, `uuid`, `Field`, `list_profiles`, `MarkerConfig`, …). |
+| Unused locals (F841, safe) | `ruff --select F841` | ~13 | Auto-removed (incl. `compositing_masking._exc`). |
+| Unused locals (F841, side-effect RHS) | hand-review | **11 src** | Hand-fixed: pure-dead removed (`step_start_frame`, `min_topics`, `key`, `avg_likes`, `entry`, `fps`, `n_overlay`, `n_ch`, `materials`, `tools`, `description`); side-effecting calls kept as bare calls (`new_project.WorkspaceManager.create(...)`, `clips_nle._validate_clip_index(...)`). |
+| Latent bug (F821 undefined name) | `ruff --select F821` | **1** | `app/cli.py` return annotation `"Path \| None"` referenced un-imported `Path` (harmless under `from __future__ import annotations`, but breaks `get_type_hints`). Fixed by adding module-level `from pathlib import Path`. |
+| Leftover scratch / untracked strays | git status + `ls docs/research -R` | 0 removed | `docs/research/.../scratch/build_candidates.py` **KEPT** — it is a *cited* generator in the `kdenlive-gui-bin-rejection.md` findings (has PROVENANCE, reproducibility), not an untracked stray. All untracked items are `smoke-test/` + `transcripts/` **runtime output** (not repo scratch); left untouched. |
+
+**Net LOC:** src 59,708 → **59,139** (−570 across 249 modules); tests 55,630 →
+**55,503** (−127). `git diff --shortstat`: **177 files, +100 / −735**.
+
+### Aliases removed vs kept-with-reason
+
+- **Removed:** 0 delegate *aliases*. Passes 1-4 kept local delegate names
+  ("where tests monkeypatch them"); grepping each candidate confirmed they are
+  still live (unit/integration import or monkeypatch the local name), so **none
+  were orphaned**. The F401 removals above are *unused imports*, not delegate
+  aliases — verified: 0 test monkeypatches any removed error-constructor name on
+  a bundle module, and the full suite (which imports the whole server) stays
+  green, proving no cross-module re-export was severed.
+- **Kept-with-reason:** `adapters/kdenlive/patcher.py` (the split-compat shim,
+  ~38 F401) re-exports every public+private `patcher_intents`/`effect_stack` name
+  by design (docstring-documented back-compat surface; `_iter_clip_filters` is
+  actively monkeypatched by `test_stack_ops_*`). **Reverted `ruff --fix` on this
+  file**; the 38 F401 are intentional and now called out in `CLAUDE.md` Testing.
+  14 test-side `result = tool(...)` F841 kept (legitimate call-for-side-effect
+  style; auto-strip is an unsafe fix that could drop the call).
+
+### Docs updated
+
+- **`CLAUDE.md`** — new **"MCP Tool Modules (auto-discovered)"** section (both
+  `server/bundles/` and `server/tools/` are pkgutil-discovered; new tool = new
+  file, zero shared-file edit); new **"Authoring a New MCP Tool" 7-step
+  checklist** (logic-in-pipeline; drop-in module; `errors.py` contract +
+  `tool_guard`; parse→validate→snapshot→mutate→serialize order; canonical helpers
+  `_common`/`tools_helpers`-package/`patcher`/`probe`; `_testkit` + external
+  render proof for timeline-affecting tools; vault guide note); Testing section
+  now documents the `ruff --select F401,F841` dead-code check + the patcher-shim
+  carve-out; layering line added.
+- **`docs/ai-handoff.md`** — `server.py` row rewritten to describe the
+  auto-discovery of `server/tools` + `server/bundles` (201 live tools) instead of
+  the old "imports tools and resources modules".
+- Authoring checklist durable home: **`CLAUDE.md`** ("Authoring a New MCP Tool").
+  The external forge `plugin-authoring` skill is about Claude-Code plugin
+  scaffolding generally (not this repo's MCP-tool conventions) and lives outside
+  the repo — intentionally not the home for this checklist.
+
+### Surface accounting — what the 10 passes bought
+
+Baseline is Pass-1 start (`514f69d`). "10 passes" = 5 consistency (1562c97…922f86a)
++ 5 consolidation (b6db0fe…this).
+
+| Metric | Pass-1 baseline (`514f69d`) | Consolidation-5 close | Δ |
+|---|--:|--:|--:|
+| Live MCP tools | 201 | **201** | 0 (surface intentionally frozen) |
+| src LOC | ~60,900 | **59,139** | ≈ −1,760 |
+| src modules | 243 | **249** | +6 (net: −? merged, +`tools_helpers/` 6-module package split) |
+| tests LOC | (n/a tracked p1) | **55,503** | — |
+| test files | — | **228** | — |
+| tests collected | 4,205 | **4,205** | +2 net over the run (regression tests added, dedup removed) |
+| suite result | 4,203 pass / 1 skip | **4,204 pass / 1 skip** | 0 fail |
+| F-level dead code (F401/F841 excl. intentional patcher shim + test side-effect locals) | not measured | **0** | drained |
+
+The value: ~1.2k LOC of *duplication* drained (consistency 1), API/units made
+canonical (2), model→pipeline→shell layering enforced with logic pushed out of
+the shell (3), test-suite deduped onto a shared `_testkit` + flake root-caused (4),
+`tools_helpers` split into a domain package + `tools/` auto-discovery retiring the
+last shared-file contention point (consolidations 1-2), ADR-005 boundary codified
+(3), carry-forwards all closed (4), and this pass drained the residual dead
+imports/locals + fixed one latent `F821`. Tool surface held at **201** throughout.
+
+### Final verification battery (line by line)
+
+- Full suite run 1 (`uv run pytest tests/ -q`): **4204 passed, 1 skipped**, 0 fail, 155.35s.
+- Full suite run 2 (`uv run pytest tests/ -q`): **4204 passed, 1 skipped**, 0 fail, 154.64s.
+- External tier isolated (`pytest tests/integration/external/ -q`): **61 passed, 1 skipped**, 30.20s.
+- `-m external` partition: **60 collected**; `-m "not external"`: **4145**; 60 + 4145 = 4205 = full collection (clean, no overlap/gap).
+- Live tool count (`registered_tool_names()`): **201**.
+- CLI smoke (`import workshop_video_brain.app.cli`): **OK** (also `import ...server` OK).
+- Zero-edit drop-in proof: temp `@mcp.tool()` module dropped into **both** `bundles/` and `tools/` → registry **203** (201+2), **both probes registered**; modules removed → back to **201**, no strays.
+- Boundary tests (`tests/unit/test_module_boundaries.py`): **4 passed**.
+- `ruff check --select F401,F841` final: **38 F401 (all patcher shim) + 14 F841 (all test-side call-for-side-effect)** — no other F-level dead code. Full default ruleset residual (NOT chased, style-only): E402×82 (deliberate lazy/escape-hatch imports), F541×10, E741×8, E702×4 — no F811/F821/F823.
+
+**Notes document complete. This is the CLOSING section — no further appends.
+Consolidation mandate closed; project proceeds to dogfooding.**

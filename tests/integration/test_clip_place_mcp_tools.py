@@ -12,13 +12,8 @@ from pathlib import Path
 import pytest
 
 from workshop_video_brain.core.models.kdenlive import (
-    KdenliveProject,
     OpaqueElement,
-    Playlist,
     PlaylistEntry,
-    Producer,
-    ProjectProfile,
-    Track,
 )
 from workshop_video_brain.core.models.timeline import MoveClipToTrack, PlaceClip
 from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher

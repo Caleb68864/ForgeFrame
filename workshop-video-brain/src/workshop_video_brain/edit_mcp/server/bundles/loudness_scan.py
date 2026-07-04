@@ -16,7 +16,6 @@ from workshop_video_brain.edit_mcp.pipelines.loudness_scan import (
     write_loudness_to_library,
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
-    _err,
     _ok,
     _validate_workspace_path,
 )
@@ -24,22 +23,7 @@ from workshop_video_brain.server import mcp
 from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     tool_guard,
     err,
-    missing_file,
-    missing_binary,
-    missing_dependency,
-    invalid_index,
-    invalid_input,
-    bad_json_param,
-    corrupt_project,
     operation_failed,
-    media_unreadable,
-    MISSING_FILE,
-    MISSING_BINARY,
-    INVALID_INDEX,
-    INVALID_INPUT,
-    CORRUPT_PROJECT,
-    MISSING_DEPENDENCY,
-    BAD_JSON_PARAM,
 )
 
 

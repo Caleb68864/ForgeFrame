@@ -1,8 +1,8 @@
 """CLI entry point for workshop-video-brain."""
 from __future__ import annotations
 
-import json
 import sys
+from pathlib import Path
 
 import click
 

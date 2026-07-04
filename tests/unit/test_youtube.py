@@ -24,7 +24,6 @@ Covers:
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -32,7 +31,6 @@ import pytest
 
 from workshop_video_brain.core.models.youtube import (
     ChannelStats,
-    VideoAnalytics,
     YouTubeVideo,
 )
 from workshop_video_brain.edit_mcp.adapters.youtube.fetcher import (
@@ -42,7 +40,6 @@ from workshop_video_brain.edit_mcp.adapters.youtube.fetcher import (
 )
 from workshop_video_brain.edit_mcp.pipelines.youtube_analytics import (
     _seconds_to_mmss,
-    analyze_channel,
     analyze_video,
     generate_analytics_report,
     save_channel_to_vault,

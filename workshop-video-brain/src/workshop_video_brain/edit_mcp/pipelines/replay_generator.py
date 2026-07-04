@@ -13,7 +13,6 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
-from workshop_video_brain.core.models.enums import MarkerCategory
 from workshop_video_brain.core.models.kdenlive import (
     Guide,
     KdenliveProject,
@@ -23,7 +22,7 @@ from workshop_video_brain.core.models.kdenlive import (
     ProjectProfile,
     Track,
 )
-from workshop_video_brain.core.models.markers import Marker, MarkerConfig
+from workshop_video_brain.core.models.markers import Marker
 from workshop_video_brain.core.models.media import MediaAsset
 from workshop_video_brain.core.utils.naming import slugify
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_versioned

@@ -1,7 +1,6 @@
 """Unit tests for app/config.py — load_config() and detection helpers."""
 from __future__ import annotations
 
-import os
 import warnings
 from unittest.mock import patch, MagicMock
 

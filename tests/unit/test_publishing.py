@@ -19,7 +19,6 @@ import re
 from pathlib import Path
 from uuid import uuid4
 
-import pytest
 import yaml
 
 from workshop_video_brain.core.models.publishing import (
@@ -38,7 +37,6 @@ from workshop_video_brain.edit_mcp.pipelines.publishing import (
     package_publish_bundle,
     generate_publish_note,
     _seconds_to_mmss,
-    _format_chapters_text,
 )
 
 

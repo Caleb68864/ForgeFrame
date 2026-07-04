@@ -6,7 +6,6 @@ grade chain against a real fixture project through the MCP tool surface.
 from __future__ import annotations
 
 import shutil
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest

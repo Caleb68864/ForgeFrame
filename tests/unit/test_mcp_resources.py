@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 from workshop_video_brain.workspace.manifest import WorkspaceManifest, write_manifest
 from workshop_video_brain.workspace.folders import create_workspace_structure

@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from workshop_video_brain.core.models.enums import JobStatus
 from workshop_video_brain.core.models.project import RenderJob
 from workshop_video_brain.edit_mcp.pipelines.render_pipeline import (
     RenderArtifactRegistry,

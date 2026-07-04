@@ -70,7 +70,7 @@ class TestLoadProfile:
             load_profile("nonexistent-profile")
 
     def test_load_from_custom_dir(self):
-        from workshop_video_brain.edit_mcp.adapters.render.profiles import load_profile, RenderProfile
+        from workshop_video_brain.edit_mcp.adapters.render.profiles import load_profile
         with tempfile.TemporaryDirectory() as tmpdir:
             profile_data = {
                 "name": "test-custom",

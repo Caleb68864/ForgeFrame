@@ -12,7 +12,7 @@ import pytest
 
 pytest.importorskip("fastmcp", reason="fastmcp not installed")
 
-from tests._testkit import make_test_clip, requires_ffmpeg_ffprobe as pytestmark, unwrap
+from tests._testkit import make_test_clip, unwrap
 
 from workshop_video_brain.edit_mcp.server.bundles import clip_preview as bundle
 

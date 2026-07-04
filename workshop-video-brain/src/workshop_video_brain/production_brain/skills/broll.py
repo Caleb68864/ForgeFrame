@@ -5,7 +5,6 @@ saves the formatted results to an Obsidian note.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from workshop_video_brain.core.models.transcript import Transcript

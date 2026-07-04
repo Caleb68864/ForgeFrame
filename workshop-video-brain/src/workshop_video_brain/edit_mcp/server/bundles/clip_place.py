@@ -31,23 +31,11 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     tool_guard,
     err,
     missing_file,
-    missing_binary,
-    missing_dependency,
-    invalid_index,
     invalid_input,
-    bad_json_param,
     corrupt_project,
     operation_failed,
-    media_unreadable,
-    MISSING_FILE,
-    MISSING_BINARY,
-    INVALID_INDEX,
-    INVALID_INPUT,
-    CORRUPT_PROJECT,
-    MISSING_DEPENDENCY,
-    BAD_JSON_PARAM,
 )
-from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _err, _require_workspace
+from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _require_workspace
 from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
 from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import (
     parse_project,
@@ -419,7 +407,6 @@ def clip_place_matched(
     except IndexError as exc:
         return invalid_input(str(exc), suggestion="Check workspace_path exists and is a directory, and that any project_file resolves under it.")
 
-    fps = project.profile.fps or 25.0
     producer_id, source_path, _duration_s = _resolve_source(project, source, ws_path)
 
     # Reject a missing media source before touching the project (see clip_place).

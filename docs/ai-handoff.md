@@ -17,7 +17,7 @@ These two subsystems are deliberately separated:
 | `production_brain` | Pre-production planning and note management. Content structuring, scripting, shot planning. Obsidian vault interaction. No video processing. | `production_brain/skills/`, `production_brain/notes/` |
 | `edit_mcp` | Post-production automation. Media ingestion, transcription, marker generation, timeline building, Kdenlive project management, rendering. | `edit_mcp/pipelines/`, `edit_mcp/adapters/` |
 | `workspace` | Workspace lifecycle: create, open, manifest I/O, snapshots. Used by both subsystems. | `workspace/manager.py`, `workspace/snapshot.py` |
-| `server.py` | MCP server entry point. Imports tools and resources modules to register them with FastMCP. | `server.py` |
+| `server.py` | MCP server entry point. Imports the `server/tools` and `server/bundles` packages, which `pkgutil`-auto-discover their submodules so every `@mcp.tool()` registers on import. A new tool is a new file in either package -- no shared-file edit (see CLAUDE.md "Authoring a New MCP Tool"). 201 live tools. | `server.py` |
 | `app/cli.py` | Click CLI. Mirrors MCP tool capabilities for command-line use. | `app/cli.py` |
 
 **Rule (see [ADR 005](adr/005-production-brain-boundary.md) -- supersedes the old

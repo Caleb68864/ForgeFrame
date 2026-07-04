@@ -24,7 +24,6 @@ from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
-    _err,
     latest_project,
 )
 
@@ -56,8 +55,7 @@ def timeline_build_review(workspace_path: str, mode: str = "ranked") -> dict:
         if not ws_path.is_dir():
             return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
         import json as _json
-        from workshop_video_brain.core.models.markers import Marker, MarkerConfig
-        from workshop_video_brain.core.models.media import MediaAsset
+        from workshop_video_brain.core.models.markers import Marker
         from workshop_video_brain.edit_mcp.pipelines.review_timeline import build_review_timeline
 
         markers_dir = ws_path / "markers"
@@ -393,7 +391,7 @@ def snapshot_restore(workspace_path: str, snapshot_id: str) -> dict:
                 suggestion="Run snapshot_list to see valid snapshot ids for this workspace.",
                 given=snapshot_id,
             )
-        from workshop_video_brain.workspace.snapshot import restore, list_snapshots
+        from workshop_video_brain.workspace.snapshot import restore
 
         restore(workspace_path, snapshot_id)
         return _ok({

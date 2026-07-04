@@ -6,7 +6,6 @@ optimized shot order.
 """
 from __future__ import annotations
 
-from collections import defaultdict
 
 
 def generate_capture_checklist(

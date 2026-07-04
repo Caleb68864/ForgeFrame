@@ -17,7 +17,6 @@ import statistics
 import subprocess
 from pathlib import Path
 
-import pytest
 from PIL import Image
 
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project

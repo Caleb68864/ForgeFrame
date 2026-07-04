@@ -35,7 +35,6 @@ from workshop_video_brain.edit_mcp.server.bundles import (
     scene_detect,
     shape_alpha_mask,
     silence_segment,
-    slideshow,
     speed_ramp,
     stabilize,
     subtitle_track,

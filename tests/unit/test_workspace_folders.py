@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import pytest
 
 from workshop_video_brain.workspace.folders import (
     WORKSPACE_FOLDERS,
