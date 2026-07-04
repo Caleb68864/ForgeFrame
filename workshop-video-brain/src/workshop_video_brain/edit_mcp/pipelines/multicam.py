@@ -169,7 +169,7 @@ def compute_alignment(offsets: list[float], fps: float) -> list[int]:
     if not offsets:
         return []
     lead = max(0.0, max(offsets))
-    return [int(round((lead - off) * fps)) for off in offsets]
+    return [_cp.seconds_to_frames(lead - off, fps) for off in offsets]
 
 
 # ---------------------------------------------------------------------------

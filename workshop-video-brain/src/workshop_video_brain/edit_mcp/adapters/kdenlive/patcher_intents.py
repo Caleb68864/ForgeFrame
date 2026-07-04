@@ -17,6 +17,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
 from workshop_video_brain.core.models.kdenlive import (
     Guide,
     KdenliveProject,
@@ -461,7 +462,7 @@ def _apply_insert_gap(project: KdenliveProject, intent: InsertGap) -> None:
 def _apply_add_subtitle_region(project: KdenliveProject, intent: AddSubtitleRegion) -> None:
     """Add a subtitle region as a Guide with label 'SUBTITLE: {text}'."""
     fps = project.profile.fps or 25.0
-    position_frames = int(intent.start_seconds * fps)
+    position_frames = seconds_to_frames(intent.start_seconds, fps)
     guide = Guide(
         position=position_frames,
         label=f"SUBTITLE: {intent.text}",

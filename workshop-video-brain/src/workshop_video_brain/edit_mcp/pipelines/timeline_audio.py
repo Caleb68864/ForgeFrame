@@ -27,6 +27,8 @@ import json
 import math
 from dataclasses import dataclass
 
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
+
 # volume level floor -- ~silence.  Matches the AudioFade clip-fade convention.
 DB_FLOOR = -60.0
 
@@ -101,7 +103,7 @@ def parse_volume_keyframes(keyframes, fps: float) -> str:
             raise ValueError(f"keyframe {i} must be an object")
         at = float(kf.get("at_seconds", 0.0))
         db = float(kf.get("gain_db", kf.get("db", 0.0)))
-        points.append((int(round(at * fps)), db))
+        points.append((seconds_to_frames(at, fps), db))
     return format_db_keyframes(points)
 
 
@@ -286,8 +288,8 @@ def voice_activity_to_duck_keyframes(
     if total_frames <= 0:
         return ""
     duck = float(duck_db)
-    attack_f = max(1, int(round((attack_ms / 1000.0) * fps)))
-    release_f = max(1, int(round((release_ms / 1000.0) * fps)))
+    attack_f = max(1, seconds_to_frames(attack_ms / 1000.0, fps))
+    release_f = max(1, seconds_to_frames(release_ms / 1000.0, fps))
 
     # Convert to frames, clamp to the track, drop empties.
     raw: list[tuple[float, float]] = []

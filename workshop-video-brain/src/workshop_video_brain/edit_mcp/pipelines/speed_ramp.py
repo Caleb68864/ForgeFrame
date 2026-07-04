@@ -52,6 +52,8 @@ import json
 import math
 from dataclasses import dataclass
 
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
+
 # MLT's timewarp producer accepts speeds in [0.01, 20] (see ``melt -query
 # producer=timewarp``). We only ramp forward playback; reverse (negative speed)
 # is ``effect_rewind``'s domain.
@@ -192,7 +194,7 @@ def _plan_speed_format(
         at = float(kf.get("at_seconds", 0.0))
         if at < 0:
             raise ValueError(f"keyframe {i}: at_seconds must be >= 0")
-        frame = int(round(at * fps))
+        frame = seconds_to_frames(at, fps)
         frame = max(0, min(frame, clip_frames))
         speed = _validate_speed(kf.get("speed", 1.0), f"keyframe {i}")
         pts.append((frame, speed))
@@ -256,8 +258,8 @@ def _plan_timemap_format(
         if d_src <= 0:
             raise ValueError("timemap source_seconds must strictly increase (forward only)")
         speed = _validate_speed(d_src / d_out, "timemap segment")
-        a = int(round(s0 * fps))
-        b = int(round(s1 * fps))
+        a = seconds_to_frames(s0, fps)
+        b = seconds_to_frames(s1, fps)
         a = max(0, min(a, clip_frames))
         b = max(0, min(b, clip_frames))
         if b > a:

@@ -50,28 +50,14 @@ filters at all).
 """
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 
 from workshop_video_brain.core.models.kdenlive import PlaylistEntry
 
-
-# ---------------------------------------------------------------------------
-# frame conversion
-# ---------------------------------------------------------------------------
-
-def seconds_to_frames(seconds: float, fps: float) -> int:
-    """Convert a timeline offset in seconds to an integer frame index.
-
-    Rounds half-up (``floor(seconds * fps + 0.5)``) so placement is frame-exact
-    and deterministic at fractional NTSC rates (23.976 / 29.97 / 59.94).  Raises
-    ``ValueError`` on a negative time or non-positive fps.
-    """
-    if seconds < 0:
-        raise ValueError(f"seconds must be >= 0 (got {seconds})")
-    if fps <= 0:
-        raise ValueError(f"fps must be > 0 (got {fps})")
-    return int(math.floor(seconds * fps + 0.5))
+# Canonical seconds->frames conversion now lives in ``_common`` (consistency
+# pass 2). Re-exported here so existing ``clip_place.seconds_to_frames`` callers
+# and tests keep working.
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames  # noqa: F401
 
 
 def entry_length(entry: PlaylistEntry) -> int:

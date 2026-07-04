@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from workshop_video_brain.core.models.markers import Marker, MarkerConfig
 from workshop_video_brain.core.models.media import MediaAsset
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
 from workshop_video_brain.core.models.kdenlive import (
     Guide,
     KdenliveProject,
@@ -168,8 +169,8 @@ def build_selects_timeline(
             producer = seen_producers[clip_ref]
 
         fps = project.profile.fps
-        in_point = int(entry.start_seconds * fps)
-        out_point = int(entry.end_seconds * fps)
+        in_point = seconds_to_frames(entry.start_seconds, fps)
+        out_point = seconds_to_frames(entry.end_seconds, fps)
         if out_point < in_point:
             out_point = in_point
 

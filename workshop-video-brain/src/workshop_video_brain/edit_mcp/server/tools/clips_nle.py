@@ -31,6 +31,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _save_patched,
     _resolve_playlist,
 )
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
 
 
 
@@ -124,15 +125,15 @@ def clip_insert(
         except Exception:
             pass  # ffprobe unavailable or failed; continue with defaults
 
-        # Convert seconds to frames
-        in_frame = int(in_seconds * fps)
+        # Convert seconds to frames (half-up, canonical helper)
+        in_frame = seconds_to_frames(in_seconds, fps)
         if out_seconds < 0:
             if duration_seconds is not None:
-                out_frame = int(duration_seconds * fps) - 1
+                out_frame = seconds_to_frames(duration_seconds, fps) - 1
             else:
                 out_frame = in_frame  # fallback: single frame
         else:
-            out_frame = int(out_seconds * fps)
+            out_frame = seconds_to_frames(out_seconds, fps)
 
         # Find first video playlist to insert into
         audio_playlist_ids = {t.id for t in project.tracks if t.track_type == "audio"}
@@ -391,7 +392,7 @@ def clip_split(workspace_path: str, clip_index: int, split_at_seconds: float = 0
         real = _validate_clip_index(playlist, clip_index)
 
         fps = project.profile.fps or 25.0
-        split_at_frame = int(split_at_seconds * fps)
+        split_at_frame = seconds_to_frames(split_at_seconds, fps)
 
         from workshop_video_brain.core.models.timeline import SplitClip
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
@@ -446,8 +447,8 @@ def clip_trim(
         _validate_clip_index(playlist, clip_index)
 
         fps = project.profile.fps or 25.0
-        new_in = int(in_seconds * fps) if in_seconds >= 0 else -1
-        new_out = int(out_seconds * fps) if out_seconds >= 0 else -1
+        new_in = seconds_to_frames(in_seconds, fps) if in_seconds >= 0 else -1
+        new_out = seconds_to_frames(out_seconds, fps) if out_seconds >= 0 else -1
 
         from workshop_video_brain.core.models.timeline import TrimClip
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
@@ -595,7 +596,7 @@ def audio_fade(
         _validate_clip_index(playlist, clip_index)
 
         fps = project.profile.fps or 25.0
-        duration_frames = max(1, int(duration_seconds * fps))
+        duration_frames = max(1, seconds_to_frames(duration_seconds, fps))
 
         from workshop_video_brain.core.models.timeline import AudioFade as AudioFadeIntent
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
@@ -781,7 +782,7 @@ def gap_insert(
         playlist = _resolve_playlist(project, track)
 
         fps = project.profile.fps or 25.0
-        duration_frames = max(1, int(duration_seconds * fps))
+        duration_frames = max(1, seconds_to_frames(duration_seconds, fps))
 
         from workshop_video_brain.core.models.timeline import InsertGap
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project

@@ -225,7 +225,7 @@ def title_card_add(
         # --- place the card at at_seconds via the canonical clip_place engine
         # (absolute overwrite placement at at_frame, pinned to never overlap
         # existing content -- the engine emits the leading pad blank).
-        at_frame = max(0, round(at_seconds * fps))
+        at_frame = cp.seconds_to_frames(max(0.0, at_seconds), fps)
         placed = cp.PlacedClip(
             producer_id=producer_id, in_point=0, out_point=frames - 1
         )

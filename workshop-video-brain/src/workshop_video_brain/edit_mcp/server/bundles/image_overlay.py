@@ -22,6 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
 from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     tool_guard,
     err,
@@ -258,8 +259,8 @@ def overlay_insert(
     except Exception as exc:  # noqa: BLE001 -- corrupt/unparseable project
         return from_exception(exc)
     fps = project.profile.fps or 25.0
-    at_frame = max(0, round(at_seconds * fps))
-    duration_frames = max(1, round(duration_seconds * fps))
+    at_frame = seconds_to_frames(max(0.0, at_seconds), fps)
+    duration_frames = max(1, seconds_to_frames(duration_seconds, fps))
 
     try:
         record = create_snapshot(

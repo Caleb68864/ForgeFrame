@@ -44,6 +44,8 @@ import re
 from fractions import Fraction
 from pathlib import Path
 
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -162,7 +164,7 @@ def compute_total_duration(
 
 def frames_per_image(per_image_seconds: float, fps: float) -> int:
     """Output frames a single image occupies (>= 1)."""
-    return max(1, round(per_image_seconds * fps))
+    return max(1, seconds_to_frames(per_image_seconds, fps))
 
 
 # ---------------------------------------------------------------------------

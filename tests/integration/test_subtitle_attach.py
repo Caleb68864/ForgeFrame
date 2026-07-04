@@ -185,3 +185,16 @@ def test_attach_missing_project_errors(tmp_path):
 def test_attach_bad_workspace_errors():
     out = subtitles_attach(workspace_path="", project_file="x")
     assert out["status"] == "error"
+
+
+def test_resolve_project_picks_highest_version_not_lexicographic(tmp_path):
+    """Regression: empty project_file must fall back to the numerically-latest
+    working copy (``_v10`` > ``_v2``), not the lexicographic ``files[-1]`` which
+    wrongly selected ``_v2``."""
+    ws, _ = _make_ws(tmp_path)
+    working = ws / "projects" / "working_copies"
+    working.mkdir(parents=True, exist_ok=True)
+    for ver in (2, 10):
+        shutil.copy(FIXTURE, working / f"subs_test_v{ver}.kdenlive")
+    resolved = _bundle._resolve_project(str(ws), "")
+    assert resolved.name == "subs_test_v10.kdenlive", resolved

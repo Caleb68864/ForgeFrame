@@ -26,8 +26,9 @@ from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _err,
-    latest_project,
+    _load_latest_project,
 )
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
 
 
 
@@ -61,7 +62,6 @@ def transitions_apply(
             return missing_file(workspace_path, "Workspace path")
         if not ws_path.is_dir():
             return invalid_input(f"Workspace path is not a directory: {workspace_path}", "Point workspace_path at the workspace directory, not a file.", path=workspace_path)
-        from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
         from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_versioned
         from workshop_video_brain.core.models.transitions import TransitionPreset, TransitionType
@@ -69,13 +69,7 @@ def transitions_apply(
         from workshop_video_brain.core.utils.naming import slugify
         from workshop_video_brain.workspace.manifest import read_manifest
 
-        working_copies = ws_path / "projects" / "working_copies"
-        kdenlive_files = sorted(working_copies.glob("*.kdenlive"))
-        if not kdenlive_files:
-            return err("No .kdenlive files found in projects/working_copies/", error_type="missing_file", suggestion="Create a working copy first with project_create_working_copy, or verify this workspace has been initialised.")
-
-        latest = latest_project(kdenlive_files)
-        project = parse_project(latest)
+        _, project, latest = _load_latest_project(workspace_path)
 
         try:
             t_preset = TransitionPreset(preset)
@@ -183,24 +177,17 @@ def transitions_apply_at(
                 param="preset", given=preset,
             )
 
-        from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
         from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_versioned
         from workshop_video_brain.core.models.transitions import TransitionPreset
         from workshop_video_brain.core.models.timeline import AddTransition
         from workshop_video_brain.workspace.manifest import read_manifest
 
-        working_copies = ws_path / "projects" / "working_copies"
-        kdenlive_files = sorted(working_copies.glob("*.kdenlive"))
-        if not kdenlive_files:
-            return err("No .kdenlive files found in projects/working_copies/", error_type="missing_file", suggestion="Create a working copy first with project_create_working_copy, or verify this workspace has been initialised.")
-
-        latest = latest_project(kdenlive_files)
-        project = parse_project(latest)
+        _, project, latest = _load_latest_project(workspace_path)
 
         fps = project.profile.fps or 25.0
-        target_frame = int(timestamp_seconds * fps)
-        tolerance_frames = int(2.0 * fps)  # 2-second tolerance
+        target_frame = seconds_to_frames(timestamp_seconds, fps)
+        tolerance_frames = seconds_to_frames(2.0, fps)  # 2-second tolerance
 
         # Identify audio playlist IDs
         audio_playlist_ids = {t.id for t in project.tracks if t.track_type == "audio"}
@@ -319,20 +306,13 @@ def transitions_apply_between(
                 param="preset", given=preset,
             )
 
-        from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
         from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_versioned
         from workshop_video_brain.core.models.transitions import TransitionPreset
         from workshop_video_brain.core.models.timeline import AddTransition
         from workshop_video_brain.workspace.manifest import read_manifest
 
-        working_copies = ws_path / "projects" / "working_copies"
-        kdenlive_files = sorted(working_copies.glob("*.kdenlive"))
-        if not kdenlive_files:
-            return err("No .kdenlive files found in projects/working_copies/", error_type="missing_file", suggestion="Create a working copy first with project_create_working_copy, or verify this workspace has been initialised.")
-
-        latest = latest_project(kdenlive_files)
-        project = parse_project(latest)
+        _, project, latest = _load_latest_project(workspace_path)
 
         # Find first video playlist
         audio_playlist_ids = {t.id for t in project.tracks if t.track_type == "audio"}

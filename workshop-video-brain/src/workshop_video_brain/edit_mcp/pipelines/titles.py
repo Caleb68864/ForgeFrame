@@ -20,6 +20,8 @@ import xml.etree.ElementTree as ET
 
 from pydantic import BaseModel, Field
 
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
+
 # Qt::Alignment flag ints as stored by the Kdenlive titler.
 _ALIGN_FLAGS = {"left": "0", "center": "4", "right": "2"}
 
@@ -87,7 +89,7 @@ def normalize_color(value: str) -> str:
 def duration_frames(spec: TitleSpec) -> int:
     """Title length in frames (>= 1) at the spec's fps."""
     fps = spec.fps or 25.0
-    return max(1, round(spec.duration_seconds * fps))
+    return max(1, seconds_to_frames(spec.duration_seconds, fps))
 
 
 def compute_layout(spec: TitleSpec) -> dict:

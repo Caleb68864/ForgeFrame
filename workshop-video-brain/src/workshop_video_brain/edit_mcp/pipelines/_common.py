@@ -7,7 +7,29 @@ the server/adapter layers.
 """
 from __future__ import annotations
 
+import math
 import xml.etree.ElementTree as ET
+
+
+def seconds_to_frames(seconds: float, fps: float) -> int:
+    """Convert a timeline offset in seconds to an integer frame index/count.
+
+    This is the ONE canonical seconds->frames conversion for the whole codebase.
+    Rounds half-up (``floor(seconds * fps + 0.5)``) so placement is frame-exact
+    and deterministic at fractional NTSC rates (23.976 / 29.97 / 59.94) -- i.e.
+    what a human editor expects, not the truncation ``int(t*fps)`` nor Python's
+    bankers' ``round``.  Raises ``ValueError`` on a negative time or
+    non-positive fps.
+
+    Callers that need a graceful fps fallback (``guides``/``vo_loop``) keep
+    their own wrappers; everything computing a frame from seconds should route
+    through here.
+    """
+    if seconds < 0:
+        raise ValueError(f"seconds must be >= 0 (got {seconds})")
+    if fps <= 0:
+        raise ValueError(f"fps must be > 0 (got {fps})")
+    return int(math.floor(seconds * fps + 0.5))
 
 
 def make_filter_xml(

@@ -149,6 +149,21 @@ def test_bad_workspace_errors():
     assert proxy_status(workspace_path="", project_file="x")["status"] == "error"
 
 
+def test_resolve_project_picks_highest_version_not_lexicographic(tmp_path):
+    """Regression: empty project_file must fall back to the numerically-latest
+    working copy (``_v10`` > ``_v2``), not the lexicographic ``files[-1]`` which
+    wrongly selected ``_v2``."""
+    ws = _make_ws(tmp_path)
+    working = ws / "projects" / "working_copies"
+    working.mkdir(parents=True, exist_ok=True)
+    # Distinguishable content per version so we can prove which was chosen.
+    for ver in (2, 10):
+        _write_project(ws, [f"/raw/clip_v{ver}.mp4"])
+        (working / "proxy_test_v1.kdenlive").rename(working / f"proxy_test_v{ver}.kdenlive")
+    resolved = _bundle._resolve_project(str(ws), "")
+    assert resolved.name == "proxy_test_v10.kdenlive", resolved
+
+
 # ---------------------------------------------------------------------------
 # Real proxy via the existing machinery (ffmpeg) + melt-accept
 # ---------------------------------------------------------------------------

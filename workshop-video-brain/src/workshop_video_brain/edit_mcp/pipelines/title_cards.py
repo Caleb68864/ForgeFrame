@@ -10,6 +10,7 @@ from workshop_video_brain.core.models.enums import MarkerCategory
 from workshop_video_brain.core.models.kdenlive import Guide, KdenliveProject
 from workshop_video_brain.core.models.markers import Marker
 from workshop_video_brain.core.models.title_cards import TitleCard
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +146,7 @@ def apply_title_cards_to_project(
     fps = project.profile.fps if project.profile.fps else 25.0
     new_guides = list(project.guides)
     for card in cards:
-        position = int(card.timestamp_seconds * fps)
+        position = seconds_to_frames(card.timestamp_seconds, fps)
         new_guides.append(
             Guide(
                 position=position,

@@ -17,6 +17,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
 from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     tool_guard,
     err,
@@ -167,7 +168,7 @@ def effect_pan_zoom(
 
     if duration_frames is None:
         clip_len = entry.out_point - entry.in_point + 1
-        duration_frames = clip_len if clip_len > 0 else int(round(fps * 5))
+        duration_frames = clip_len if clip_len > 0 else seconds_to_frames(5.0, fps)
 
     # Resolve rects: preset (profile-computed) then explicit overrides.
     try:

@@ -46,7 +46,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     MISSING_DEPENDENCY,
     BAD_JSON_PARAM,
 )
-from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _err, find_workspace_root
+from workshop_video_brain.edit_mcp.server.tools_helpers import _ok, _err, find_workspace_root, latest_project
 from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
     serialize_project,
@@ -88,12 +88,13 @@ def _resolve_project(workspace_path: str, project_file: str) -> Path:
             return candidate
         raise FileNotFoundError(f"Project file not found: {project_file}")
     working = ws / "projects" / "working_copies"
-    files = sorted(working.glob("*.kdenlive")) if working.exists() else []
-    if not files:
+    files = list(working.glob("*.kdenlive")) if working.exists() else []
+    latest = latest_project(files)
+    if latest is None:
         raise FileNotFoundError(
             "No project_file given and no .kdenlive in projects/working_copies/"
         )
-    return files[-1]
+    return latest
 
 
 def _resolve_srt(workspace_path: str, srt_path: str) -> Path:

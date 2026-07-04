@@ -28,6 +28,7 @@ import json
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
 from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     tool_guard,
     from_exception,
@@ -277,9 +278,9 @@ def subject_track(
     width = project.profile.width
     height = project.profile.height
     # Clip-relative window -> source-absolute frame indices.
-    start_frame = entry.in_point + int(round(max(0.0, start_seconds) * fps))
+    start_frame = entry.in_point + seconds_to_frames(max(0.0, start_seconds), fps)
     if end_seconds and end_seconds > 0:
-        end_frame = entry.in_point + int(round(end_seconds * fps))
+        end_frame = entry.in_point + seconds_to_frames(end_seconds, fps)
     else:
         end_frame = entry.out_point
 

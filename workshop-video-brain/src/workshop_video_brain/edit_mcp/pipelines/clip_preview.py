@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
+
 #: Preview formats this pipeline can emit.
 SUPPORTED_FORMATS: frozenset[str] = frozenset({"gif", "mp4"})
 
@@ -109,4 +111,4 @@ def mp4_preview_command(
 
 def expected_frame_count(seconds: float, fps: int) -> int:
     """Deterministic frame count for a preview (``round(seconds * fps)``)."""
-    return max(1, round(seconds * fps))
+    return max(1, seconds_to_frames(seconds, fps))

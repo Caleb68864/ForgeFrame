@@ -16,6 +16,7 @@ from workshop_video_brain.core.models.assembly import (
     StepAssembly,
 )
 from workshop_video_brain.core.models.clips import ClipLabel
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
 from workshop_video_brain.core.models.kdenlive import (
     Guide,
     KdenliveProject,
@@ -477,10 +478,11 @@ def assemble_timeline(
     def _clip_duration_frames(assignment: ClipAssignment) -> int:
         """Return duration in frames for a clip assignment."""
         if assignment.out_seconds >= 0:
-            return max(1, int((assignment.out_seconds - assignment.in_seconds) * fps))
+            return max(1, seconds_to_frames(
+                max(0.0, assignment.out_seconds - assignment.in_seconds), fps))
         # Full clip: try to determine from a default duration
         # Fall back to 5s if unknown
-        return int(5.0 * fps)
+        return seconds_to_frames(5.0, fps)
 
     for step in plan.steps:
         primaries = [c for c in step.clips if c.role == "primary"]
@@ -488,7 +490,7 @@ def assemble_timeline(
 
         if not primaries:
             # Add a blank/gap entry for this step so the timeline is not empty
-            gap_frames = int(5.0 * fps)
+            gap_frames = seconds_to_frames(5.0, fps)
             blank_entry = PlaylistEntry(producer_id="", in_point=0, out_point=gap_frames - 1)
             playlist_v2.entries.append(blank_entry)
             playlist_a1.entries.append(PlaylistEntry(producer_id="", in_point=0, out_point=gap_frames - 1))
@@ -497,11 +499,11 @@ def assemble_timeline(
 
         primary = primaries[0]
         producer = _get_or_create_producer(primary.clip_ref, primary.source_path)
-        in_frames = int(primary.in_seconds * fps)
+        in_frames = seconds_to_frames(primary.in_seconds, fps)
         if primary.out_seconds >= 0:
-            out_frames = int(primary.out_seconds * fps)
+            out_frames = seconds_to_frames(primary.out_seconds, fps)
         else:
-            out_frames = in_frames + int(5.0 * fps) - 1
+            out_frames = in_frames + seconds_to_frames(5.0, fps) - 1
 
         # Chapter marker at step start
         if add_chapter_markers:
@@ -548,11 +550,11 @@ def assemble_timeline(
             insert_offset = 0
             for ins in inserts:
                 ins_producer = _get_or_create_producer(ins.clip_ref, ins.source_path)
-                ins_in = int(ins.in_seconds * fps)
+                ins_in = seconds_to_frames(ins.in_seconds, fps)
                 if ins.out_seconds >= 0:
-                    ins_out = int(ins.out_seconds * fps)
+                    ins_out = seconds_to_frames(ins.out_seconds, fps)
                 else:
-                    ins_out = ins_in + int(3.0 * fps) - 1
+                    ins_out = ins_in + seconds_to_frames(3.0, fps) - 1
                 ins_duration = ins_out - ins_in + 1
                 # Don't exceed the primary clip's range on V1
                 if insert_offset + ins_duration > step_duration_frames:

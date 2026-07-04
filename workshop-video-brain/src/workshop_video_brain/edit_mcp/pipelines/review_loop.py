@@ -32,6 +32,7 @@ from uuid import uuid4
 
 from workshop_video_brain.core.models.enums import JobStatus
 from workshop_video_brain.core.models.project import RenderJob
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
 from workshop_video_brain.edit_mcp.adapters.render.executor import execute_render
 from workshop_video_brain.edit_mcp.adapters.render.profiles import load_profile
@@ -380,7 +381,7 @@ def _render_kdenlive_frame(project_path: Path, at_seconds: float, out_png: Path)
     except Exception as exc:  # noqa: BLE001
         logger.debug("could not read project fps, defaulting 25: %s", exc)
 
-    frame = max(0, round(at_seconds * fps))
+    frame = seconds_to_frames(max(0.0, at_seconds), fps)
     tmp_dir = out_png.parent / f".mlt_{project_path.stem}_{frame}"
     if tmp_dir.exists():
         shutil.rmtree(tmp_dir, ignore_errors=True)

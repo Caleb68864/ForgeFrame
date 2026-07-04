@@ -109,6 +109,14 @@ top, so they come first.
   truncating `int(seconds*fps)` in some paths and `round()` in others, and an
   `fps or 25.0` fallback. Standardize (accept both with an explicit unit param,
   or seconds everywhere with consistent rounding) and document per tool.
+  **FIXED-with-scope 2026-07-03 (consistency pass 2)**: conversion unification
+  landed — a single canonical half-up `seconds_to_frames` now lives in
+  `pipelines/_common.py` (re-exported from `clip_place`), and ~42 ad-hoc
+  `int(t*fps)` / `round()` sites across 18 modules were migrated onto it
+  (`guides`/`vo_loop` keep their tested `DEFAULT_FPS`-fallback front-ends).
+  Public units were **not** flipped (that would break callers); each time param
+  self-documents its unit via its name (28 `*_seconds`, 16 `*_frames`, 2 `*_ms`;
+  0 ambiguous). Full seconds↔frames dual-unit API redesign remains out of scope.
 - **Rotoscoping / ParamType gap** (known, from commit 7726d23): `roto-spline`
   param type missing from the `ParamType` enum → rotoscoping excluded from
   effect_catalog → `effect_stack_preset` can't save stacks containing masks.
