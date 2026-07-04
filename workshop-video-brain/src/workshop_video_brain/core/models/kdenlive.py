@@ -1,4 +1,29 @@
-"""Kdenlive project internal model."""
+"""Kdenlive project internal model.
+
+The shape this model serializes to (in ``adapters/kdenlive/serializer.py``)
+follows Kdenlive 25.x / MLT 7.x conventions verified against five hand-saved
+references in ``tests/fixtures/kdenlive_references/``.  Detailed contracts
+for each pattern live in ``vault/wiki/kdenlive-*.md``; the most relevant:
+
+* ``kdenlive-25-document-shape`` -- top-level structure (per-track tractors,
+  main sequence, project tractor wrapper, ``main_bin`` doc-properties).
+* ``kdenlive-uuid-vs-control-uuid`` -- never put ``kdenlive:uuid`` on a
+  producer/chain; it makes the bin loader skip registration.
+* ``kdenlive-twin-chain-pattern`` -- avformat clips emit two ``<chain>``
+  elements (timeline + bin), linked by ``kdenlive:control_uuid`` and
+  ``kdenlive:id``, distinguished by the ``_kdbin`` suffix on the bin twin.
+* ``kdenlive-per-track-tractor-pattern`` -- each track is its own tractor
+  with two playlists; audio tracks carry internal volume/panner/audiolevel
+  filters.
+* ``kdenlive-title-card-pattern`` -- editable titles (``mlt_service=
+  kdenlivetitle`` + ``xmldata``).
+* ``kdenlive-cross-dissolve-pattern`` -- stacked-clip dissolves; ``a_track <
+  b_track``; encode direction via ``reverse``.
+* ``kdenlive-image-and-qtblend-pattern`` -- image producers + Ken Burns
+  ``qtblend`` filters with entry-local keyframes.
+* ``kdenlive-clip-speed-pattern`` -- separate ``timewarp`` producer per
+  unique speed; original chain stays as the bin clip.
+"""
 from __future__ import annotations
 
 from pydantic import Field
@@ -40,12 +65,66 @@ class Producer(SerializableMixin):
     chain_out: int | None = None
 
 
+class EntryFilter(SerializableMixin):
+    """A filter (effect) attached to a playlist entry.
+
+    Emitted as a ``<filter>`` child inside the entry's ``<entry>`` element.
+    Used for transform / colour / blur effects that apply to a single
+    clip use -- e.g. a Ken Burns ``qtblend`` parallax pan on an image, a
+    static PIP rect on a webcam overlay, an audio fade, or a colour grade.
+
+    Important contract gotchas (see
+    ``vault/wiki/kdenlive-image-and-qtblend-pattern.md`` and
+    ``vault/wiki/kdenlive-audio-fade-pattern.md``):
+
+    * Transforms use ``mlt_service=qtblend`` -- NOT ``affine``.  Kdenlive's
+      UI labels both as "Transform" but writes ``qtblend``.
+    * Keyframe timestamps in ``rect`` / ``rotation`` properties are
+      ENTRY-LOCAL (run from ``00:00:00.000`` to the entry's local
+      duration), not absolute sequence frames.
+    * Audio volume fades are NOT keyframed; they use scalar ``gain`` +
+      ``end`` properties and rely on the filter's ``in_frame``/``out_frame``
+      attributes to define the ramp window.
+
+    Attributes:
+        id: Optional element id (Kdenlive auto-numbers these as
+            ``filter6``/``filter7``/...; pass empty to omit).
+        in_frame: Optional ``in=`` attribute on the ``<filter>`` element
+            itself (entry-local frame index).  Used by audio fades to
+            position the ramp window inside the clip.
+        out_frame: Optional ``out=`` attribute on the ``<filter>`` element.
+        zone_in_frame: Optional ``kdenlive:zone_in`` property -- scopes the
+            effect to a sub-range of the clip (entry-local frames).  Pair
+            with ``zone_out_frame`` to define the active range.  Used in
+            ``effect-zones.kdenlive`` from the KDE test suite.
+        zone_out_frame: Optional ``kdenlive:zone_out`` property.
+        properties: All ``<property name=...>value</property>`` children,
+            keyed by property name.
+    """
+
+    id: str = ""
+    in_frame: int | None = None
+    out_frame: int | None = None
+    zone_in_frame: int | None = None
+    zone_out_frame: int | None = None
+    properties: dict[str, str] = Field(default_factory=dict)
+
+
 class PlaylistEntry(SerializableMixin):
     """A single entry in a playlist.  If producer_id is empty it represents a gap."""
 
     producer_id: str = ""
     in_point: int = 0
     out_point: int = 0
+    # 1.0 = play at normal speed; other values trigger the serializer to
+    # emit a separate ``<producer mlt_service="timewarp">`` for this
+    # clip-use and rewrite the entry's producer reference to it.  The
+    # original chain stays in place as the bin clip; only the timeline
+    # entry is redirected to the timewarp variant.
+    speed: float = 1.0
+    # Per-clip-use effects (transforms, colour grading, blurs, etc.).  Live
+    # inside the ``<entry>`` element in the emitted XML.
+    filters: list[EntryFilter] = Field(default_factory=list)
 
 
 class Playlist(SerializableMixin):
@@ -54,9 +133,28 @@ class Playlist(SerializableMixin):
 
 
 class Track(SerializableMixin):
+    """A timeline track in the project.
+
+    The serializer emits each Track as a per-track ``<tractor>`` wrapping
+    two ``<playlist>`` children.  By default each ``<track>`` ref inside
+    the per-track tractor carries a ``hide`` attribute that suppresses
+    the wrong stream type (audio tracks ``hide="video"``, video tracks
+    ``hide="audio"``).  Setting ``muted`` or ``hidden`` extends that
+    suppression to the track's own stream type as well, producing
+    ``hide="both"`` or the equivalent toggled value -- which is how
+    Kdenlive 25.x records track mute/hide (verified against
+    ``audio-mix.kdenlive`` from the KDE test suite).
+    """
+
     id: str
     track_type: str = "video"  # "video" | "audio"
     name: str | None = None
+    # When True, the track contributes nothing to the master output even
+    # though its clips are still in the model.  For audio tracks this is
+    # a "mute"; for video tracks this is "hide".  The serializer maps
+    # both to ``hide="both"`` on the per-track tractor's sub-tracks.
+    muted: bool = False
+    hidden: bool = False
 
 
 class Guide(SerializableMixin):
@@ -93,6 +191,96 @@ class OpaqueElement(SerializableMixin):
     position_hint: str | None = None
 
 
+class SequenceTransition(SerializableMixin):
+    """A user-added transition emitted into the main sequence tractor.
+
+    The serializer wires the auto-internal mix/qtblend transitions per
+    track automatically; this model holds *additional* transitions like
+    cross-dissolves that span an overlap region between two stacked
+    clips.  See ``vault/wiki/kdenlive-cross-dissolve-pattern.md``.
+
+    HARD RULE: ``a_track < b_track``.  The lower-numbered track ordinal
+    goes into ``a_track`` regardless of dissolve direction.  Encode
+    direction via the ``reverse`` property in ``properties`` (``"0"`` =
+    upper fades in, ``"1"`` = upper fades out revealing lower).
+    Reversing the ordinals instead produces the "Incorrect composition
+    ... was set to forced track" warning at project-load.
+
+    Attributes:
+        id: Element id (e.g. ``"dissolve_v1_v2"``); must be unique.
+        a_track: 1-based ordinal of the LOWER track in the main sequence's
+            track list (0 = black_track).  Must be ``< b_track``.
+        b_track: 1-based ordinal of the HIGHER track.
+        in_frame: Absolute sequence frame where the transition starts.
+        out_frame: Absolute sequence frame where the transition ends.
+        mlt_service: MLT service name, e.g. ``"luma"`` for a dissolve.
+        kdenlive_id: Kdenlive's preset id, e.g. ``"dissolve"`` or ``"wipe"``.
+        properties: Extra ``<property>`` children (e.g. ``softness``,
+            ``reverse``, ``alpha_over``, ``fix_background_alpha``).
+    """
+
+    id: str
+    a_track: int
+    b_track: int
+    in_frame: int
+    out_frame: int
+    mlt_service: str
+    kdenlive_id: str
+    properties: dict[str, str] = Field(default_factory=dict)
+
+
+class TrackMixTransition(SerializableMixin):
+    """A same-track mix transition between two adjacent clips on the SAME
+    track (vs ``SequenceTransition`` which spans two stacked clips on
+    DIFFERENT tracks).  Verified against the upstream KDE test-suite
+    reference at ``tests/fixtures/kdenlive_references/
+    audio_mix_upstream_kde.kdenlive``.
+
+    The serializer emits this as a ``<transition>`` element INSIDE the
+    matching per-track ``<tractor>`` element (NOT in the main sequence's
+    transition list).  ``a_track`` / ``b_track`` reference the per-track
+    tractor's two sub-playlists (always 0 and 1), NOT main-sequence track
+    ordinals.
+
+    For mix transitions to actually overlap visually, the two clip uses
+    must live on DIFFERENT sub-playlists of the same track:
+
+    * Sub-playlist A (id ``<track.id>``) carries clip 1
+    * Sub-playlist B (id ``<track.id>_kdpair``) carries clip 2 (with a
+      ``<blank>`` covering the duration before clip 2 starts)
+
+    The transition's ``in``/``out`` covers the overlap window.  Outside
+    the overlap, only one playlist's content is active per the entry
+    timing.
+
+    Putting ``kdenlive:mixcut`` on a CROSS-track main-sequence transition
+    (vs same-track) makes Kdenlive's renderer treat it as a same-track
+    mix and silently drop the visual blend (smoke 031's earlier
+    failure).  HARD RULE: ``kdenlive:mixcut`` belongs ONLY here, never
+    on a ``SequenceTransition``.
+
+    Attributes:
+        track_ref: The ``Track.id`` this mix lives inside.
+        in_frame: Absolute sequence frame where the mix transition starts.
+        out_frame: Absolute sequence frame where the mix transition ends.
+        mixcut_frames: ``kdenlive:mixcut`` value -- the half-overlap that
+            bleeds into each side of the cut.
+        kind: ``"mix"`` for plain audio crossfade, ``"luma"`` for a
+            luma-mask wipe variant, ``"affine"`` for slide transitions.
+        properties: Extra ``<property>`` children (e.g. ``softness``,
+            ``reverse``).  ``start``/``accepts_blanks``/``reverse``
+            defaults are applied by the serializer if omitted.
+    """
+
+    id: str
+    track_ref: str
+    in_frame: int
+    out_frame: int
+    mixcut_frames: int
+    kind: str = "mix"  # "mix" | "luma" | "affine"
+    properties: dict[str, str] = Field(default_factory=dict)
+
+
 class KdenliveProject(SerializableMixin):
     version: str = "7"
     title: str = ""
@@ -110,3 +298,11 @@ class KdenliveProject(SerializableMixin):
     # subtitlesList/activeSubtitleIndex) are regenerated and never stored here.
     docproperties: dict[str, str] = Field(default_factory=dict)
     opaque_elements: list[OpaqueElement] = Field(default_factory=list)
+    # Cross-dissolves, wipes, slides, etc. that span the overlap between two
+    # stacked clips on different tracks.  Auto-internal per-track transitions
+    # (mix / qtblend) are NOT stored here -- they're emitted by the
+    # serializer based on the track list.  See ``SequenceTransition``.
+    sequence_transitions: list[SequenceTransition] = Field(default_factory=list)
+    # Same-track audio crossfades / luma mixes / slide transitions.  Live
+    # INSIDE the per-track tractor.  See ``TrackMixTransition``.
+    track_mix_transitions: list[TrackMixTransition] = Field(default_factory=list)

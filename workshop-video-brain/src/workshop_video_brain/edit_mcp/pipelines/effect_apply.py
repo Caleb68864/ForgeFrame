@@ -19,7 +19,15 @@ _COMMON_EFFECTS: list[dict[str, str]] = [
     },
     {
         "name": "avfilter.curves",
-        "description": "Curve-based color adjustment",
+        "description": (
+            "Curve-based color adjustment. NOTE: avfilter.curves is NOT in "
+            "Kdenlive's effect registry -- it is flagged missing and removed "
+            "on load. Substitute frei0r.curves, which reads numbered control-"
+            "point props 1-15 at render time (not the kdenlive:curve string); "
+            "all 15 must be set verbatim from a working reference or the curve "
+            "flatlines to white. See "
+            "vault/wiki/kdenlive-frei0r-curves-all-numbered-props.md."
+        ),
     },
     {
         "name": "frei0r.colgate",

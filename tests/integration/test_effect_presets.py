@@ -318,3 +318,4 @@ def test_sr23_montage_n_cuts_exceeds_duration_errors_with_hint(tmp_path):
     )
     assert out["status"] == "error"
     assert "300" in out["message"] or "duration" in out["message"].lower()
+
