@@ -570,3 +570,45 @@ ffmpeg-gated integration tests now have canonical skip marks available; migrated
   external). Pass 5 could collapse by having `external/builders.py` re-export
   the three builders from `_testkit` and keep only `two_video_track_project` +
   `build_filter_xml` locally.
+
+---
+
+## Pass 5 (2026-07-03) — restructuring opinion (synthesis only, NO code)
+
+Deliverable: `docs/plans/2026-07-03-codebase-restructuring-opinion.md`. No source
+or test files were touched this pass; this is the decision document the owner
+reads to choose whether to restructure. All prior-pass carry-forwards were
+resolved into verdicts there. Summary of positions:
+
+- **Central question (layer-first vs feature-domain vs hybrid):**
+  **KEEP layer-first.** Rejected the feature-domain reorg (~40-80 agent-hours,
+  HIGH import-surface + test-churn risk) because its locality benefit is already
+  ~90% captured by `bundles/` pkgutil auto-discovery (new feature = new
+  pipeline + new bundle, both new files, zero shared-file edit) plus
+  same-basename-across-layers naming, and it would collapse the proven Pass-3
+  pipeline/shell seam and fail to propagate to the tier-organized test tree.
+  Calibrated against the patcher split (`e7037c4`, ~3-4h) and tools split
+  (`86c22c5`, ~5-8h for one package).
+- **Carry-forward verdicts:** (1) do NOT merge `bundles/` into `tools/` — the
+  auto-discovery is the only zero-shared-file registration path and is the
+  anti-contention asset; re-document its rationale instead. (2) SPLIT
+  `tools_helpers` into a package with full re-export shim (patcher pattern) and
+  fold the last stranded `_build_filter_xml` into `_common` — the cleanest real
+  win. (3) `_common`/`_testkit` growth = a written >250-LOC/5-domain split
+  trigger, not a pre-split. (4) `production_brain` ↔ `edit_mcp` coupling
+  **violates ADR 004** (module-level `production_brain`→`edit_mcp.pipelines`;
+  lazy `edit_mcp`→`production_brain.skills/notes` dodging a circular import) —
+  amend via a new ADR 005, no code move. (5) tests stay tier-first, do NOT
+  mirror src.
+- **Recommendation:** DO ~4-6 agent-hours of surgical cleanup (Phase A
+  `tools_helpers` split + stranded builder; Phase B optional `tools/`
+  auto-discovery to retire the one real contention point; Phase C docs/ADR-005).
+  DON'T do the feature-domain or hybrid restructure. "Do nothing more" judged
+  defensible — the 4 passes captured the large majority of the value.
+
+**Notes file complete.** Baseline at Pass 1 start was `514f69d` (4203 passed / 1
+skipped, ~60.9k LOC / 243 modules); at Pass 5 the tree is 244 modules / ~59.8k
+LOC, 201 live tools, suite green (per Pass 4's twice-run 4200 passed / 1 skipped).
+Passes 1-4 landed code (duplication drain, API/units consistency, layering
+enforcement, test consolidation); Pass 5 is synthesis only. No further appends —
+this document is closed.
