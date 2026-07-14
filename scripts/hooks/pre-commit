@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# BEGIN decision-log-enforcement v1
+set -euo pipefail
+
+# Factory-managed bypass: commits tagged [factory-managed] by the configured
+# factory identity (committer email == forge.json:git_username) skip the
+# <FILL-IN> scaffold/block checks. <FACTORY-MANAGED> is accepted as a passing
+# scaffold state; PHASE-CLOSER aggregates these entries in a follow-up pass.
+# Both conditions must match — tag AND email — to prevent human commits that
+# quote factory messages from accidentally bypassing enforcement.
+_is_factory_commit=0
+if grep -qF '[factory-managed]' .git/COMMIT_EDITMSG 2>/dev/null; then
+  _factory_email=""
+  if [ -f "${HOME}/.claude/forge.json" ]; then
+    if command -v python3 >/dev/null 2>&1; then
+      _factory_email=$(python3 -c \
+        "import json,sys; d=json.load(open('${HOME}/.claude/forge.json')); print(d.get('git_username',''))" \
+        2>/dev/null || true)
+    elif command -v jq >/dev/null 2>&1; then
+      _factory_email=$(jq -r '.git_username // ""' "${HOME}/.claude/forge.json" 2>/dev/null || true)
+    fi
+  fi
+  _committer_email=$(git var GIT_COMMITTER_IDENT 2>/dev/null \
+    | sed 's/.*<\([^>]*\)>.*/\1/' || true)
+  if [ -n "$_factory_email" ] && [ "$_committer_email" = "$_factory_email" ]; then
+    _is_factory_commit=1
+  fi
+fi
+
+# Stage 1: scaffold <FILL-IN> entry if code staged without decisions.md change
+staged_code=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|js|py|rb|go|rs|cs|sql|sh)$' | grep -vE 'scripts/hooks/|\.git/' || true)
+staged_decisions=$(git diff --cached --name-only --diff-filter=ACM | grep -c '^docs/decisions\.md$' || true)
+
+if [ -n "$staged_code" ] && [ "$staged_decisions" -eq 0 ] && [ "$_is_factory_commit" -eq 0 ]; then
+  cat >> docs/decisions.md <<'SCAFFOLD'
+
+## $(date +%Y-%m-%d) — <FILL-IN>
+- Symptom: <FILL-IN>
+- Fix: <FILL-IN>
+- Surfaces: <FILL-IN>
+- Watch: <FILL-IN>
+- Commit: <FILL-IN>
+SCAFFOLD
+  git add docs/decisions.md
+  cat >&2 <<'ERRMSG'
+Decision log entry required. Scaffold appended to docs/decisions.md.
+Fill in the 5 remaining <FILL-IN> fields (Symptom, Fix, Surfaces, Watch, Commit) in docs/decisions.md, then re-stage and re-commit.
+Bypass (use sparingly): git commit --no-verify
+ERRMSG
+  exit 1
+fi
+
+# Stage 2: block if <FILL-IN> still present in ADDED lines of staged docs/decisions.md
+# Factory-managed commits may use <FACTORY-MANAGED> scaffold state; only <FILL-IN> blocks.
+if [ "$staged_decisions" -gt 0 ] && [ "$_is_factory_commit" -eq 0 ]; then
+  if git diff --cached -- docs/decisions.md | grep -E '^\+' | grep -q '<FILL-IN>'; then
+    cat >&2 <<'ERRMSG'
+docs/decisions.md still contains <FILL-IN> placeholders.
+Fill them in before committing. Bypass (use sparingly): git commit --no-verify
+See: docs/decisions.md
+ERRMSG
+    exit 1
+  fi
+fi
+# END decision-log-enforcement v1
