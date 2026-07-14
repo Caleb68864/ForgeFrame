@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import warnings
 from dataclasses import dataclass, field
 
@@ -19,6 +20,7 @@ class Config:
     whisper_model: str
     whisper_available: bool
     ffmpeg_available: bool
+    tesseract_available: bool = False
 
 
 def _detect_ffmpeg(ffmpeg_path: str) -> bool:
@@ -33,6 +35,29 @@ def _detect_whisper() -> bool:
         return False
 
 
+def _detect_tesseract() -> bool:
+    """Detect the `tesseract` OCR binary on PATH. Never raises."""
+    try:
+        return shutil.which("tesseract") is not None
+    except Exception:
+        return False
+
+
+def get_ffmpeg_version(ffmpeg_path: str = "ffmpeg") -> str | None:
+    """Return the ffmpeg version string, or None if unavailable. Never raises."""
+    try:
+        result = subprocess.run(
+            [ffmpeg_path, "-version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    first_line = result.stdout.splitlines()[0] if result.stdout else ""
+    return first_line or None
+
+
 def load_config() -> Config:
     """Load configuration from environment variables."""
     vault_path = os.environ.get("WVB_VAULT_PATH") or None
@@ -42,6 +67,7 @@ def load_config() -> Config:
 
     ffmpeg_available = _detect_ffmpeg(ffmpeg_path)
     whisper_available = _detect_whisper()
+    tesseract_available = _detect_tesseract()
 
     if not ffmpeg_available:
         warnings.warn(
@@ -73,4 +99,5 @@ def load_config() -> Config:
         whisper_model=whisper_model,
         ffmpeg_available=ffmpeg_available,
         whisper_available=whisper_available,
+        tesseract_available=tesseract_available,
     )

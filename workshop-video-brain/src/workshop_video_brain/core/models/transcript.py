@@ -26,6 +26,10 @@ class TranscriptSegment(SerializableMixin):
     text: str
     confidence: float = 1.0
     words: list[WordTiming] = Field(default_factory=list)
+    segment_id: str | None = None
+    speaker: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
 
 
 class Transcript(SerializableMixin):

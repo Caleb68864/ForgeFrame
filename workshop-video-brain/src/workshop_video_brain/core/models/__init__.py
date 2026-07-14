@@ -68,6 +68,17 @@ from .archive import ArchiveManifest
 from .color import ColorAnalysis
 from .compositing import PipPreset, PipLayout
 from .qc import QCReport, TimeRange
+from .visual_research import (
+    FrameCandidate,
+    FrameEvaluation,
+    FrameVisualMetrics,
+    ResearchCapture,
+    ResearchConfig,
+    ResearchManifest,
+    ResearchQuery,
+    ResearchRegion,
+    SceneChange,
+)
 
 __all__ = [
     # enums
@@ -179,4 +190,14 @@ __all__ = [
     # compositing
     "PipPreset",
     "PipLayout",
+    # visual research
+    "ResearchQuery",
+    "ResearchRegion",
+    "FrameVisualMetrics",
+    "FrameCandidate",
+    "ResearchCapture",
+    "ResearchManifest",
+    "FrameEvaluation",
+    "SceneChange",
+    "ResearchConfig",
 ]
