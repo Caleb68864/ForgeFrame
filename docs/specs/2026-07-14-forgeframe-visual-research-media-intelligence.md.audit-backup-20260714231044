@@ -105,7 +105,7 @@ depends_on: ['SS-01']
   - `[STRUCTURAL]` `frames.py` exposes `extract_frame`, `extract_frame_burst`, `extract_centered_burst` with the signatures above, each returning `FrameCandidate`(s).
   - `[BEHAVIORAL]` `extract_frame_burst` over a 2s range with `interval_seconds=0.1, max_frames=5` returns exactly 5 chronological candidates with no duplicate `timestamp_seconds`.
   - `[BEHAVIORAL]` `extract_frame` on `tests/fixtures/media_generated/greenscreen_reporter_720.mp4` at `timestamp_seconds=0.5` writes a non-empty PNG whose probed dimensions match the candidate's `width`/`height`, and the candidate records the actual extracted timestamp.
-  - `[BEHAVIORAL]` When the source probes as VFR, `extract_frame` forces accurate seek regardless of the requested `quality` parameter, and sets a `vfr_warning` on the candidate.
+  - `[BEHAVIORAL]` When the source probes as VFR, `extract_frame` forces accurate seek and sets a `vfr_warning` on the candidate.
   - `[MECHANICAL]` `uv run pytest tests/integration/test_frame_extraction_smoke.py -q` passes.
   - `[MECHANICAL]` `uv run pytest tests/ -q` shows no regressions in existing runner tests.
 
@@ -267,7 +267,7 @@ depends_on: ['SS-04', 'SS-06', 'SS-07', 'SS-08', 'SS-09']
 ---
 sub_spec_id: SS-11
 phase: run
-depends_on: ['SS-02', 'SS-03', 'SS-04', 'SS-07', 'SS-10']
+depends_on: ['SS-02', 'SS-03', 'SS-04', 'SS-10']
 ---
 
 ### 11. CLI commands (research / frame / scenes / transcript) with --json
