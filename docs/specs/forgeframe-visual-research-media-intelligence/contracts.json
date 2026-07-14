@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "spec_slug": "forgeframe-visual-research-media-intelligence",
+  "note": "content_sha256 empty: owner files are (new) and do not yet exist; forge-run computes on the merged branch.",
+  "contracts": [
+    {
+      "owner_sub_spec": 1,
+      "consumer_sub_specs": [2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+      "name": "ResearchConfig",
+      "kind": "type",
+      "signature": "ResearchConfig() -> nested config (windowing, candidate_generation, scene_detection, quality, deduplication, ocr, vision, export)",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/core/models/visual_research.py",
+      "content_sha256": ""
+    },
+    {
+      "owner_sub_spec": 1,
+      "consumer_sub_specs": [2, 6, 8, 9, 10, 11],
+      "name": "FrameCandidate",
+      "kind": "type",
+      "signature": "FrameCandidate(candidate_id, source_id, region_id?, timestamp_seconds, image_path, width, height, extraction_method, metrics: FrameVisualMetrics, metadata)",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/core/models/visual_research.py",
+      "content_sha256": ""
+    },
+    {
+      "owner_sub_spec": 1,
+      "consumer_sub_specs": [9, 10, 11],
+      "name": "ResearchManifest",
+      "kind": "type",
+      "signature": "ResearchManifest(manifest_version, generated_at, source: MediaAsset, query?, regions[], captures[], processing)",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/core/models/visual_research.py",
+      "content_sha256": ""
+    },
+    {
+      "owner_sub_spec": 2,
+      "consumer_sub_specs": [3, 6],
+      "name": "run_ffmpeg",
+      "kind": "function",
+      "signature": "run_ffmpeg(args, input_path, output_path, overwrite=True, dry_run=False, pre_input_args: list[str] | None = None) -> FFmpegResult",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/edit_mcp/adapters/ffmpeg/runner.py",
+      "content_sha256": ""
+    },
+    {
+      "owner_sub_spec": 2,
+      "consumer_sub_specs": [6, 11],
+      "name": "extract_frame",
+      "kind": "function",
+      "signature": "extract_frame(video_path, timestamp_seconds, output_path=None, quality='high', fmt='png') -> FrameCandidate",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/edit_mcp/adapters/ffmpeg/frames.py",
+      "content_sha256": ""
+    },
+    {
+      "owner_sub_spec": 3,
+      "consumer_sub_specs": [6, 11],
+      "name": "detect_scene_changes",
+      "kind": "function",
+      "signature": "detect_scene_changes(video_path, start_seconds=None, end_seconds=None, threshold=0.30, minimum_gap_seconds=1.0) -> list[SceneChange]",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/edit_mcp/adapters/ffmpeg/scene.py",
+      "content_sha256": ""
+    },
+    {
+      "owner_sub_spec": 4,
+      "consumer_sub_specs": [5, 10, 11],
+      "name": "TranscriptRepository",
+      "kind": "type",
+      "signature": "TranscriptRepository(segments).search/overlapping/context_around/merge_adjacent",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/edit_mcp/pipelines/transcript_repository.py",
+      "content_sha256": ""
+    },
+    {
+      "owner_sub_spec": 4,
+      "consumer_sub_specs": [10, 11],
+      "name": "parse_transcript",
+      "kind": "function",
+      "signature": "parse_transcript(path) -> list[TranscriptSegment]",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/edit_mcp/adapters/transcript/parsers.py",
+      "content_sha256": ""
+    },
+    {
+      "owner_sub_spec": 5,
+      "consumer_sub_specs": [6, 10],
+      "name": "select_regions",
+      "kind": "function",
+      "signature": "select_regions(repo, query: ResearchQuery, config: ResearchConfig) -> list[ResearchRegion]",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/edit_mcp/pipelines/visual_research/regions.py",
+      "content_sha256": ""
+    },
+    {
+      "owner_sub_spec": 6,
+      "consumer_sub_specs": [10],
+      "name": "generate_candidates",
+      "kind": "function",
+      "signature": "generate_candidates(video_path, region: ResearchRegion, source: MediaAsset, config: ResearchConfig) -> list[FrameCandidate]",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/edit_mcp/pipelines/visual_research/candidates.py",
+      "content_sha256": ""
+    },
+    {
+      "owner_sub_spec": 7,
+      "consumer_sub_specs": [8, 10],
+      "name": "FrameScorer",
+      "kind": "type",
+      "signature": "FrameScorer().score(candidate, config) -> FrameVisualMetrics; .rank(candidates, config)",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/edit_mcp/pipelines/visual_research/scoring.py",
+      "content_sha256": ""
+    },
+    {
+      "owner_sub_spec": 8,
+      "consumer_sub_specs": [10],
+      "name": "deduplicate",
+      "kind": "function",
+      "signature": "deduplicate(candidates: list[FrameCandidate], threshold: int, rank_key) -> tuple[list[FrameCandidate], dict]",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/edit_mcp/pipelines/visual_research/dedup.py",
+      "content_sha256": ""
+    },
+    {
+      "owner_sub_spec": 9,
+      "consumer_sub_specs": [10],
+      "name": "export_package",
+      "kind": "function",
+      "signature": "export_package(manifest: ResearchManifest, output_dir, obsidian=False, keep_candidates=False) -> ResearchManifest",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/edit_mcp/pipelines/visual_research/export.py",
+      "content_sha256": ""
+    },
+    {
+      "owner_sub_spec": 10,
+      "consumer_sub_specs": [11],
+      "name": "research_video",
+      "kind": "function",
+      "signature": "research_video(source, transcript=None, query=None, topics=None, timestamp_ranges=None, config: ResearchConfig | None = None) -> ResearchManifest",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/edit_mcp/pipelines/visual_research/service.py",
+      "content_sha256": ""
+    }
+  ]
+}

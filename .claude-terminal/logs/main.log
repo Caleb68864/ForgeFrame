@@ -1,0 +1,15 @@
+2026-04-25T14:53:23.848Z [INFO] --- Log session started ---
+2026-04-25T14:53:23.918Z [INFO] [sessions] loaded 1 saved tabs from C:\Users\CalebBennett\Documents\GitHub\ForgeFrame\.claude-terminal\sessions.json
+2026-04-25T14:53:23.925Z [INFO] [tab:create] resuming session 10c6ea8b-bdfb-438b-850e-4eb658165a75 in cwd: C:\Users\CalebBennett\Documents\GitHub\ForgeFrame
+2026-04-25T14:53:24.337Z [DEBUG] [sessions] skip persist for %s: %d claude tab(s) still initializing C:\Users\CalebBennett\Documents\GitHub\ForgeFrame 1
+2026-04-25T14:53:29.861Z [DEBUG] [ipc-raw] {"tabId":"tab-1777128803921-ebafho","event":"tab:ready","data":"{\"sessionId\":\"10c6ea8b-bdfb-438b-850e-4eb658165a75\",\"source\":\"resume\"}"}
+
+2026-04-25T14:53:29.862Z [DEBUG] [hook] tab:ready tab-1777128803921-ebafho {"sessionId":"10c6ea8b-bdfb-438b-850e-4eb658165a75","source":"resume"}
+2026-04-25T14:53:29.862Z [INFO] [tab:ready] tab-1777128803921-ebafho sessionId: 10c6ea8b-bdfb-438b-850e-4eb658165a75 source: resume
+2026-04-25T14:53:29.862Z [INFO] [tab:ready] resume with new session for tab-1777128803921-ebafho — generating name from history
+2026-04-25T14:53:29.863Z [INFO] [generateResumeTabName] starting for tab tab-1777128803921-ebafho session: 10c6ea8b-bdfb-438b-850e-4eb658165a75
+2026-04-25T14:53:29.881Z [DEBUG] [callHaikuForName] spawning: cmd.exe /c claude -p --no-session-persistence --model claude-haiku-4-5-20251001 --tools  --setting-sources 
+2026-04-25T14:53:30.071Z [DEBUG] [sessions] persisted 1 tabs to C:\Users\CalebBennett\Documents\GitHub\ForgeFrame\.claude-terminal\sessions.json
+2026-04-25T14:53:39.094Z [DEBUG] [callHaikuForName] stdout: "MCP Video Output Testing\n"
+2026-04-25T14:53:39.311Z [DEBUG] [sessions] persisted 1 tabs to C:\Users\CalebBennett\Documents\GitHub\ForgeFrame\.claude-terminal\sessions.json
+2026-04-25T14:53:44.956Z [INFO] [project-manager] added project proj-1777128824956-c5lbcr C:\Users\CalebBennett\Documents\GitHub\Hampton_Hawk_Plant_Sales

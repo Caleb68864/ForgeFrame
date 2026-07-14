@@ -1,0 +1,6 @@
+[mcp_servers.workshop-video-brain]
+args = [
+    "run",
+    "workshop-video-brain-server",
+]
+command = "uv"
