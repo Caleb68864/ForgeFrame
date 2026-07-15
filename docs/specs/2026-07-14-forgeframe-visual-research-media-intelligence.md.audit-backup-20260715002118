@@ -147,7 +147,7 @@ depends_on: ['SS-01']
 - **Acceptance criteria:**
   - `[STRUCTURAL]` `parsers.py` exposes `parse_transcript(path)` returning `list[TranscriptSegment]`; `transcript_repository.py` defines `TranscriptRepository` with the four query methods above.
   - `[BEHAVIORAL]` Parsing `sample.srt`, `sample.vtt`, and `sample.json` each yields segments with correct `start_seconds`/`end_seconds`/`text` (spot-checked against fixture content).
-  - `[BEHAVIORAL]` `overlapping(a, b)` returns exactly the segments whose time ranges intersect `[a, b]` (i.e., `segment.start < b AND segment.end > a`); `context_around(t, n)` returns segments whose time ranges intersect the band `[t-n, t+n]`.
+  - `[BEHAVIORAL]` `overlapping(a, b)` returns exactly the segments intersecting `[a, b]`; `context_around(t, n)` returns segments within `±n` seconds of `t`.
   - `[BEHAVIORAL]` `search` is case-insensitive by default and matches substrings.
   - `[MECHANICAL]` `uv run pytest tests/unit/test_transcript_repository.py -q` passes.
 
