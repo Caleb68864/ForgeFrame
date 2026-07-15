@@ -45,6 +45,8 @@ class ResearchQuery(SerializableMixin):
     start_seconds: float | None = None
     end_seconds: float | None = None
     max_candidates: int = 20
+    segment_ids: list[str] = Field(default_factory=list)
+    timestamps: list[float] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
@@ -59,6 +61,11 @@ class ResearchRegion(SerializableMixin):
     end_seconds: float
     label: str = ""
     tags: list[str] = Field(default_factory=list)
+    source_method: str = ""
+    reason: str = ""
+    transcript_segment_ids: list[str] = Field(default_factory=list)
+    transcript_excerpt: str = ""
+    anchor_seconds: float | None = None
 
 
 class FrameVisualMetrics(SerializableMixin):
@@ -144,6 +151,10 @@ class ResearchManifest(SerializableMixin):
 class _WindowingConfig(SerializableMixin):
     window_seconds: float = 10.0
     stride_seconds: float = 5.0
+    pre_roll_seconds: float = 3.0
+    post_roll_seconds: float = 5.0
+    maximum_region_seconds: float = 30.0
+    merge_gap_seconds: float = 2.0
 
 
 class _CandidateGenerationConfig(SerializableMixin):
