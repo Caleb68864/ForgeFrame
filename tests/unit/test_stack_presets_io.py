@@ -156,7 +156,8 @@ def test_load_missing_raises_with_both_paths(tmp_path: Path):
     vault.mkdir()
     with pytest.raises(FileNotFoundError) as ei:
         load_preset("nope", workspace_root=ws, vault_root=vault)
-    msg = str(ei.value)
+    # Normalize path separators so the assertion holds on Windows (backslash) too.
+    msg = str(ei.value).replace("\\", "/")
     assert "stacks/nope.yaml" in msg
     assert "patterns/effect-stacks/nope.md" in msg
 

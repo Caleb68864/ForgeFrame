@@ -456,7 +456,7 @@ class TestPackagePublishBundle:
         _write_transcript(tmp_path)
         package_publish_bundle(tmp_path)
         publish_dir = tmp_path / "reports" / "publish"
-        data = json.loads((publish_dir / "publish_bundle.json").read_text())
+        data = json.loads((publish_dir / "publish_bundle.json").read_text(encoding="utf-8"))
         assert "title_variants" in data
         assert "description" in data
         assert "tags" in data
