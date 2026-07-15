@@ -25,6 +25,273 @@ def version() -> None:
     click.echo(f"workshop-video-brain {__version__}")
 
 
+def _parse_range(raw: str) -> tuple[float, float]:
+    """Parse a ``"start:end"`` string into a ``(start_seconds, end_seconds)`` tuple."""
+    try:
+        start_str, end_str = raw.split(":", 1)
+        return float(start_str), float(end_str)
+    except ValueError as exc:
+        raise click.BadParameter(
+            f"Expected 'start:end' (e.g. '5.0:12.5'), got {raw!r}"
+        ) from exc
+
+
+# ---------------------------------------------------------------------------
+# research command
+# ---------------------------------------------------------------------------
+
+
+@main.command("research")
+@click.argument("video")
+@click.option("--transcript", "transcript_path", default=None,
+              help="Path to a transcript file (json/srt/vtt) to search/anchor against.")
+@click.option("--query", default=None, help="Keyword/topic search query.")
+@click.option("--topic", "topics", multiple=True, help="Additional topic query (repeatable).")
+@click.option("--timestamp", "timestamps", multiple=True, type=float,
+              help="Manual timestamp in seconds to research (repeatable).")
+@click.option("--range", "ranges", multiple=True,
+              help="Explicit 'start:end' region in seconds (repeatable).")
+@click.option("--output", default="./research", help="Output directory for the research package.")
+@click.option("--max-results", default=20, type=int, help="Max candidate frames per region.")
+@click.option("--pre-roll", default=None, type=float, help="Pre-roll seconds applied to resolved regions.")
+@click.option("--post-roll", default=None, type=float, help="Post-roll seconds applied to resolved regions.")
+@click.option("--scene-detection/--no-scene-detection", "scene_detection", default=True,
+              help="Enable/disable scene-change candidate generation.")
+@click.option("--ocr", is_flag=True, default=False, help="Enable OCR enrichment.")
+@click.option("--vision", is_flag=True, default=False, help="Enable vision enrichment.")
+@click.option("--keep-candidates", is_flag=True, default=False,
+              help="Also keep every non-selected candidate image.")
+@click.option("--obsidian", is_flag=True, default=False, help="Write an Obsidian note for the package.")
+@click.option("--dry-run", is_flag=True, default=False,
+              help="Resolve regions and expected candidate counts without extracting frames.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Emit machine-readable JSON.")
+def research(
+    video: str,
+    transcript_path: str | None,
+    query: str | None,
+    topics: tuple[str, ...],
+    timestamps: tuple[float, ...],
+    ranges: tuple[str, ...],
+    output: str,
+    max_results: int,
+    pre_roll: float | None,
+    post_roll: float | None,
+    scene_detection: bool,
+    ocr: bool,
+    vision: bool,
+    keep_candidates: bool,
+    obsidian: bool,
+    dry_run: bool,
+    as_json: bool,
+) -> None:
+    """Research VIDEO for representative frame candidates and export a package."""
+    from pathlib import Path as _Path
+
+    from workshop_video_brain.core.models.visual_research import ResearchConfig
+    from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
+    from workshop_video_brain.edit_mcp.adapters.transcript.parsers import parse_transcript
+    from workshop_video_brain.edit_mcp.pipelines.visual_research.service import (
+        _build_transcript_repository,
+        _resolve_regions,
+        research_video,
+    )
+
+    try:
+        video_path = _Path(video)
+
+        cfg = ResearchConfig()
+        cfg.candidate_generation.max_candidates_per_region = max_results
+        if pre_roll is not None:
+            cfg.windowing.pre_roll_seconds = pre_roll
+        if post_roll is not None:
+            cfg.windowing.post_roll_seconds = post_roll
+        cfg.ocr.enabled = ocr
+        cfg.vision.enabled = vision
+        # `scene_detection` is accepted for forward-compatibility with a
+        # dedicated pipeline toggle; scene-change candidate generation is
+        # currently always attempted by the candidate-generation stage.
+        _ = scene_detection
+
+        segments = parse_transcript(transcript_path) if transcript_path else None
+
+        timestamp_ranges: list[tuple[float, float]] = [_parse_range(r) for r in ranges]
+        for ts in timestamps:
+            timestamp_ranges.append(
+                (max(0.0, ts - cfg.windowing.pre_roll_seconds), ts + cfg.windowing.post_roll_seconds)
+            )
+
+        if dry_run:
+            source_asset = probe_media(video_path)
+            duration_seconds = source_asset.duration_seconds or source_asset.duration
+            repo = _build_transcript_repository(segments, video_path, source_asset.id, False)
+            regions = _resolve_regions(
+                repo, source_asset.id, query, list(topics), timestamp_ranges, duration_seconds, cfg
+            )
+            payload = {
+                "source": str(video_path),
+                "output": str(_Path(output)),
+                "dry_run": True,
+                "regions": [
+                    {
+                        "region_id": str(region.region_id),
+                        "start_seconds": region.start_seconds,
+                        "end_seconds": region.end_seconds,
+                        "source_method": region.source_method,
+                        "reason": region.reason,
+                        "expected_candidate_count": cfg.candidate_generation.max_candidates_per_region,
+                    }
+                    for region in regions
+                ],
+            }
+            if as_json:
+                click.echo(json.dumps(payload, indent=2))
+            else:
+                click.echo(f"Dry run for {video_path}")
+                click.echo(f"Output would be written to: {payload['output']}")
+                for r in payload["regions"]:
+                    click.echo(
+                        f"  [{r['source_method']}] {r['start_seconds']:.2f}-{r['end_seconds']:.2f}s"
+                        f" -- {r['reason']} (expected up to {r['expected_candidate_count']} candidate(s))"
+                    )
+            return
+
+        manifest = research_video(
+            video_path,
+            transcript=segments,
+            query=query,
+            topics=list(topics),
+            timestamp_ranges=timestamp_ranges,
+            config=cfg,
+            output_dir=output,
+            obsidian=obsidian,
+            keep_candidates=keep_candidates,
+        )
+
+        if as_json:
+            payload = {
+                "source": {
+                    "path": manifest.source.path,
+                    "duration_seconds": manifest.source.duration_seconds or manifest.source.duration,
+                },
+                "regions": [r.model_dump(mode="json") for r in manifest.regions],
+                "captures": [c.model_dump(mode="json") for c in manifest.captures],
+                "errors": manifest.errors,
+                "output": str(_Path(output)),
+            }
+            click.echo(json.dumps(payload, indent=2))
+        else:
+            click.echo(f"Research complete: {video_path}")
+            click.echo(f"  Regions:  {len(manifest.regions)}")
+            click.echo(f"  Captures: {len(manifest.captures)}")
+            if manifest.errors:
+                click.echo(f"  Errors: {len(manifest.errors)}")
+            click.echo(f"  Output: {output}")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# frame command
+# ---------------------------------------------------------------------------
+
+
+@main.command("frame")
+@click.argument("video")
+@click.option("--timestamp", default=None, type=float,
+              help="Timestamp in seconds to extract a single frame at.")
+@click.option("--burst", default=None, help="'start:end' seconds range for a uniform frame burst.")
+@click.option("--interval", default=0.5, type=float, help="Interval in seconds between burst frames.")
+@click.option("--format", "fmt", default="png", help="Output image format.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Emit machine-readable JSON.")
+def frame(
+    video: str,
+    timestamp: float | None,
+    burst: str | None,
+    interval: float,
+    fmt: str,
+    as_json: bool,
+) -> None:
+    """Extract one frame (or a burst of frames) from VIDEO."""
+    from pathlib import Path as _Path
+
+    from workshop_video_brain.edit_mcp.adapters.ffmpeg.frames import (
+        extract_frame,
+        extract_frame_burst,
+    )
+
+    try:
+        video_path = _Path(video)
+
+        if burst:
+            start_seconds, end_seconds = _parse_range(burst)
+            candidates = extract_frame_burst(
+                video_path, start_seconds, end_seconds, interval_seconds=interval
+            )
+            if as_json:
+                click.echo(json.dumps([c.model_dump(mode="json") for c in candidates], indent=2))
+            else:
+                click.echo(f"Extracted {len(candidates)} frame(s):")
+                for c in candidates:
+                    click.echo(f"  {c.timestamp_seconds:.2f}s -> {c.image_path}")
+            return
+
+        if timestamp is None:
+            click.echo("Error: one of --timestamp or --burst is required.", err=True)
+            sys.exit(1)
+
+        candidate = extract_frame(video_path, timestamp, fmt=fmt)
+        if as_json:
+            click.echo(json.dumps(candidate.model_dump(mode="json"), indent=2))
+        else:
+            click.echo(f"Extracted frame at {timestamp:.2f}s -> {candidate.image_path}")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# scenes command
+# ---------------------------------------------------------------------------
+
+
+@main.command("scenes")
+@click.argument("video")
+@click.option("--range", "range_str", default=None, help="'start:end' seconds range to limit detection to.")
+@click.option("--threshold", default=0.30, type=float, help="Scene-change score threshold (0.0-1.0).")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Emit machine-readable JSON.")
+def scenes(video: str, range_str: str | None, threshold: float, as_json: bool) -> None:
+    """Detect scene changes in VIDEO."""
+    from pathlib import Path as _Path
+
+    from workshop_video_brain.edit_mcp.adapters.ffmpeg.scene import detect_scene_changes
+
+    try:
+        video_path = _Path(video)
+        start_seconds: float | None = None
+        end_seconds: float | None = None
+        if range_str:
+            start_seconds, end_seconds = _parse_range(range_str)
+
+        changes = detect_scene_changes(
+            video_path, start_seconds=start_seconds, end_seconds=end_seconds, threshold=threshold
+        )
+        if as_json:
+            click.echo(
+                json.dumps(
+                    [{"timestamp_seconds": c.timestamp_seconds, "score": c.score} for c in changes],
+                    indent=2,
+                )
+            )
+        else:
+            click.echo(f"Detected {len(changes)} scene change(s):")
+            for c in changes:
+                click.echo(f"  {c.timestamp_seconds:.2f}s (score={c.score:.2f})")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
 # ---------------------------------------------------------------------------
 # workspace group
 # ---------------------------------------------------------------------------
@@ -165,19 +432,73 @@ def transcript_generate(workspace_path: str) -> None:
 @click.argument("workspace_path")
 @click.option("--format", "fmt", default="srt", type=click.Choice(["srt", "json", "txt"]),
               help="Export format.")
-def transcript_export(workspace_path: str, fmt: str) -> None:
+@click.option("--json", "as_json", is_flag=True, default=False, help="Emit machine-readable JSON.")
+def transcript_export(workspace_path: str, fmt: str, as_json: bool) -> None:
     """Export transcripts from WORKSPACE_PATH."""
     from pathlib import Path
 
     transcripts_dir = Path(workspace_path) / "transcripts"
     if not transcripts_dir.exists():
-        click.echo("No transcripts directory found.")
+        if as_json:
+            click.echo(json.dumps({"files": []}))
+        else:
+            click.echo("No transcripts directory found.")
         return
     pattern = f"*_transcript.{fmt}"
     files = sorted(transcripts_dir.glob(pattern))
-    click.echo(f"Found {len(files)} {fmt.upper()} file(s):")
-    for f in files:
-        click.echo(f"  {f}")
+    if as_json:
+        click.echo(json.dumps({"files": [str(f) for f in files]}, indent=2))
+    else:
+        click.echo(f"Found {len(files)} {fmt.upper()} file(s):")
+        for f in files:
+            click.echo(f"  {f}")
+
+
+@transcript.command("search")
+@click.argument("transcript_path")
+@click.argument("term")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Emit machine-readable JSON.")
+def transcript_search(transcript_path: str, term: str, as_json: bool) -> None:
+    """Search TRANSCRIPT_PATH (json/srt/vtt) for segments containing TERM."""
+    from workshop_video_brain.edit_mcp.adapters.transcript.parsers import parse_transcript
+    from workshop_video_brain.edit_mcp.pipelines.transcript_repository import TranscriptRepository
+
+    try:
+        segments = parse_transcript(transcript_path)
+        results = TranscriptRepository(segments).search(term)
+        if as_json:
+            click.echo(json.dumps([s.model_dump(mode="json") for s in results], indent=2))
+        else:
+            click.echo(f"Found {len(results)} matching segment(s):")
+            for s in results:
+                click.echo(f"  [{s.start_seconds:.2f}-{s.end_seconds:.2f}] {s.text}")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@transcript.command("context")
+@click.argument("transcript_path")
+@click.argument("timestamp", type=float)
+@click.option("--seconds", default=5.0, type=float, help="Half-width of the context window in seconds.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Emit machine-readable JSON.")
+def transcript_context(transcript_path: str, timestamp: float, seconds: float, as_json: bool) -> None:
+    """Show transcript segments around TIMESTAMP (seconds) in TRANSCRIPT_PATH."""
+    from workshop_video_brain.edit_mcp.adapters.transcript.parsers import parse_transcript
+    from workshop_video_brain.edit_mcp.pipelines.transcript_repository import TranscriptRepository
+
+    try:
+        segments = parse_transcript(transcript_path)
+        results = TranscriptRepository(segments).context_around(timestamp, seconds)
+        if as_json:
+            click.echo(json.dumps([s.model_dump(mode="json") for s in results], indent=2))
+        else:
+            click.echo(f"Found {len(results)} segment(s) around {timestamp:.2f}s (+/-{seconds:.2f}s):")
+            for s in results:
+                click.echo(f"  [{s.start_seconds:.2f}-{s.end_seconds:.2f}] {s.text}")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
