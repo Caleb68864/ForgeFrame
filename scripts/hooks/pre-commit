@@ -3,26 +3,37 @@
 set -euo pipefail
 
 # Factory-managed bypass: commits tagged [factory-managed] by the configured
-# factory identity (committer email == forge.json:git_username) skip the
-# <FILL-IN> scaffold/block checks. <FACTORY-MANAGED> is accepted as a passing
-# scaffold state; PHASE-CLOSER aggregates these entries in a follow-up pass.
-# Both conditions must match — tag AND email — to prevent human commits that
-# quote factory messages from accidentally bypassing enforcement.
+# factory identity skip the <FILL-IN> scaffold/block checks. <FACTORY-MANAGED>
+# is accepted as a passing scaffold state; PHASE-CLOSER aggregates these entries
+# in a follow-up pass.
+# Both conditions must match — tag AND identity — to prevent human commits that
+# quote factory messages from accidentally bypassing enforcement. The identity
+# match accepts forge.json:git_username as an exact committer email OR as a
+# case-insensitive substring of the committer email/name, since git_username is
+# often a short handle (e.g. "caleb") rather than the full commit email.
 _is_factory_commit=0
 if grep -qF '[factory-managed]' .git/COMMIT_EDITMSG 2>/dev/null; then
   _factory_email=""
-  if [ -f "${HOME}/.claude/forge.json" ]; then
-    if command -v python3 >/dev/null 2>&1; then
-      _factory_email=$(python3 -c \
-        "import json,sys; d=json.load(open('${HOME}/.claude/forge.json')); print(d.get('git_username',''))" \
-        2>/dev/null || true)
-    elif command -v jq >/dev/null 2>&1; then
-      _factory_email=$(jq -r '.git_username // ""' "${HOME}/.claude/forge.json" 2>/dev/null || true)
+  _forge_json="${HOME}/.claude/forge.json"
+  if [ -f "$_forge_json" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      _factory_email=$(jq -r '.git_username // ""' "$_forge_json" 2>/dev/null || true)
+    fi
+    # Dependency-free fallback: read git_username directly from the file. Handles
+    # environments where jq is absent or python3 is a non-functional Windows
+    # Store alias (command -v finds the stub but executing it yields nothing).
+    if [ -z "$_factory_email" ]; then
+      _factory_email=$(sed -n 's/.*"git_username"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_forge_json" 2>/dev/null || true)
     fi
   fi
-  _committer_email=$(git var GIT_COMMITTER_IDENT 2>/dev/null \
-    | sed 's/.*<\([^>]*\)>.*/\1/' || true)
-  if [ -n "$_factory_email" ] && [ "$_committer_email" = "$_factory_email" ]; then
+  # Pure-bash identity match (no pipes/grep/sed — avoids Git-Bash pipe instability).
+  _committer_ident=$(git var GIT_COMMITTER_IDENT 2>/dev/null || true)
+  _committer_email=${_committer_ident##*<}   # strip up to and incl. "<"
+  _committer_email=${_committer_email%%>*}    # strip from ">" onward
+  _ident_lc=${_committer_ident,,}
+  _fe_lc=${_factory_email,,}
+  if [ -n "$_factory_email" ] && { [ "$_committer_email" = "$_factory_email" ] \
+       || [[ "$_ident_lc" == *"$_fe_lc"* ]]; }; then
     _is_factory_commit=1
   fi
 fi
