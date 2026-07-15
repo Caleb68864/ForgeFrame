@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-research = ["numpy>=1.26", "Pillow>=10.0", "pytesseract>=0.3", "imagehash>=4.3.0"]
+research = ["numpy>=1.26", "Pillow>=10.0", "pytesseract>=0.3"]
 
 [project.scripts]
 workshop-video-brain-server = "workshop_video_brain.server:main"
