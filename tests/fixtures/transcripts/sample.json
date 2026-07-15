@@ -1,0 +1,19 @@
+{
+  "segments": [
+    {
+      "start_seconds": 0.0,
+      "end_seconds": 2.5,
+      "text": "Welcome back to the workshop."
+    },
+    {
+      "start_seconds": 2.5,
+      "end_seconds": 5.75,
+      "text": "Today we have our reporter on camera covering the studio setup."
+    },
+    {
+      "start_seconds": 6.0,
+      "end_seconds": 9.2,
+      "text": "Let's walk through the greenscreen segment."
+    }
+  ]
+}
