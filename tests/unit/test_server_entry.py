@@ -1,7 +1,6 @@
 """Tests for workshop_video_brain.server (MCP entry point)."""
 from unittest.mock import patch
 
-import pytest
 
 
 class TestServerModuleAttributes:

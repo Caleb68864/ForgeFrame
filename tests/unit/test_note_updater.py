@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 from workshop_video_brain.production_brain.notes.updater import (
     append_section,

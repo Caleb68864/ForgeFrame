@@ -1,0 +1,63 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref (e.g. rapid pushes to a PR branch).
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # (a) Fast gate: pure unit tests, no system deps. Fails the PR in ~30s if the
+  # in-repo logic is broken, before we pay for the melt/ffmpeg apt install.
+  unit:
+    name: unit gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      # dev+test groups sync by default ([tool.uv] default-groups in pyproject).
+      - run: uv sync
+      - run: uv run pytest tests/unit -q
+
+  # (b) Full suite, including the external melt/ffprobe oracle tier. System deps
+  # are installed so those guarded tests RUN instead of self-skipping.
+  full:
+    name: full suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: unit
+    steps:
+      - uses: actions/checkout@v4
+      # melt = MLT command-line renderer (oracle for tests/integration/external).
+      # ffmpeg ships ffmpeg + ffprobe. frei0r-plugins provides the frei0r.* MLT
+      # filters (scanline0r, cairoblend, ...) some external tests apply; without
+      # it melt_has_service() reports them missing and those cases self-skip.
+      # The opencv.tracker filter is not separately packaged on ubuntu-latest --
+      # test_subject_zoom_render self-skips via melt_has_service when it is
+      # absent, so its omission degrades gracefully.
+      - name: Install melt / ffmpeg / frei0r
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y melt ffmpeg frei0r-plugins
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - run: uv sync
+      # The ai-mask real-engine test (tests/integration/test_ai_mask_tool.py) is
+      # skipif-gated on rembg, which is an optional extra not synced by default.
+      # Install it (CPU-only, ~200 MB) so the guarded case executes rather than
+      # silently skips -- the whole point of the external tier in CI.
+      - name: Install ai-mask extra (rembg)
+        run: uv pip install rembg onnxruntime
+      - run: uv run pytest tests/ -q

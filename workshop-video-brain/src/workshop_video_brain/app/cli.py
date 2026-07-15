@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 
 import click
 
@@ -674,11 +675,12 @@ def project_validate(workspace_path: str) -> None:
 
     try:
         working_copies = Path(workspace_path) / "projects" / "working_copies"
-        files = sorted(working_copies.glob("*.kdenlive")) if working_copies.exists() else []
+        files = list(working_copies.glob("*.kdenlive")) if working_copies.exists() else []
         if not files:
             click.echo("No .kdenlive files found in projects/working_copies/", err=True)
             sys.exit(1)
-        latest = files[-1]
+        from workshop_video_brain.edit_mcp.server.tools_helpers import latest_project
+        latest = latest_project(files)
         proj = parse_project(latest)
         report = validate_project(proj, workspace_root=Path(workspace_path))
         click.echo(f"Validating: {latest.name}")
@@ -1010,9 +1012,10 @@ def prepare_tutorial_project(media_folder: str, title: str, vault_path: str) -> 
     click.echo("[6/6] Validating project...")
     try:
         working_copies = Path(ws.workspace_root) / "projects" / "working_copies"
-        kfiles = sorted(working_copies.glob("*.kdenlive")) if working_copies.exists() else []
+        kfiles = list(working_copies.glob("*.kdenlive")) if working_copies.exists() else []
         if kfiles:
-            proj = parse_project(kfiles[-1])
+            from workshop_video_brain.edit_mcp.server.tools_helpers import latest_project
+            proj = parse_project(latest_project(kfiles))
             val_report = validate_project(proj, workspace_root=Path(ws.workspace_root))
             click.echo(f"      {val_report.summary}")
         else:

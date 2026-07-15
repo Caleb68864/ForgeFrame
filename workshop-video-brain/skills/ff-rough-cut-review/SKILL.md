@@ -86,7 +86,8 @@ Aim for 4-8 chapters for a 10-15 minute video. More granular for longer.
 
 Accept one or more of:
 - `transcript_text` — the full transcript (with approximate timestamps if available)
-- `markers` — list of edit markers from the workspace (from auto_mark or manual)
+- `markers` — list of edit markers from the workspace (from
+  `markers_auto_generate` or manual)
 - `edit_notes` — any notes from a previous review pass
 
 If you have timestamps, use them. If not, work with relative position in the
@@ -111,6 +112,39 @@ md, data = generate_review(
     edit_notes=<edit_notes or None>,
 )
 ```
+
+### Step 4 — Actually watch the cut (don't review from transcript alone)
+
+The transcript tells you what was *said*; it can't show a black frame, a wrong
+insert, or a jump cut. Render frames and look:
+
+```
+render_review_frames(workspace_path="<workspace_path>", every_n_seconds=5)
+```
+
+This renders the cut, extracts frames (at an interval or at markers), tiles a
+contact sheet, and runs `qc_check` in one call. Fold what you see into the
+review — a "missing visual" you flagged from the transcript is confirmed (or
+refuted) by the frame at that timestamp.
+
+Use `transcript_search` (BM25 over the transcript index) to pin down exact
+timestamps for repetition and missing-visual flags — e.g. search the phrase to
+find every place it's said. Build the index once with `transcript_index_build`.
+
+### Step 5 — Optionally apply the fixes
+
+If the user wants you to *act* on the review rather than just report, the
+placement engine can execute your suggestions on the working copy:
+
+- `clip_place(track, at_seconds, mode="overwrite")` — drop a B-roll insert over
+  A-roll at a flagged "missing visual" timestamp.
+- `clip_place_matched` — cover a flagged A-roll span with an insert cut to the
+  exact length of a reference clip.
+- `clip_ripple_delete` / `clip_trim` — cut a flagged repetition or tighten a
+  slow segment.
+
+For full script-driven assembly rather than spot fixes, hand off to
+`/ff-assemble-from-script`.
 
 ---
 
@@ -285,6 +319,10 @@ done, let's move on to Y" or "the next step is." Look for these patterns.
 - Prioritize. The editor does not have infinite time. Tell them what matters most.
 - The Priority Action List at the end should have no more than 5 items.
   If you have more, consolidate or demote to "additional notes."
+- **Failure contract:** tools return a structured error dict (`error_type` +
+  `suggestion`), never a traceback. A `render_review_frames` failure on "no
+  working copy" means run `project_create_working_copy` first. Full taxonomy:
+  the vault's [[MCP Error Catalog]].
 
 ---
 

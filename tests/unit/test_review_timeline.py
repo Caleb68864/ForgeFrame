@@ -1,13 +1,9 @@
 """Tests for review timeline pipeline (PL-07)."""
 from __future__ import annotations
 
-import uuid
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 
-from workshop_video_brain.core.models.enums import MarkerCategory
 from workshop_video_brain.core.models.kdenlive import Guide
 from workshop_video_brain.core.models.markers import Marker, MarkerConfig
 from workshop_video_brain.core.models.media import MediaAsset

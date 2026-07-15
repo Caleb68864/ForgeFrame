@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!DOCTYPE mlt [
+  <!ENTITY a "AAAAAAAAAA">
+  <!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">
+  <!ENTITY c "&b;&b;&b;&b;&b;&b;&b;&b;&b;&b;">
+  <!ENTITY d "&c;&c;&c;&c;&c;&c;&c;&c;&c;&c;">
+  <!ENTITY e "&d;&d;&d;&d;&d;&d;&d;&d;&d;&d;">
+]>
+<mlt version="7" title="&e;"></mlt>

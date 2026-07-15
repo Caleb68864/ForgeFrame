@@ -51,10 +51,10 @@ import json
 import logging
 import math
 import re
-import xml.etree.ElementTree as ET
+from workshop_video_brain.edit_mcp.pipelines._common import make_filter_xml
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -105,9 +105,26 @@ class MaskShape(BaseModel):
 
 
 class MaskParams(BaseModel):
-    """Rotoscoping mask parameters, as consumed by ``build_rotoscoping_xml``."""
+    """Rotoscoping mask parameters, as consumed by ``build_rotoscoping_xml``.
 
-    points: tuple[tuple[float, float], ...]
+    Two spline shapes are supported:
+
+    * ``points`` -- a single, static point ring emitted as a frame-0-only
+      spline (the original v1 behaviour). Backwards compatible.
+    * ``spline_keyframes`` -- a mapping ``{frame: points}`` producing an
+      **animated** rotoscope whose matte interpolates between keyframes (the
+      ``effect_clone_self`` moving-matte blocker). When present it takes
+      precedence over ``points``. Verified against melt 7.40 + frei0r: the
+      masked region provably moves between keyframes.
+
+    ``mode`` selects the rotoscoping output channel -- ``alpha`` (default),
+    ``luma`` (the mode the clone tutorial uses), or ``rgb`` (preview). Formerly
+    hardcoded to ``alpha``.
+    """
+
+    points: tuple[tuple[float, float], ...] = ()
+    spline_keyframes: dict[int, tuple[tuple[float, float], ...]] | None = None
+    mode: Literal["alpha", "luma", "rgb"] = "alpha"
     feather: int = Field(default=0, ge=0, le=500)
     feather_passes: int = Field(default=1, ge=1, le=20)
     alpha_operation: Literal["clear", "max", "min", "add", "sub"] = "add"
@@ -121,6 +138,34 @@ class MaskParams(BaseModel):
             _check_normalized(x, "point.x")
             _check_normalized(y, "point.y")
         return v
+
+    @field_validator("spline_keyframes")
+    @classmethod
+    def _validate_spline_keyframes(
+        cls, v: dict[int, tuple[tuple[float, float], ...]] | None
+    ) -> dict[int, tuple[tuple[float, float], ...]] | None:
+        if v is None:
+            return v
+        for frame, pts in v.items():
+            if frame < 0:
+                raise ValueError(f"spline_keyframes frame {frame} must be >= 0")
+            if len(pts) < 3:
+                raise ValueError(
+                    f"spline_keyframes frame {frame} needs >= 3 points "
+                    f"(got {len(pts)})"
+                )
+            for (x, y) in pts:
+                _check_normalized(x, "spline_keyframes.x")
+                _check_normalized(y, "spline_keyframes.y")
+        return v
+
+    @model_validator(mode="after")
+    def _require_a_spline(self) -> "MaskParams":
+        if not self.points and not self.spline_keyframes:
+            raise ValueError(
+                "MaskParams requires either 'points' or 'spline_keyframes'"
+            )
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -215,33 +260,56 @@ def _make_filter(
     clip_ref: tuple[int, int],
     props: list[tuple[str, str]],
 ) -> str:
-    track, clip = clip_ref
-    root = ET.Element(
-        "filter",
-        {
-            "mlt_service": mlt_service,
-            "track": str(track),
-            "clip_index": str(clip),
-        },
-    )
-    for name, text in props:
-        el = ET.SubElement(root, "property", {"name": name})
-        el.text = text
-    return ET.tostring(root, encoding="unicode")
+    return make_filter_xml(mlt_service, clip_ref, props)
 
 
 # ---------------------------------------------------------------------------
 # Rotoscoping
 # ---------------------------------------------------------------------------
 
-def _spline_json(points: tuple[tuple[float, float], ...]) -> str:
-    """Serialize a point list to Kdenlive's ``roto-spline`` format.
+def _points_to_spline_frame(
+    points: tuple[tuple[float, float], ...],
+) -> list[list[list[float]]]:
+    """One roto keyframe: each point as ``[anchor, handle_in, handle_out]``.
 
-    v1 emits a single keyframe at frame 0 with linear (handle == point)
+    Linear/sharp corners -> all three coordinate pairs equal the anchor, which
+    is exactly what Kdenlive writes for a hand-clicked (non-curved) point.
+    """
+    return [[[x, y], [x, y], [x, y]] for (x, y) in points]
+
+
+def _spline_json(points: tuple[tuple[float, float], ...]) -> str:
+    """Serialize a static point list to Kdenlive's ``roto-spline`` format.
+
+    Emits a single keyframe at frame 0 with linear (handle == point)
     connections: ``{"0": [[[x,y],[x,y],[x,y]], ...]}``.
     """
-    frame0 = [[[x, y], [x, y], [x, y]] for (x, y) in points]
-    return json.dumps({"0": frame0})
+    return json.dumps({"0": _points_to_spline_frame(points)})
+
+
+def _spline_json_frames(
+    frames: dict[int, tuple[tuple[float, float], ...]],
+) -> str:
+    """Serialize an **animated** ``{frame: points}`` map to ``roto-spline``.
+
+    Emits one keyframe object per frame, sorted ascending:
+    ``{"0": [...], "48": [...]}``. The frei0r ``rotoscoping`` filter
+    interpolates the matte between these keyframes (melt-verified: the masked
+    region moves from keyframe A's position to keyframe B's).
+    """
+    if not frames:
+        raise ValueError("spline_keyframes must contain at least one frame")
+    obj: dict[str, list[list[list[float]]]] = {}
+    for frame in sorted(frames):
+        obj[str(int(frame))] = _points_to_spline_frame(frames[frame])
+    return json.dumps(obj)
+
+
+def _mask_spline(mask: MaskParams) -> str:
+    """Choose the animated spline if keyframes were supplied, else the static one."""
+    if mask.spline_keyframes:
+        return _spline_json_frames(mask.spline_keyframes)
+    return _spline_json(mask.points)
 
 
 def build_rotoscoping_xml(
@@ -257,11 +325,11 @@ def build_rotoscoping_xml(
         raise ValueError(
             f"unknown alpha_operation: {mask.alpha_operation!r}"
         )
-    spline = _spline_json(mask.points)
+    spline = _mask_spline(mask)
     props: list[tuple[str, str]] = [
         ("mlt_service", "rotoscoping"),
         ("kdenlive_id", "rotoscoping"),
-        ("mode", "alpha"),
+        ("mode", mask.mode),
         ("alpha_operation", normalized),
         ("invert", "0"),
         ("feather", str(mask.feather)),
@@ -278,10 +346,14 @@ def build_rotoscoping_xml(
 def build_object_mask_xml(
     clip_ref: tuple[int, int], params: dict
 ) -> str:
-    """Build an ``object_mask`` filter by wrapping ``frei0r.alpha0ps_alphaspot``.
+    """Build a parametric **spot-shape** alpha via ``frei0r.alpha0ps_alphaspot``.
 
-    Kdenlive ships no AI object-detector; this builder emulates
-    ``object_mask`` via the stock alpha-spot shape filter. See
+    NOT AI segmentation. Despite the ``object_mask`` name this is a stock
+    geometric alpha spot (ellipse/rectangle placed by ``position_*``/``size_*``),
+    unrelated to Kdenlive 25.04's SAM2 Object Mask. For AI subject masking use
+    ``mask_generate`` / ``mask_generate_and_apply``; to consume an
+    externally-produced matte file (e.g. a SAM2 export) use
+    ``mask_set_from_file`` (Shape Alpha). See
     ``docs/specs/2026-04-13-masking/index.md`` -- Object mask section.
     """
     shape = int(params.get("shape", 0))
@@ -411,10 +483,22 @@ _ROTOSCOPING_INNER_PROPS: tuple[str, ...] = (
 )
 
 # Property names on the object_mask (frei0r.alpha0ps_alphaspot) filter that
-# should be preserved (with a ``filter.`` prefix) when converting.
+# should be preserved (with a ``filter.`` prefix) when converting. This frei0r
+# filter genuinely uses positional numeric props 0..7.
 _OBJECT_MASK_INNER_PROPS: tuple[str, ...] = (
     "0", "1", "2", "3", "4", "5", "6", "7",
 )
+
+# Shape Alpha (``shape``) uses NAMED props, NOT the numeric 0..7 layout. When a
+# real ``shape`` filter is wrapped into a mask_start sandwich its ``in``/``out``
+# sit on the OUTER mask_start filter (per
+# ``/usr/share/kdenlive/effects/mask_start_shape.xml``) while the rest are
+# ``filter.*`` prefixed -- exactly the split
+# ``shape_alpha.build_mask_start_shape_xml`` encodes. Reusing that authoritative
+# prop list here fixes the latent bug where wrapping a ``shape`` filter dropped
+# every property (it looked for the alphaspot's numeric keys, which don't exist
+# on ``shape``).
+_SHAPE_OUTER_PROPS: tuple[str, ...] = ("in", "out")
 
 
 def build_mask_start_rotoscoping_xml(
@@ -430,12 +514,12 @@ def build_mask_start_rotoscoping_xml(
         raise ValueError(
             f"unknown alpha_operation: {mask.alpha_operation!r}"
         )
-    spline = _spline_json(mask.points)
+    spline = _mask_spline(mask)
     props: list[tuple[str, str]] = [
         ("mlt_service", "mask_start"),
         ("kdenlive_id", "mask_start-rotoscoping"),
         ("filter", "rotoscoping"),
-        ("filter.mode", "alpha"),
+        ("filter.mode", mask.mode),
         ("filter.alpha_operation", normalized),
         ("filter.invert", "0"),
         ("filter.feather", str(mask.feather)),
@@ -469,11 +553,24 @@ def _build_mask_start_from_existing(
     ``inner_service`` is the MLT service of the plain inner filter
     (``rotoscoping`` or ``frei0r.alpha0ps_alphaspot``).
     """
+    outer_keys: tuple[str, ...] = ()
     if inner_service == "rotoscoping":
         inner_keys = _ROTOSCOPING_INNER_PROPS
         kdenlive_id = "mask_start-rotoscoping"
         filter_value = "rotoscoping"
-    elif inner_service in ("frei0r.alpha0ps_alphaspot", "shape"):
+    elif inner_service == "shape":
+        # Shape Alpha: NAMED props; ``in``/``out`` live on the outer filter.
+        # ``SHAPE_INNER_PROPS`` is the authoritative order from shape_alpha.py.
+        from workshop_video_brain.edit_mcp.pipelines.shape_alpha import (
+            SHAPE_INNER_PROPS,
+        )
+        inner_keys = tuple(
+            k for k in SHAPE_INNER_PROPS if k not in _SHAPE_OUTER_PROPS
+        )
+        outer_keys = _SHAPE_OUTER_PROPS
+        kdenlive_id = "mask_start-shape"
+        filter_value = "shape"
+    elif inner_service == "frei0r.alpha0ps_alphaspot":
         inner_keys = _OBJECT_MASK_INNER_PROPS
         kdenlive_id = "mask_start-shape"
         filter_value = inner_service
@@ -487,6 +584,10 @@ def _build_mask_start_from_existing(
         ("kdenlive_id", kdenlive_id),
         ("filter", filter_value),
     ]
+    # Outer (non-prefixed) props first -- matches mask_start_shape.xml ordering.
+    for key in outer_keys:
+        if key in existing_props:
+            props.append((key, existing_props[key]))
     for key in inner_keys:
         if key in existing_props:
             props.append((f"filter.{key}", existing_props[key]))

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mlt version="7">
+  <chain id="c0" out="not-an-int"><property name="resource">/media/a.mp4</property></chain>
+</mlt>

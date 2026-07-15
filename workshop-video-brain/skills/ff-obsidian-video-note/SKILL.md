@@ -110,7 +110,7 @@ Check if a note already exists at `vault_path / vault_note_path`.
 5. Call the Python engine:
 
 ```python
-from production_brain.skills.video_note import create_or_update_note
+from workshop_video_brain.production_brain.skills.video_note import create_or_update_note
 from pathlib import Path
 
 note_path = create_or_update_note(
@@ -144,7 +144,7 @@ When updating an existing note:
    section, or any custom frontmatter keys.
 
 ```python
-from production_brain.skills.video_note import create_or_update_note
+from workshop_video_brain.production_brain.skills.video_note import create_or_update_note
 
 note_path = create_or_update_note(
     workspace_root=Path(workspace_root),
@@ -244,6 +244,9 @@ The `status` field uses these values, matching the workspace manifest:
   skipped (because they had no new content).
 - If vault_path is not set in the workspace manifest, ask the user for it
   before proceeding — do not guess.
+- **Failure contract:** ForgeFrame tools return a structured error dict
+  (`error_type` + `suggestion`), never a traceback. A "vault not configured"
+  error is documented in the vault's [[MCP Error Catalog]]; read `suggestion` first.
 
 ---
 

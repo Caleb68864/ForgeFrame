@@ -25,7 +25,14 @@ wvb = "workshop_video_brain.app.cli:main"
 
 [dependency-groups]
 dev = ["ruff", "mypy"]
-test = ["pytest", "pytest-cov"]
+test = ["pytest", "pytest-cov", "pillow"]
+
+[tool.uv]
+# Sync both groups by default so the documented `uv run pytest` resolves the
+# in-venv pytest/fastmcp instead of falling back to a ~/.local pytest. `pillow`
+# is a test dependency for the review-loop / image-overlay pipelines (which
+# import PIL lazily at runtime).
+default-groups = ["dev", "test"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["workshop-video-brain/src/workshop_video_brain"]
@@ -33,3 +40,7 @@ packages = ["workshop-video-brain/src/workshop_video_brain"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["workshop-video-brain/src"]
+markers = [
+    "external: tests that shell out to real melt/ffprobe/ffmpeg (skipped when the tools are absent). Non-self-referential oracle suite -- see tests/integration/external/.",
+    "render_retry: real-melt render tests eligible for a bounded 2-attempt retry under CPU-load flake (auto-applied to external tests that request the melt_bin fixture; see tests/conftest.py pytest_runtest_protocol).",
+]

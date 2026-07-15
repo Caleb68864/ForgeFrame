@@ -14,11 +14,14 @@ from pathlib import Path
 
 from workshop_video_brain.edit_mcp.adapters.render.profiles import (
     RenderProfile,
-    list_profiles,
     load_profile,
 )
 
 logger = logging.getLogger(__name__)
+
+# Final renders can run for many minutes on long timelines; generous ceiling
+# so a wedged ffmpeg cannot hang the server forever.
+_RENDER_TIMEOUT_SECONDS = 3600.0
 
 
 @dataclass
@@ -121,12 +124,33 @@ def render_final(
     cmd = _build_render_command(project_path, output_path, profile)
     logger.info("Render command: %s", " ".join(str(c) for c in cmd))
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    binary = cmd[0] if cmd else "ffmpeg"
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=_RENDER_TIMEOUT_SECONDS,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            f"Render binary {binary!r} not found on PATH. Install it "
+            f"(e.g. 'apt install ffmpeg' / 'brew install ffmpeg') and retry."
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise TimeoutError(
+            f"Render timed out after {_RENDER_TIMEOUT_SECONDS:.0f}s for "
+            f"{output_path.name} (project {project_path.name})."
+        ) from exc
 
     if result.returncode != 0:
+        # Surface the stderr TAIL -- the last lines carry the actual ffmpeg error.
+        tail = "\n".join(
+            ln for ln in result.stderr.splitlines() if ln.strip()
+        )[-800:]
         raise RuntimeError(
-            f"Render failed (exit {result.returncode}): "
-            f"{result.stderr[:500]}"
+            f"Render failed (exit {result.returncode}) for {output_path.name}. "
+            f"stderr tail:\n{tail}"
         )
 
     # 6. Gather result metadata
@@ -147,22 +171,24 @@ def render_final(
 # ---------------------------------------------------------------------------
 
 def _find_latest_project(workspace_root: Path) -> Path:
-    """Find the most recently modified .kdenlive project in workspace.
+    """Find the latest .kdenlive project in workspace.
+
+    Uses the shared version-aware selector (``_v<N>`` suffix, mtime fallback)
+    so this agrees with every other "latest project" site in the codebase.
 
     Raises:
         FileNotFoundError: If no .kdenlive files found.
     """
-    kdenlive_files = sorted(
-        workspace_root.rglob("*.kdenlive"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    if not kdenlive_files:
+    from workshop_video_brain.edit_mcp.server.tools_helpers import latest_project
+
+    kdenlive_files = list(workspace_root.rglob("*.kdenlive"))
+    latest = latest_project(kdenlive_files)
+    if latest is None:
         raise FileNotFoundError(
             f"No .kdenlive project found in {workspace_root}. "
             "Create a project first."
         )
-    return kdenlive_files[0]
+    return latest
 
 
 def _extension_for_profile(profile: RenderProfile) -> str:
@@ -178,7 +204,28 @@ def _build_render_command(
     output_path: Path,
     profile: RenderProfile,
 ) -> list[str]:
-    """Build FFmpeg render command from profile settings."""
+    """Build the render command for *project_file*.
+
+    ``.kdenlive`` inputs are MLT XML: ffmpeg cannot demux them, so they are
+    routed through the melt executor (``adapters/render/executor``), which
+    already handles alpha/advanced consumer properties.  Direct media inputs
+    (mp4/mov/...) stay on the ffmpeg re-encode path.
+    """
+    if Path(project_file).suffix.lower() == ".kdenlive":
+        from workshop_video_brain.edit_mcp.adapters.render.executor import (
+            _build_melt_command,
+        )
+        return _build_melt_command(Path(project_file), str(output_path), profile)
+
+    return _build_ffmpeg_render_command(project_file, output_path, profile)
+
+
+def _build_ffmpeg_render_command(
+    project_file: Path,
+    output_path: Path,
+    profile: RenderProfile,
+) -> list[str]:
+    """Build an ffmpeg re-encode command for a direct-media input."""
     cmd = [
         "ffmpeg",
         "-y",

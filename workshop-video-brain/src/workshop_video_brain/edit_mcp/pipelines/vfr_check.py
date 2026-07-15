@@ -11,7 +11,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import (
-    DEFAULT_EXTENSIONS,
     probe_media,
 )
 

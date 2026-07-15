@@ -42,7 +42,6 @@ def test_media_asset_id_auto_generated():
 
 
 def test_media_asset_created_at_utc():
-    import datetime
     a = MediaAsset(path="/footage/clip.mp4")
     assert a.created_at.tzinfo is not None
 
@@ -95,7 +94,6 @@ def test_media_asset_is_vfr():
 
 
 def test_media_asset_all_fields():
-    import datetime
     a = MediaAsset(
         path="/footage/clip.mp4",
         relative_path="footage/clip.mp4",

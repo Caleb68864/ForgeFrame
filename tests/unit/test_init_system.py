@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 from workshop_video_brain.app.init_system import (
     MEDIA_FOLDERS,

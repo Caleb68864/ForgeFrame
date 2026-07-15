@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import uuid4
 
 from workshop_video_brain.core.models.enums import ProjectStatus
 from workshop_video_brain.core.models.project import VideoProject

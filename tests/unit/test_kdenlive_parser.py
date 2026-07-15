@@ -6,7 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
+from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import (
+    ProjectParseError,
+    parse_project,
+)
 from workshop_video_brain.core.models.kdenlive import KdenliveProject
 
 # ---------------------------------------------------------------------------
@@ -175,412 +178,90 @@ class TestParserSampleFixture:
 
 
 class TestParserGracefulFailure:
-    def test_nonexistent_file_returns_empty_project(self, tmp_path):
-        project = parse_project(tmp_path / "nonexistent.kdenlive")
-        assert isinstance(project, KdenliveProject)
+    def test_nonexistent_file_raises(self, tmp_path):
+        missing = tmp_path / "nonexistent.kdenlive"
+        with pytest.raises(ProjectParseError) as exc_info:
+            parse_project(missing)
+        assert exc_info.value.path == missing
 
-    def test_empty_file_returns_empty_project(self, tmp_path):
+    def test_empty_file_raises(self, tmp_path):
         p = tmp_path / "empty.kdenlive"
         p.write_text("", encoding="utf-8")
-        project = parse_project(p)
+        with pytest.raises(ProjectParseError):
+            parse_project(p)
+
+    def test_nonexistent_file_missing_ok_returns_empty_project(self, tmp_path):
+        project = parse_project(tmp_path / "nonexistent.kdenlive", missing_ok=True)
+        assert isinstance(project, KdenliveProject)
+        assert project.producers == []
+
+    def test_empty_file_missing_ok_returns_empty_project(self, tmp_path):
+        p = tmp_path / "empty.kdenlive"
+        p.write_text("", encoding="utf-8")
+        project = parse_project(p, missing_ok=True)
         assert isinstance(project, KdenliveProject)
 
 
-class TestParserPreservesEntryFilters:
-    """The parser must round-trip per-entry ``<filter>`` children into
-    ``EntryFilter`` model instances so subsequent ``clip_insert`` calls
-    don't strip user-added effects.  Patterns covered: audio fade
-    (in/out attrs + scalar gain/end), qtblend transform (keyframe rect
-    string), effect zones (kdenlive:zone_in/out)."""
+# ---------------------------------------------------------------------------
+# §1.2 round-trip: entry-nested clip filters must survive parse -> serialize
+# ---------------------------------------------------------------------------
 
-    def test_round_trip_audio_fade_in(self, tmp_path):
-        from workshop_video_brain.core.models.kdenlive import (
-            EntryFilter,
-            KdenliveProject,
-            Playlist,
-            PlaylistEntry,
-            Producer,
-            ProjectProfile,
-            Track,
-        )
+_ENTRY_NESTED_FILTER_XML = textwrap.dedent("""\
+    <?xml version="1.0" encoding="utf-8"?>
+    <mlt title="Nested" version="7">
+      <profile width="1920" height="1080" frame_rate_num="25" frame_rate_den="1"/>
+      <producer id="prod0" in="0" out="99">
+        <property name="resource">/tmp/clip.mp4</property>
+        <property name="length">100</property>
+      </producer>
+      <playlist id="pl_video">
+        <entry producer="prod0" in="0" out="99">
+          <filter id="fx1" mlt_service="frei0r.scanline0r">
+            <property name="mlt_service">frei0r.scanline0r</property>
+          </filter>
+        </entry>
+      </playlist>
+      <tractor id="tractor0" in="0" out="99">
+        <track producer="pl_video"/>
+      </tractor>
+    </mlt>
+""")
+
+
+class TestEntryNestedFilterRoundTrip:
+    def test_parser_reads_entry_nested_filter(self, tmp_path):
+        from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
+
+        p = tmp_path / "nested.kdenlive"
+        p.write_text(_ENTRY_NESTED_FILTER_XML, encoding="utf-8")
+        project = parse_project(p)
+
+        effects = patcher.list_effects(project, (0, 0))
+        assert len(effects) == 1
+        assert effects[0]["mlt_service"] == "frei0r.scanline0r"
+
+    def test_roundtrip_preserves_entry_nested_filter(self, tmp_path):
+        import xml.etree.ElementTree as ET
+
         from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
             serialize_project,
         )
 
-        # Build a project with one clip carrying a fadein filter.
-        project = KdenliveProject(
-            version="7", title="round-trip test",
-            profile=ProjectProfile(width=1920, height=1080, fps=29.97, colorspace="709"),
-            tracks=[Track(id="pl_v", track_type="video")],
-            playlists=[Playlist(id="pl_v", entries=[
-                PlaylistEntry(
-                    producer_id="prod0", in_point=0, out_point=149,
-                    filters=[
-                        EntryFilter(
-                            id="fade_in", in_frame=0, out_frame=14,
-                            properties={
-                                "mlt_service": "volume",
-                                "kdenlive_id": "fadein",
-                                "gain": "0",
-                                "end": "1",
-                            },
-                        ),
-                    ],
-                ),
-            ])],
-            producers=[
-                Producer(
-                    id="prod0", resource="/clip.mp4",
-                    properties={
-                        "resource": "/clip.mp4",
-                        "mlt_service": "avformat-novalidate",
-                        "length": "150",
-                    },
-                ),
-            ],
-            tractor={"id": "t", "in": "0", "out": "149"},
+        src = tmp_path / "nested.kdenlive"
+        src.write_text(_ENTRY_NESTED_FILTER_XML, encoding="utf-8")
+        project = parse_project(src)
+
+        out = tmp_path / "roundtrip.kdenlive"
+        serialize_project(project, out)
+
+        root = ET.fromstring(out.read_text(encoding="utf-8"))
+        content_pl = next(
+            pl for pl in root.findall("playlist") if pl.get("id") == "pl_video"
         )
-
-        out_path = tmp_path / "rt.kdenlive"
-        serialize_project(project, out_path)
-
-        # Parse it back and verify the filter survived.
-        parsed = parse_project(out_path)
-        entry = next(e for pl in parsed.playlists for e in pl.entries if e.producer_id)
-        assert len(entry.filters) == 1
-        f = entry.filters[0]
-        assert f.id == "fade_in"
-        assert f.in_frame == 0
-        assert f.out_frame == 14
-        assert f.properties["mlt_service"] == "volume"
-        assert f.properties["kdenlive_id"] == "fadein"
-        assert f.properties["gain"] == "0"
-        assert f.properties["end"] == "1"
-
-    def test_round_trip_effect_zone(self, tmp_path):
-        from workshop_video_brain.core.models.kdenlive import (
-            EntryFilter,
-            KdenliveProject,
-            Playlist,
-            PlaylistEntry,
-            Producer,
-            ProjectProfile,
-            Track,
-        )
-        from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
-            serialize_project,
-        )
-
-        project = KdenliveProject(
-            version="7", title="zone test",
-            profile=ProjectProfile(width=1920, height=1080, fps=29.97, colorspace="709"),
-            tracks=[Track(id="pl_v", track_type="video")],
-            playlists=[Playlist(id="pl_v", entries=[
-                PlaylistEntry(
-                    producer_id="p0", in_point=0, out_point=149,
-                    filters=[
-                        EntryFilter(
-                            id="zone_brightness",
-                            zone_in_frame=30,
-                            zone_out_frame=89,
-                            properties={
-                                "mlt_service": "brightness",
-                                "kdenlive_id": "brightness",
-                                "level": "1.4",
-                            },
-                        ),
-                    ],
-                ),
-            ])],
-            producers=[
-                Producer(id="p0", resource="/clip.mp4", properties={
-                    "resource": "/clip.mp4",
-                    "mlt_service": "avformat-novalidate",
-                    "length": "150",
-                }),
-            ],
-        )
-
-        out_path = tmp_path / "zone.kdenlive"
-        serialize_project(project, out_path)
-        parsed = parse_project(out_path)
-        entry = next(e for pl in parsed.playlists for e in pl.entries if e.producer_id)
-        assert len(entry.filters) == 1
-        f = entry.filters[0]
-        assert f.zone_in_frame == 30
-        assert f.zone_out_frame == 89
-        assert f.properties["mlt_service"] == "brightness"
-
-    def test_round_trip_qtblend_transform(self, tmp_path):
-        from workshop_video_brain.core.models.kdenlive import (
-            EntryFilter,
-            KdenliveProject,
-            Playlist,
-            PlaylistEntry,
-            Producer,
-            ProjectProfile,
-            Track,
-        )
-        from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
-            serialize_project,
-        )
-
-        rect = "00:00:00.000=0 0 1920 1080 1.000000;00:00:01.000=-100 0 2020 1080 1.000000"
-        project = KdenliveProject(
-            version="7", title="qtblend test",
-            profile=ProjectProfile(width=1920, height=1080, fps=29.97, colorspace="709"),
-            tracks=[Track(id="pl_v", track_type="video")],
-            playlists=[Playlist(id="pl_v", entries=[
-                PlaylistEntry(
-                    producer_id="p0", in_point=0, out_point=149,
-                    filters=[
-                        EntryFilter(
-                            id="qtblend",
-                            properties={
-                                "mlt_service": "qtblend",
-                                "kdenlive_id": "qtblend",
-                                "rect": rect,
-                                "rotation": "00:00:00.000=0;00:00:01.000=0",
-                                "compositing": "0",
-                                "distort": "0",
-                                "rotate_center": "1",
-                            },
-                        ),
-                    ],
-                ),
-            ])],
-            producers=[
-                Producer(id="p0", resource="/img.png", properties={
-                    "resource": "/img.png",
-                    "mlt_service": "qimage",
-                    "length": "150",
-                }),
-            ],
-        )
-
-        out_path = tmp_path / "qt.kdenlive"
-        serialize_project(project, out_path)
-        parsed = parse_project(out_path)
-        entry = next(e for pl in parsed.playlists for e in pl.entries if e.producer_id)
-        assert len(entry.filters) == 1
-        # The keyframe string survives intact
-        assert entry.filters[0].properties["rect"] == rect
-
-
-class TestParserPreservesSequenceTransitions:
-    """User-added cross-track transitions (cross-dissolves, wipes, slides)
-    inside the main sequence tractor must round-trip as
-    ``SequenceTransition`` objects.  Auto-internal per-track transitions
-    (``mix``/``qtblend`` with ``internal_added=237``) are auto-rebuilt
-    from the track list and must NOT be captured."""
-
-    def test_round_trip_dissolve_preserved(self, tmp_path):
-        from workshop_video_brain.core.models.kdenlive import (
-            KdenliveProject,
-            Playlist,
-            PlaylistEntry,
-            Producer,
-            ProjectProfile,
-            SequenceTransition,
-            Track,
-        )
-        from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
-            serialize_project,
-        )
-
-        project = KdenliveProject(
-            version="7", title="dissolve round-trip",
-            profile=ProjectProfile(width=1920, height=1080, fps=29.97, colorspace="709"),
-            tracks=[
-                Track(id="pl_v1", track_type="video"),
-                Track(id="pl_a1", track_type="audio"),
-                Track(id="pl_v2", track_type="video"),
-            ],
-            playlists=[
-                Playlist(id="pl_v1", entries=[
-                    PlaylistEntry(producer_id="p0", in_point=0, out_point=89),
-                ]),
-                Playlist(id="pl_a1"),
-                Playlist(id="pl_v2", entries=[
-                    PlaylistEntry(producer_id="", in_point=0, out_point=59),  # blank
-                    PlaylistEntry(producer_id="p1", in_point=0, out_point=89),
-                ]),
-            ],
-            producers=[
-                Producer(id="p0", resource="/a.mp4", properties={
-                    "resource": "/a.mp4", "mlt_service": "avformat-novalidate", "length": "90",
-                }),
-                Producer(id="p1", resource="/b.mp4", properties={
-                    "resource": "/b.mp4", "mlt_service": "avformat-novalidate", "length": "90",
-                }),
-            ],
-            sequence_transitions=[
-                SequenceTransition(
-                    id="my_dissolve",
-                    a_track=1, b_track=3,  # V1 -> V2 (A1 at index 2)
-                    in_frame=60, out_frame=89,
-                    mlt_service="luma",
-                    kdenlive_id="dissolve",
-                    properties={
-                        "factory": "loader",
-                        "softness": "0",
-                        "reverse": "0",
-                        "alpha_over": "1",
-                        "kdenlive:mixcut": "12",
-                    },
-                ),
-            ],
-        )
-
-        out_path = tmp_path / "dissolve_rt.kdenlive"
-        serialize_project(project, out_path)
-        parsed = parse_project(out_path)
-
-        # Auto-internal mix/qtblend transitions are NOT captured.
-        # Only the user-added dissolve survives.
-        assert len(parsed.sequence_transitions) == 1
-        st = parsed.sequence_transitions[0]
-        assert st.id == "my_dissolve"
-        assert st.a_track == 1
-        assert st.b_track == 3
-        assert st.in_frame == 60
-        assert st.out_frame == 89
-        assert st.mlt_service == "luma"
-        assert st.kdenlive_id == "dissolve"
-        # Extra properties round-trip via the properties dict.
-        assert st.properties["softness"] == "0"
-        assert st.properties["kdenlive:mixcut"] == "12"
-
-    def test_round_trip_does_not_capture_auto_internals(self, tmp_path):
-        """A project with no user-added transitions should round-trip with
-        an empty ``sequence_transitions`` list -- the auto mix/qtblend
-        track-summer transitions must not leak into the model."""
-        from workshop_video_brain.core.models.kdenlive import (
-            KdenliveProject,
-            Playlist,
-            PlaylistEntry,
-            Producer,
-            ProjectProfile,
-            Track,
-        )
-        from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
-            serialize_project,
-        )
-
-        project = KdenliveProject(
-            version="7", title="no transitions",
-            profile=ProjectProfile(width=1920, height=1080, fps=29.97),
-            tracks=[
-                Track(id="pl_v", track_type="video"),
-                Track(id="pl_a", track_type="audio"),
-            ],
-            playlists=[
-                Playlist(id="pl_v", entries=[
-                    PlaylistEntry(producer_id="p0", in_point=0, out_point=29),
-                ]),
-                Playlist(id="pl_a"),
-            ],
-            producers=[
-                Producer(id="p0", resource="/c.mp4", properties={
-                    "resource": "/c.mp4", "mlt_service": "avformat-novalidate", "length": "30",
-                }),
-            ],
-        )
-
-        out_path = tmp_path / "noop_rt.kdenlive"
-        serialize_project(project, out_path)
-        parsed = parse_project(out_path)
-
-        assert parsed.sequence_transitions == []
-
-
-class TestParserPreservesClipSpeed:
-    """``PlaylistEntry.speed`` round-trips through the timewarp variant
-    serialization and back: the parser detects ``mlt_service=timewarp``
-    producers, peels them off (the serializer rebuilds them on next
-    emit), and rewrites entries that referenced the variant to point
-    at the source chain instead with ``speed`` set."""
-
-    def test_round_trip_4x_speed(self, tmp_path):
-        from workshop_video_brain.core.models.kdenlive import (
-            KdenliveProject,
-            Playlist,
-            PlaylistEntry,
-            Producer,
-            ProjectProfile,
-            Track,
-        )
-        from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
-            serialize_project,
-        )
-
-        project = KdenliveProject(
-            version="7", title="speed round-trip",
-            profile=ProjectProfile(width=1920, height=1080, fps=29.97, colorspace="709"),
-            tracks=[Track(id="pl_v", track_type="video")],
-            playlists=[Playlist(id="pl_v", entries=[
-                PlaylistEntry(
-                    producer_id="src", in_point=0, out_point=29,
-                    speed=4.0,
-                ),
-            ])],
-            producers=[
-                Producer(id="src", resource="/clip.mp4", properties={
-                    "resource": "/clip.mp4",
-                    "mlt_service": "avformat-novalidate",
-                    "length": "120",
-                }),
-            ],
-        )
-
-        out_path = tmp_path / "speed_rt.kdenlive"
-        serialize_project(project, out_path)
-        parsed = parse_project(out_path)
-
-        # The variant producer should NOT show up in the producers list;
-        # only the source chain.
-        producer_ids = {p.id for p in parsed.producers}
-        assert producer_ids == {"src"}
-
-        # The entry references the source again, with speed restored.
-        entry = next(e for pl in parsed.playlists for e in pl.entries if e.producer_id)
-        assert entry.producer_id == "src"
-        assert entry.speed == 4.0
-
-    def test_round_trip_normal_speed_unchanged(self, tmp_path):
-        """A speed=1.0 entry is emitted plainly (no timewarp variant) and
-        round-trips with speed=1.0."""
-        from workshop_video_brain.core.models.kdenlive import (
-            KdenliveProject,
-            Playlist,
-            PlaylistEntry,
-            Producer,
-            ProjectProfile,
-            Track,
-        )
-        from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
-            serialize_project,
-        )
-
-        project = KdenliveProject(
-            version="7", title="no speed",
-            profile=ProjectProfile(width=1920, height=1080, fps=29.97),
-            tracks=[Track(id="pl_v", track_type="video")],
-            playlists=[Playlist(id="pl_v", entries=[
-                PlaylistEntry(producer_id="src", in_point=0, out_point=29),
-            ])],
-            producers=[
-                Producer(id="src", resource="/c.mp4", properties={
-                    "resource": "/c.mp4",
-                    "mlt_service": "avformat-novalidate",
-                    "length": "30",
-                }),
-            ],
-        )
-
-        out_path = tmp_path / "speed1_rt.kdenlive"
-        serialize_project(project, out_path)
-        parsed = parse_project(out_path)
-        entry = next(e for pl in parsed.playlists for e in pl.entries if e.producer_id)
-        assert entry.speed == 1.0
-        assert entry.producer_id == "src"
+        entry = content_pl.find("entry")
+        nested = entry.findall("filter")
+        assert len(nested) == 1
+        svc = nested[0].find("property[@name='mlt_service']")
+        assert svc is not None and svc.text == "frei0r.scanline0r"
+        # No stray filters left at the document root.
+        assert root.find("filter") is None

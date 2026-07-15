@@ -2,14 +2,12 @@
 from __future__ import annotations
 
 import json
-import uuid
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from pydantic import BaseModel
 
-from workshop_video_brain.core.models.enums import MarkerCategory
 from workshop_video_brain.core.models.markers import Marker
 from workshop_video_brain.edit_mcp.pipelines.replay_generator import (
     ReplayReport,

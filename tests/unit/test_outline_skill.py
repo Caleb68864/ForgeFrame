@@ -1,5 +1,4 @@
 # tests/unit/test_outline_skill.py
-import pytest
 
 from workshop_video_brain.production_brain.skills.outline import generate_outline
 

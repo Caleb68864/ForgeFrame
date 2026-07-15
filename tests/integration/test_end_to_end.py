@@ -21,7 +21,7 @@ from uuid import uuid4
 import pytest
 
 from workshop_video_brain.app.config import Config
-from workshop_video_brain.core.models.markers import Marker, MarkerConfig
+from workshop_video_brain.core.models.markers import MarkerConfig
 from workshop_video_brain.core.models.transcript import Transcript, TranscriptSegment
 from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
 from workshop_video_brain.edit_mcp.adapters.kdenlive.validator import validate_project

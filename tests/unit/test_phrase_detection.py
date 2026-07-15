@@ -6,7 +6,6 @@ import tempfile
 from pathlib import Path
 from uuid import UUID
 
-import pytest
 
 from workshop_video_brain.core.models.enums import MarkerCategory
 from workshop_video_brain.core.models.markers import Marker

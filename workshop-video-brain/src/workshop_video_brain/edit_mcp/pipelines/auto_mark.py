@@ -8,7 +8,10 @@ from pathlib import Path
 
 from workshop_video_brain.core.models.enums import MarkerCategory
 from workshop_video_brain.core.models.markers import Marker, MarkerConfig, MarkerRule
-from workshop_video_brain.core.models.transcript import Transcript, TranscriptSegment
+from workshop_video_brain.core.models.transcript import Transcript
+from workshop_video_brain.edit_mcp.pipelines._common import (
+    keyword_match_strength as _match_strength,
+)
 
 _INTRO_WINDOW_SECONDS = 30.0
 _ENDING_WINDOW_SECONDS = 60.0
@@ -237,20 +240,6 @@ def export_mistakes(markers: list[Marker], output_path: Path) -> Path:
     payload = [json.loads(m.to_json()) for m in mistake_markers]
     output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return output_path
-
-
-def _match_strength(text_lower: str, keyword: str) -> float:
-    """Return match strength for a keyword against lower-cased text.
-
-    Exact phrase match → 1.0
-    All words of keyword present but not as a continuous phrase → 0.7
-    """
-    if keyword in text_lower:
-        return 1.0
-    words = keyword.split()
-    if len(words) > 1 and all(w in text_lower for w in words):
-        return 0.7
-    return 0.0
 
 
 def _check_rules(

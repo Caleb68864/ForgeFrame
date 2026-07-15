@@ -7,15 +7,20 @@ and full publish bundles saved to workspace reports.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections import Counter
 from pathlib import Path
+
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_mmss
 
 from workshop_video_brain.core.models.publishing import (
     PublishBundle,
     TitleVariants,
     VideoSummary,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -26,10 +31,7 @@ _MM_SS_RE = re.compile(r"^\d+:\d{2}$")
 
 def _seconds_to_mmss(seconds: float) -> str:
     """Convert float seconds to MM:SS string."""
-    total_secs = int(seconds)
-    minutes = total_secs // 60
-    secs = total_secs % 60
-    return f"{minutes}:{secs:02d}"
+    return seconds_to_mmss(seconds)
 
 
 def _tokenize(text: str) -> list[str]:
@@ -63,8 +65,13 @@ def _read_transcripts(workspace_root: Path) -> list[dict]:
             try:
                 data = json.loads(json_path.read_text(encoding="utf-8"))
                 results.append(data)
-            except Exception:
-                pass
+            except (OSError, ValueError) as exc:
+                # Best-effort: skip an unreadable transcript, but log it -- this
+                # corpus feeds description/tag/summary generation, so a silent
+                # drop degrades the primary output.
+                logger.warning(
+                    "Skipping unreadable transcript %s: %s", json_path, exc
+                )
     return results
 
 

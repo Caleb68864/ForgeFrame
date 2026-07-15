@@ -1,0 +1,18 @@
+# Render profile: ffv1-alpha
+# Transparent-background Matroska (MKV) using FFV1 with an alpha channel
+# (yuva420p). Mirrors Kdenlive's "Video with alpha -> FFmpeg FFV1" preset:
+# lossless, decent compression, good archival/master choice for cutouts.
+name: ffv1-alpha
+width: 1920
+height: 1080
+fps: 30
+video_codec: ffv1
+video_bitrate: "0"
+audio_codec: pcm_s16le
+audio_bitrate: "0"
+container: mkv
+pix_fmt: yuva420p
+mlt_image_format: rgba
+disable_audio: true
+melt_args:
+  - "f=matroska"

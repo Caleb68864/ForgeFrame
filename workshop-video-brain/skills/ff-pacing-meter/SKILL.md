@@ -137,3 +137,26 @@ specific section] to improve viewer retention the most.
 - After giving fixes, summarise: how many segments were flagged, the estimated
   time savings if dead air and drops are cut, and the single highest-priority
   change.
+
+---
+
+## Pacing to music (beat-driven cutting)
+
+`pacing_analyze` measures *speech* rhythm. When the video is cut to a music bed
+(montages, intros, social edits), pace to the **beat** instead:
+
+- `music_beat_grid` — detect onsets, tempo, and a beat grid for a music track.
+- `markers_from_beats` — turn that grid into workspace bar markers (every N-th
+  beat = a bar), which downstream cut/assembly tools can snap to.
+
+Suggest this when the creator wants a montage or high-energy section to feel
+locked to the music rather than to speech WPM. (For building the montage itself,
+see `/ff-social-clips` and `/ff-finishing`.)
+
+---
+
+## Failure contract
+
+ForgeFrame tools return a structured error dict carrying `error_type` +
+a plain `suggestion` (never a traceback). Read `suggestion` first; the full
+taxonomy is in the vault's [[MCP Error Catalog]].

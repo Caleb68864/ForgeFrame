@@ -1,10 +1,8 @@
 """Unit tests for the proxy adapter."""
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from workshop_video_brain.core.models import MediaAsset
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.proxy import (

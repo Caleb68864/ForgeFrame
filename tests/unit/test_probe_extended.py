@@ -1,6 +1,5 @@
 """Tests for extended FFprobe capabilities: VFR detection, color metadata, loudness."""
 import json
-from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
 

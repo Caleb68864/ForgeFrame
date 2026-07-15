@@ -1,7 +1,6 @@
 """Unit tests for transition models and crossfade helper."""
 from __future__ import annotations
 
-import pytest
 
 
 class TestTransitionPresetValues:

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mlt title="Zoom Whip Test" version="7" producer="main_bin">
+  <profile width="1920" height="1080" frame_rate_num="30" frame_rate_den="1" colorspace="709"/>
+  <producer id="producer0" in="0" out="59">
+    <property name="resource">/media/clipA.mp4</property>
+    <property name="length">60</property>
+  </producer>
+  <producer id="producer1" in="0" out="59">
+    <property name="resource">/media/clipB.mp4</property>
+    <property name="length">60</property>
+  </producer>
+  <playlist id="playlist0"/>
+  <playlist id="playlist1"/>
+  <playlist id="playlist2">
+    <entry producer="producer0" in="0" out="59"/>
+    <entry producer="producer1" in="0" out="59"/>
+  </playlist>
+  <tractor id="tractor0" in="0" out="119">
+    <track producer="playlist0"/>
+    <track producer="playlist1"/>
+    <track producer="playlist2"/>
+  </tractor>
+</mlt>

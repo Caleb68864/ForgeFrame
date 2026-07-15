@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from datetime import datetime
 from pathlib import Path
 
 from workshop_video_brain.core.models.enums import JobStatus
@@ -48,8 +47,20 @@ def check_codec_available(codec_name: str) -> bool:
                 if codec_name in parts:
                     return True
         return False
-    except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
-        logger.warning("Could not check codec availability for '%s'", codec_name)
+    except FileNotFoundError:
+        logger.warning(
+            "Cannot check codec '%s': ffmpeg not found on PATH", codec_name
+        )
+        return False
+    except subprocess.TimeoutExpired:
+        logger.warning(
+            "Cannot check codec '%s': ffmpeg -codecs timed out", codec_name
+        )
+        return False
+    except OSError as exc:  # noqa: BLE001 -- best-effort availability probe
+        logger.warning(
+            "Could not check codec availability for '%s': %s", codec_name, exc
+        )
         return False
 
 
@@ -81,6 +92,18 @@ def execute_render(
     if log_path:
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Record whether the output file already existed *before* this run so an
+    # interrupted/failed render can never leave a half-written file behind for a
+    # downstream tool (qc_check, a re-render, publish_bundle) to mistake for a
+    # finished artifact. A file that this run newly created is, by definition,
+    # partial when the render did not succeed.
+    out_path = Path(running_job.output_path) if running_job.output_path else None
+    output_preexisted = bool(out_path and out_path.exists())
+
+    def _fail() -> RenderJob:
+        _discard_partial_output(out_path, output_preexisted)
+        return update_job_status(running_job, JobStatus.failed)
+
     cmd = _command_override or _build_command(running_job, profile)
 
     logger.info("Render command: %s", " ".join(cmd))
@@ -108,11 +131,11 @@ def execute_render(
             return update_job_status(running_job, JobStatus.succeeded)
         else:
             logger.error(
-                "Render failed (exit %d): %s",
+                "Render failed (exit %d): ...%s",
                 result.returncode,
-                result.stderr[:500],
+                result.stderr[-500:],
             )
-            return update_job_status(running_job, JobStatus.failed)
+            return _fail()
 
     except subprocess.TimeoutExpired:
         msg = f"Render timed out after {timeout_seconds}s."
@@ -123,10 +146,15 @@ def execute_render(
                 f"TIMEOUT after {timeout_seconds}s\n",
                 encoding="utf-8",
             )
-        return update_job_status(running_job, JobStatus.failed)
+        return _fail()
 
     except FileNotFoundError as exc:
-        msg = f"Render command not found: {exc}"
+        binary = cmd[0] if cmd else "render binary"
+        msg = (
+            f"Render binary '{binary}' not found on PATH ({exc}). "
+            f"Install it (e.g. 'apt install melt ffmpeg' / "
+            f"'brew install mlt ffmpeg') and ensure it is on PATH."
+        )
         logger.error(msg)
         if log_path:
             log_path.write_text(
@@ -134,7 +162,7 @@ def execute_render(
                 f"ERROR: {msg}\n",
                 encoding="utf-8",
             )
-        return update_job_status(running_job, JobStatus.failed)
+        return _fail()
 
     except Exception as exc:
         logger.exception("Unexpected render error: %s", exc)
@@ -144,7 +172,26 @@ def execute_render(
                 f"UNEXPECTED ERROR: {exc}\n",
                 encoding="utf-8",
             )
-        return update_job_status(running_job, JobStatus.failed)
+        return _fail()
+
+
+def _discard_partial_output(out_path: Path | None, output_preexisted: bool) -> None:
+    """Delete a half-written render output left by a failed/interrupted run.
+
+    Only removes a file this run created (``output_preexisted`` is False): a
+    pre-existing output is never touched. Best-effort — a cleanup failure is
+    logged, never raised, so it cannot mask the real render failure.
+    """
+    if out_path is None or output_preexisted:
+        return
+    try:
+        if out_path.exists():
+            out_path.unlink()
+            logger.warning(
+                "Removed partial render output after failed render: %s", out_path
+            )
+    except OSError as exc:  # pragma: no cover - defensive
+        logger.warning("Could not remove partial render output %s: %s", out_path, exc)
 
 
 def _build_command(job: RenderJob, profile: RenderProfile) -> list[str]:
@@ -167,7 +214,19 @@ def _build_melt_command(
     output_path: str,
     profile: RenderProfile,
 ) -> list[str]:
-    """Build an melt (MLT framework) render command."""
+    """Build an melt (MLT framework) render command.
+
+    Passes through alpha/advanced consumer properties when the profile
+    defines them:
+
+    - ``mlt_image_format`` (e.g. ``rgba``) preserves the alpha channel through
+      the MLT pipeline instead of flattening onto black.
+    - ``pix_fmt`` (e.g. ``yuva420p``, ``argb``) selects an alpha-capable
+      encoder pixel format.
+    - ``melt_args`` are raw ``key=value`` consumer properties (e.g. ``f=webm``
+      to force the container, ``vprofile=4`` for ProRes 4444).
+    - ``disable_audio`` emits ``an=1`` and omits the audio codec/bitrate.
+    """
     cmd = [
         "melt",
         str(project_path),
@@ -175,13 +234,31 @@ def _build_melt_command(
         f"avformat:{output_path}",
         f"vcodec={profile.video_codec}",
         f"vb={profile.video_bitrate}",
-        f"acodec={profile.audio_codec}",
-        f"ab={profile.audio_bitrate}",
+    ]
+
+    # Alpha renders need the MLT image format set before other properties so
+    # the alpha channel is retained end to end.
+    if profile.mlt_image_format:
+        cmd.append(f"mlt_image_format={profile.mlt_image_format}")
+    if profile.pix_fmt:
+        cmd.append(f"pix_fmt={profile.pix_fmt}")
+
+    if profile.disable_audio:
+        cmd.append("an=1")
+    else:
+        cmd.append(f"acodec={profile.audio_codec}")
+        cmd.append(f"ab={profile.audio_bitrate}")
+
+    cmd.extend([
         f"width={profile.width}",
         f"height={profile.height}",
         f"frame_rate_num={int(profile.fps)}",
         "frame_rate_den=1",
-    ]
+    ])
+
+    # Extra raw consumer properties (container format, encoder profile, ...).
+    cmd.extend(profile.melt_args)
+
     return cmd
 
 

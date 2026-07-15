@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mlt title="Review Timeline" version="7">
+  <profile width="1920" height="1080" frame_rate_num="25" frame_rate_den="1" colorspace="709" />
+  <producer id="producer_0">
+    <property name="resource">9766b8bbd48b457b93d97e2847c0802c</property>
+  </producer>
+  <producer id="producer_1">
+    <property name="resource">345d126aae3e4f918d4a69e64705e053</property>
+  </producer>
+  <playlist id="playlist_video">
+    <entry producer="producer_0" in="0" out="750" />
+    <entry producer="producer_1" in="0" out="250" />
+    <entry producer="producer_0" in="0" out="825" />
+  </playlist>
+  <playlist id="playlist_audio">
+    <entry producer="producer_0" in="0" out="750" />
+    <entry producer="producer_1" in="0" out="250" />
+    <entry producer="producer_0" in="0" out="825" />
+  </playlist>
+  <tractor id="tractor0" in="0" out="99999">
+    <track producer="playlist_video" />
+    <track producer="playlist_audio" />
+  </tractor>
+  <guide position="0" comment="intro_candidate: First 30 seconds of speech (conf: 0.80)" type="intro_candidate" />
+  <guide position="0" comment="intro_candidate: First 30 seconds of speech (conf: 0.80)" type="intro_candidate" />
+  <guide position="0" comment="ending_reveal: Last 60 seconds of speech (conf: 0.75)" type="ending_reveal" />
+</mlt>

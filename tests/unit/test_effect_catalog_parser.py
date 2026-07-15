@@ -31,7 +31,7 @@ def test_paramtype_enum_covers_known_set():
     expected = {
         "CONSTANT", "DOUBLE", "INTEGER", "BOOL", "SWITCH", "COLOR",
         "KEYFRAME", "ANIMATED", "GEOMETRY", "LIST", "FIXED", "POSITION",
-        "URL", "STRING", "READONLY", "HIDDEN",
+        "URL", "STRING", "READONLY", "HIDDEN", "ROTO_SPLINE",
     }
     assert {m.name for m in ParamType} == expected
 

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from workshop_video_brain.core.models.enums import MarkerCategory
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
 from workshop_video_brain.core.models.kdenlive import (
     Guide,
     KdenliveProject,
@@ -22,7 +22,7 @@ from workshop_video_brain.core.models.kdenlive import (
     ProjectProfile,
     Track,
 )
-from workshop_video_brain.core.models.markers import Marker, MarkerConfig
+from workshop_video_brain.core.models.markers import Marker
 from workshop_video_brain.core.models.media import MediaAsset
 from workshop_video_brain.core.utils.naming import slugify
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_versioned
@@ -281,8 +281,8 @@ def generate_replay(
         else:
             producer = seen_producers[clip_ref]
 
-        in_point = int(seg_start * fps)
-        out_point = int(seg_end * fps)
+        in_point = seconds_to_frames(seg_start, fps)
+        out_point = seconds_to_frames(seg_end, fps)
         if out_point <= in_point:
             out_point = in_point + 1
 

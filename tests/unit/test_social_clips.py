@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 from uuid import UUID
 
-import pytest
 
 from workshop_video_brain.core.models.social import ClipCandidate, ClipExport, SocialPost
 from workshop_video_brain.core.models.transcript import Transcript, TranscriptSegment

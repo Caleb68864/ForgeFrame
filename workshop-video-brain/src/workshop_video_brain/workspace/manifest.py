@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
-import yaml
 from pydantic import Field
 
 from workshop_video_brain.core.models._base import SerializableMixin

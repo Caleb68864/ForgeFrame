@@ -5,10 +5,8 @@ import json
 from pathlib import Path
 from uuid import UUID
 
-import pytest
 
 from workshop_video_brain.core.models.enums import MarkerCategory
-from workshop_video_brain.core.models.markers import Marker, MarkerConfig, MarkerRule
 from workshop_video_brain.core.models.transcript import Transcript, TranscriptSegment
 from workshop_video_brain.edit_mcp.pipelines.auto_mark import generate_markers
 from workshop_video_brain.edit_mcp.pipelines.marker_rules import default_config

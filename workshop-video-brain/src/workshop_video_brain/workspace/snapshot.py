@@ -1,15 +1,17 @@
 """Snapshot manager: copy-first safety layer for project files."""
 from __future__ import annotations
 
+import logging
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-import yaml
 
 from workshop_video_brain.core.models.project import SnapshotRecord
 from workshop_video_brain.core.utils.naming import slugify, timestamp_prefix
+
+logger = logging.getLogger(__name__)
 
 _SNAPSHOTS_DIR = "projects/snapshots"
 _METADATA_FILENAME = "metadata.yaml"
@@ -121,7 +123,9 @@ def list_snapshots(workspace_root: Path | str) -> list[SnapshotRecord]:
             records.append(
                 SnapshotRecord.from_yaml(meta_path.read_text(encoding="utf-8"))
             )
-        except Exception:
-            pass  # skip corrupt entries
+        except Exception as exc:  # noqa: BLE001 -- best-effort: skip corrupt entries
+            # Corrupt/unreadable snapshot metadata is skipped so one bad entry
+            # cannot hide the rest, but it is logged (not silently dropped).
+            logger.warning("Skipping unreadable snapshot metadata %s: %s", meta_path, exc)
 
     return sorted(records, key=lambda r: r.timestamp)

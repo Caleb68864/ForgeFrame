@@ -1,8 +1,6 @@
 """Tests for ClipLabel construction, defaults, and serialization (MD-06)."""
 from __future__ import annotations
 
-import pytest
-from pydantic import ValidationError
 
 from workshop_video_brain.core.models.clips import ClipLabel
 

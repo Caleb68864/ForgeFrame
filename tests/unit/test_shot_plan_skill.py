@@ -5,11 +5,6 @@ from workshop_video_brain.production_brain.skills.outline import generate_outlin
 from workshop_video_brain.production_brain.skills.script import generate_script
 from workshop_video_brain.production_brain.skills.shot_plan import (
     generate_shot_plan,
-    TYPE_A_ROLL,
-    TYPE_OVERHEAD,
-    TYPE_CLOSEUP,
-    TYPE_GLAMOUR,
-    TYPE_PICKUP,
 )
 
 VALID_PRIORITIES = {"must-have", "should-have", "nice-to-have"}

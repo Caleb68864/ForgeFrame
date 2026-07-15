@@ -5,9 +5,7 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
-import pytest
 
-from workshop_video_brain.core.models.enums import MarkerCategory
 from workshop_video_brain.core.models.kdenlive import KdenliveProject, ProjectProfile
 from workshop_video_brain.core.models.title_cards import TitleCard
 from workshop_video_brain.edit_mcp.pipelines.title_cards import (

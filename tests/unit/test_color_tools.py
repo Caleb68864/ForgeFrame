@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from workshop_video_brain.core.models.color import ColorAnalysis
 
 
 # --- fixtures ---------------------------------------------------------------
@@ -152,3 +151,54 @@ def test_lut_invalid_track_propagates(mock_patch):
 
     with pytest.raises(IndexError, match="Track index 99"):
         apply_lut_to_project(MagicMock(), 99, 0, "/luts/test.cube")
+
+
+# --- interpolation mode (av.interp) -----------------------------------------
+
+@patch("workshop_video_brain.edit_mcp.adapters.kdenlive.patcher.patch_project")
+def test_lut_interp_sets_av_interp(mock_patch):
+    from workshop_video_brain.edit_mcp.pipelines.color_tools import apply_lut_to_project
+
+    apply_lut_to_project(MagicMock(), 0, 0, "/luts/x.cube", interp="tetrahedral")
+    intent = mock_patch.call_args[0][1][0]
+    assert intent.params == {"av.file": "/luts/x.cube", "av.interp": "tetrahedral"}
+
+
+@patch("workshop_video_brain.edit_mcp.adapters.kdenlive.patcher.patch_project")
+def test_lut_interp_is_case_insensitive(mock_patch):
+    from workshop_video_brain.edit_mcp.pipelines.color_tools import apply_lut_to_project
+
+    apply_lut_to_project(MagicMock(), 0, 0, "/luts/x.cube", interp="  NEAREST ")
+    assert mock_patch.call_args[0][1][0].params["av.interp"] == "nearest"
+
+
+@patch("workshop_video_brain.edit_mcp.adapters.kdenlive.patcher.patch_project")
+def test_lut_interp_none_leaves_params_bare(mock_patch):
+    from workshop_video_brain.edit_mcp.pipelines.color_tools import apply_lut_to_project
+
+    apply_lut_to_project(MagicMock(), 0, 0, "/luts/x.cube")
+    assert mock_patch.call_args[0][1][0].params == {"av.file": "/luts/x.cube"}
+
+
+@patch("workshop_video_brain.edit_mcp.adapters.kdenlive.patcher.patch_project")
+def test_lut_interp_all_ffmpeg_modes_accepted(mock_patch):
+    from workshop_video_brain.edit_mcp.pipelines.color_tools import (
+        LUT3D_INTERP_MODES,
+        apply_lut_to_project,
+    )
+
+    # Matches `ffmpeg -h filter=lut3d` (0..4).
+    assert LUT3D_INTERP_MODES == {
+        "nearest", "trilinear", "tetrahedral", "pyramid", "prism"
+    }
+    for mode in LUT3D_INTERP_MODES:
+        apply_lut_to_project(MagicMock(), 0, 0, "/luts/x.cube", interp=mode)
+        assert mock_patch.call_args[0][1][0].params["av.interp"] == mode
+
+
+@patch("workshop_video_brain.edit_mcp.adapters.kdenlive.patcher.patch_project")
+def test_lut_interp_unknown_raises(mock_patch):
+    from workshop_video_brain.edit_mcp.pipelines.color_tools import apply_lut_to_project
+
+    with pytest.raises(ValueError, match="unknown interp"):
+        apply_lut_to_project(MagicMock(), 0, 0, "/luts/x.cube", interp="linear")

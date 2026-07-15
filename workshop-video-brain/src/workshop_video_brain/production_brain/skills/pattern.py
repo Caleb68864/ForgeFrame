@@ -5,7 +5,6 @@ provides helpers to save build notes and update an Obsidian note.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 

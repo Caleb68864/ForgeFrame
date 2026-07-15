@@ -14,6 +14,13 @@ logger = logging.getLogger(__name__)
 # Transfer characteristics that indicate HDR content
 _HDR_TRANSFERS = {"smpte2084", "arib-std-b67"}
 
+# Accepted interpolation modes for the ffmpeg ``lut3d`` filter (``av.interp`` on
+# the MLT ``avfilter.lut3d`` service). Verified against
+# ``ffmpeg -h filter=lut3d`` (options 0-4, default ``tetrahedral``).
+LUT3D_INTERP_MODES: frozenset[str] = frozenset(
+    {"nearest", "trilinear", "tetrahedral", "pyramid", "prism"}
+)
+
 
 def analyze_color(file_path: Path) -> ColorAnalysis:
     """Probe a media file and return color metadata with recommendations.
@@ -100,6 +107,7 @@ def apply_lut_to_project(
     clip_index: int,
     lut_path: str,
     effect_name: str = "avfilter.lut3d",
+    interp: str | None = None,
 ) -> KdenliveProject:
     """Apply a LUT file to a clip in a Kdenlive project.
 
@@ -119,11 +127,27 @@ def apply_lut_to_project(
     effect_name:
         MLT service name for the LUT effect. Default is "avfilter.lut3d".
         Some Kdenlive builds use "frei0r.lut3d" instead.
+    interp:
+        Optional interpolation mode for ``avfilter.lut3d`` (``av.interp``): one
+        of :data:`LUT3D_INTERP_MODES` (``nearest`` / ``trilinear`` /
+        ``tetrahedral`` / ``pyramid`` / ``prism``). ``None`` (or empty) leaves
+        it unset, so ffmpeg's default (``tetrahedral``, the smoothest) applies.
+        Raises ``ValueError`` for an unknown mode.
     """
+    params = {"av.file": lut_path}
+    if interp is not None:
+        mode = str(interp).strip().lower()
+        if mode:
+            if mode not in LUT3D_INTERP_MODES:
+                raise ValueError(
+                    f"unknown interp {interp!r}; valid modes: "
+                    f"{sorted(LUT3D_INTERP_MODES)}"
+                )
+            params["av.interp"] = mode
     intent = AddEffect(
         track_index=track_index,
         clip_index=clip_index,
         effect_name=effect_name,
-        params={"av.file": lut_path},
+        params=params,
     )
     return _patcher.patch_project(project, [intent])

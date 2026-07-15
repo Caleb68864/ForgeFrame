@@ -10,6 +10,9 @@ import re
 from collections import defaultdict
 
 from workshop_video_brain.core.models.transcript import Transcript
+from workshop_video_brain.edit_mcp.pipelines._common import (
+    keyword_match_strength as _match_strength,
+)
 
 # ---------------------------------------------------------------------------
 # Category labels (human-readable)
@@ -62,19 +65,6 @@ _MEASUREMENT_UNIT_RE = re.compile(
     re.IGNORECASE,
 )
 _MEASUREMENT_KEYWORDS: list[str] = ["measure", "mark", "cut to"]
-
-
-def _match_strength(text_lower: str, keyword: str) -> float:
-    """Return confidence modifier for a keyword match.
-
-    Exact phrase → 1.0; all individual words present but not as phrase → 0.7.
-    """
-    if keyword in text_lower:
-        return 1.0
-    words = keyword.split()
-    if len(words) > 1 and all(w in text_lower for w in words):
-        return 0.7
-    return 0.0
 
 
 def _detect_category(text: str) -> list[tuple[str, float]]:

@@ -6,9 +6,7 @@ them with real temp workspaces and verifying structured dict output.
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 

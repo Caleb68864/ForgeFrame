@@ -34,8 +34,12 @@ def _resolve_vault_path() -> Path | None:
             config = json.loads(config_path.read_text(encoding="utf-8"))
             if "vault_path" in config:
                 return Path(config["vault_path"]).expanduser()
-        except Exception:
-            pass
+        except (OSError, ValueError) as exc:
+            # Best-effort: fall back to "no vault", but log a corrupt config
+            # rather than silently ignoring the user's vault_path setting.
+            logger.warning(
+                "Ignoring unreadable config %s: %s", config_path, exc
+            )
     return None
 
 

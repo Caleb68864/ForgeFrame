@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mlt version="7">
+  <profile width="1920" height="1080" frame_rate_num="25" frame_rate_den="1"/>
+  <playlist id="pl0"><entry producer="does_not_exist" in="0" out="100"/></playlist>
+  <tractor id="t0"><track producer="pl0"/></tractor>
+</mlt>

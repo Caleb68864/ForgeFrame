@@ -1,5 +1,4 @@
 """Tests for project profile setup pipeline."""
-from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest

@@ -78,7 +78,7 @@ Output:
 2. Structured dict via Python engine
 
 ```python
-from production_brain.skills.script import generate_script
+from workshop_video_brain.production_brain.skills.script import generate_script
 md, data = generate_script(
     outline_data=<outline_dict>,
     tone="practical",
@@ -260,6 +260,24 @@ want even squeeze-out along the entire joint, not a river of glue.
 
 ---
 
+## Writing the script so the edit can use it
+
+A tutorial script isn't just narration — it's the source for two later edit
+steps, so write it in a shape they can consume:
+
+- **Voiceover cues.** If the user records VO from this script, `vo_plan` splits
+  a markdown script into numbered VO cues and lays them on a timeline (then
+  `vo_attach` places each recorded take and reports drift, `vo_status` shows the
+  planned/recorded/missing table). Clean section headings and one idea per
+  paragraph make that split clean — keep the STEP structure below intact.
+- **On-screen text.** Step titles, safety callouts, and any measurement spoken
+  aloud are candidates for on-screen titles — `title_card_add` (title card) and
+  drop-shadowed lower-third overlays (`effect_drop_shadow`) in the edit. When a
+  line really needs to be *shown*, not just said, note it in the step's
+  direction line so `/ff-shot-plan` and `/ff-finishing` pick it up.
+
+---
+
 ## Handoff
 
 After producing the script, tell the user:
@@ -267,3 +285,6 @@ After producing the script, tell the user:
   this script."
 - If you identified any open questions (unclear specs, missing safety info),
   list them at the end.
+- **Failure contract:** ForgeFrame tools return a structured error dict
+  (`error_type` + `suggestion`), never a traceback — read `suggestion` first.
+  Full taxonomy: the vault's [[MCP Error Catalog]].

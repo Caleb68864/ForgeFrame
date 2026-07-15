@@ -1,0 +1,19 @@
+# Render profile: mov-alpha
+# Transparent-background QuickTime MOV using QuickTime Animation (qtrle) with
+# an argb alpha channel. Mirrors Kdenlive's "Video with alpha -> Alpha MOV"
+# preset: a generic, broadly-compatible lossless-ish RLE option. Larger files
+# than VP9 but very widely supported by editors/compositors.
+name: mov-alpha
+width: 1920
+height: 1080
+fps: 30
+video_codec: qtrle
+video_bitrate: "0"
+audio_codec: pcm_s16le
+audio_bitrate: "0"
+container: mov
+pix_fmt: argb
+mlt_image_format: rgba
+disable_audio: true
+melt_args:
+  - "f=mov"

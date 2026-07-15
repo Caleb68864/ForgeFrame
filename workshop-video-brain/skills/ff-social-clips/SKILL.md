@@ -88,6 +88,27 @@ Platforms: `youtube`, `instagram`, `tiktok`, `twitter`
 
 ---
 
+### Step 4 — Finish the short (captions, beat-sync, delivery)
+
+Social clips live or die on captions and pace. Once a clip's timeline exists:
+
+- **Burn-in captions.** Short-form is watched muted — captions aren't optional.
+  `subtitles_generate` → `subtitles_burn_in` bakes the SRT permanently into the
+  delivered file in `media/processed/` (not a soft subtitle track). Keep to the
+  60-char-per-line overlay limit above.
+- **Beat-synced cutting.** For montage-style shorts, snap cuts to the music:
+  `music_beat_grid` detects tempo + a beat grid, and `markers_from_beats` turns
+  it into bar markers the cut can land on. This is what makes a short feel
+  "edited to the beat" instead of to speech. (See `/ff-pacing-meter`.)
+- **Alpha render profiles.** If the short needs an overlay layer with
+  transparency (animated caption card, logo sting, greenscreen element over the
+  footage), render that element with an alpha profile: `render_final_tool` with
+  `prores-4444-alpha`, `mov-alpha`, `webm-alpha`, or `ffv1-alpha`
+  (list them with `render_list_profiles`). Deliver the flattened 9:16 clip with a
+  normal profile.
+
+---
+
 ## Interpreting clip scores
 
 Each candidate is scored 0-1 on three dimensions:
@@ -128,3 +149,6 @@ A clip with overall_score > 0.6 is a strong short-form candidate.
 - Twitter posts must be under 280 characters including hashtags.
 - For TikTok, ultra-short hooks work best. Lead with the most surprising or
   actionable line.
+- **Failure contract:** tools return a structured error dict (`error_type` +
+  `suggestion`), never a traceback. A `not_found` on a render profile means
+  check `render_list_profiles`. Full taxonomy: the vault's [[MCP Error Catalog]].

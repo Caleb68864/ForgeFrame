@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mlt version="7" title="Legacy Project">
+  <profile width="1920" height="1080" frame_rate_num="25" frame_rate_den="1"/>
+  <producer id="black_track"><property name="resource">black</property><property name="mlt_service">color</property></producer>
+  <producer id="prod0" in="0" out="99"><property name="resource">/media/a.mp4</property><property name="length">100</property><property name="kdenlive:uuid">{deadbeef-0000-0000-0000-000000000000}</property></producer>
+  <playlist id="playlist0"><entry producer="prod0" in="0" out="99"/></playlist>
+  <tractor id="tractor0" in="0" out="99"><track producer="black_track"/><track producer="playlist0"/></tractor>
+</mlt>

@@ -13,6 +13,25 @@ from workshop_video_brain.core.models.project import RenderJob
 from workshop_video_brain.workspace.manifest import read_manifest
 
 
+def _extension_for_profile_name(profile: str) -> str:
+    """Return the output file extension for a render profile.
+
+    Loads the profile YAML to read its ``container`` field. Falls back to
+    ``mp4`` when the profile cannot be loaded or defines no container.
+    """
+    try:
+        from workshop_video_brain.edit_mcp.adapters.render.profiles import (
+            load_profile,
+        )
+
+        loaded = load_profile(profile)
+        if loaded.container:
+            return loaded.container.lstrip(".")
+    except Exception:
+        pass
+    return "mp4"
+
+
 def create_render_job(
     workspace_root: Path | str,
     project_path: Path | str,
@@ -41,11 +60,14 @@ def create_render_job(
     except Exception:
         pass  # Use generated UUID if manifest is absent
 
-    # Determine output path
+    # Determine output path. The container extension is derived from the
+    # render profile so alpha profiles (webm/mov/mkv) land in the right
+    # container; falls back to mp4 when the profile is unknown or unset.
+    ext = _extension_for_profile_name(profile)
     renders_dir = workspace_root / "renders"
     renders_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d-%H%M%S")
-    output_filename = f"{project_path.stem}-{profile}-{timestamp}.mp4"
+    output_filename = f"{project_path.stem}-{profile}-{timestamp}.{ext}"
     output_path = renders_dir / output_filename
 
     # Log file alongside output

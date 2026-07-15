@@ -54,7 +54,7 @@ After drafting, output:
 
 The JSON is produced by calling the Python engine:
 ```
-from production_brain.skills.outline import generate_outline
+from workshop_video_brain.production_brain.skills.outline import generate_outline
 md, data = generate_outline(
     idea=<user_idea>,
     project_type=<detected_type or None>,
@@ -198,3 +198,9 @@ After producing the outline, tell the user:
   script, or `/ff-shot-plan` to build a production shot list."
 - If you detected open questions, highlight the most important one for the user
   to resolve first.
+- The numbered Teaching Beats double as the build-step list that
+  `/ff-assemble-from-script` and `shots_map_to_script` align footage against —
+  keeping them granular pays off at edit time.
+- **Failure contract:** ForgeFrame tools return a structured error dict
+  (`error_type` + `suggestion`), never a traceback. Full taxonomy: the vault's
+  [[MCP Error Catalog]].

@@ -16,6 +16,34 @@ dependencies = [
     "yt-dlp>=2026.3.17",
 ]
 
+[project.optional-dependencies]
+# Local AI mask generation (producing matte videos for Shape Alpha / mask_set).
+# Default engine is the LIGHTEST viable one: rembg on onnxruntime -- CPU-friendly,
+# NO torch (~20 MB runtime + a 4-176 MB model auto-downloaded on first use).
+# Install: `uv pip install -e '.[ai-mask]'` (or `uv pip install rembg onnxruntime`).
+ai-mask = [
+    "rembg>=2.0",
+    "onnxruntime>=1.16",
+]
+# Second tier (best quality + temporal propagation, NOT installed by default):
+# SAM2 / YOLO-seg pull the multi-GB torch stack and want a GPU. Documented, not
+# wired up here -- `mask_generate(engine="sam2")` returns an actionable install
+# hint. To enable: `uv pip install ultralytics`.
+ai-mask-heavy = [
+    "ultralytics>=8.3",
+]
+# Motion tracking / AI subject-focus FALLBACK engine (plan §5). The PRIMARY
+# tracker is the MLT `opencv.tracker` filter run headless via the `melt` binary
+# (no Python deps -- the §5 feasibility spike confirmed melt persists analysis
+# `results`). This group installs the pure-Python fallback used when melt is
+# unavailable or `engine="opencv"` is requested: contrib OpenCV (CSRT/KCF/MOSSE
+# trackers, ~66 MB, headless -- no GUI/torch). `subject_track(engine="opencv")`
+# returns an actionable install hint when missing.
+# Install: `uv pip install -e '.[motion-track]'`.
+motion-track = [
+    "opencv-contrib-python-headless>=4.8",
+]
+
 [project.scripts]
 workshop-video-brain-server = "workshop_video_brain.server:main"
 wvb = "workshop_video_brain.app.cli:main"

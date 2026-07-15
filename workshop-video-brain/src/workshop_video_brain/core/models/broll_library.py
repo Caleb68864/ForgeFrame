@@ -22,6 +22,7 @@ class BRollEntry(SerializableMixin):
     times_used: int = 0                # how many projects have used this
     added_date: str = ""
     rating: int = 0                    # 0-5 user rating
+    loudness_lufs: float | None = None  # integrated loudness (LUFS), from audio_loudness_scan
 
 
 class BRollLibrary(SerializableMixin):

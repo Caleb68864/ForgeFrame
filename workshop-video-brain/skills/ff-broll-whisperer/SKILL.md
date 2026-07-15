@@ -107,6 +107,29 @@ in the video note. Confirm the path to the creator when done.
 
 ---
 
+## Checking footage you already have (the media brain)
+
+Before sending the creator out to film, mine the clips already in the workspace
+so you only ask for shots that are genuinely missing:
+
+- `media_thumbnail_sheet` — extract representative keyframes (and a contact
+  sheet) from a clip so you can **vision-tag** what it actually shows. Look at
+  the frames, then describe the shot in plain language — that description is what
+  makes an unlabelled B-roll clip findable and mappable later.
+- `clips_qc_scan` — batch-scan clips for junk (black / frozen / blurry /
+  mis-exposed / dead-air) so you don't suggest reusing a shot that's unusable.
+- `clips_find_duplicates` — find perceptual near-duplicate clips so you flag
+  redundant coverage instead of treating two takes of the same shot as two shots.
+- `broll_library_search` / `broll_library_index` — search (and grow) the
+  cross-project B-roll library so an existing library shot can fill a gap.
+
+If the creator has a numbered build-step list, use `shots_map_to_script` to align
+those steps to candidate clips + timestamps — the result tells you exactly which
+steps have no coverage and therefore need a B-roll shot filmed. (For the full
+step→timeline assembly, hand off to `/ff-assemble-from-script`.)
+
+---
+
 ## Quality guidelines
 
 - Never invent shots that are not grounded in what the transcript actually says.
@@ -126,3 +149,6 @@ After producing the refined shot list:
 - Offer to save the shot list to the Obsidian note.
 - Offer to cross-reference the shot list against any existing footage using the
   `clips_search` tool to see if anything is already in the media library.
+- **Failure contract:** tools return a structured error dict (`error_type` +
+  `suggestion`), never a traceback — read `suggestion` first. Full taxonomy: the
+  vault's [[MCP Error Catalog]].

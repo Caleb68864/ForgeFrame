@@ -1,43 +1,52 @@
 """Kdenlive XML parser.  Reads a .kdenlive file into a KdenliveProject model.
 
-The parser handles both the legacy "flat single-tractor" shape and the modern
-Kdenlive 25.x shape (per-track tractors + UUID main sequence + projectTractor
-wrapper).  Unknown XML elements are preserved verbatim as OpaqueElement
-objects for round-trip safety.
+Unknown XML elements are preserved verbatim as OpaqueElement objects for
+round-trip safety.
 """
 from __future__ import annotations
 
 import logging
-import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from workshop_video_brain.core.models.kdenlive import (
-    EntryFilter,
     Guide,
     KdenliveProject,
+    Link,
     OpaqueElement,
     Playlist,
     PlaylistEntry,
     Producer,
     ProjectProfile,
-    SequenceTransition,
+    SubtitleTrack,
     Track,
 )
 
 logger = logging.getLogger(__name__)
 
-_UUID_TRACTOR_RE = re.compile(
-    r"^\{[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}$"
-)
-_TRACK_TRACTOR_PREFIX = "tractor_track_"
-_PROJECT_TRACTOR_ID = "tractor_project"
+
+class ProjectParseError(Exception):
+    """Raised when a .kdenlive file cannot be read or parsed.
+
+    Carries the offending ``path`` and the underlying ``cause`` so callers can
+    return a precise error instead of silently proceeding with an empty
+    project (which would let a downstream patch overwrite a corrupt-but-
+    recoverable file).
+    """
+
+    def __init__(self, path: Path, cause: Exception):
+        self.path = Path(path)
+        self.cause = cause
+        super().__init__(f"Failed to parse project '{self.path}': {cause}")
+
 
 # Tags that this parser handles explicitly (lowercase).
 _KNOWN_TAGS = {
     "mlt",
     "profile",
     "producer",
+    "chain",
+    "link",
     "playlist",
     "tractor",
     "track",
@@ -85,153 +94,315 @@ def _parse_producer(elem: ET.Element) -> Producer:
     return Producer(id=producer_id, resource=resource, properties=props)
 
 
-def _parse_sequence_transition(trans_elem: ET.Element) -> SequenceTransition | None:
-    """Convert a ``<transition>`` element from the main sequence tractor
-    into a :class:`SequenceTransition`, or return None for auto-internal
-    transitions (per-track ``mix``/``qtblend`` with ``internal_added=237``)
-    that the serializer rebuilds from the track list.
+def _parse_chain(elem: ET.Element) -> Producer:
+    """Parse a ``<chain>`` (producer + MLT ``<link>`` children) into a Producer.
+
+    Round-trips the chain form the serializer emits for the native
+    ``timeremap`` engine: top-level ``<property>`` children populate the
+    producer, each ``<link>`` becomes a :class:`Link`, and the chain's ``out``
+    attribute is preserved on ``chain_out``.  Kept deliberately independent of
+    ``_parse_producer`` so the chain-only vocabulary stays isolated.
     """
-    properties: dict[str, str] = {}
-    for child in trans_elem:
+    producer_id = elem.get("id", "")
+    props: dict[str, str] = {}
+    links: list[Link] = []
+    for child in elem:
         if child.tag == "property":
-            name = child.get("name", "")
-            value = child.text or ""
-            properties[name] = value
-
-    # Skip auto-internal transitions -- the serializer recreates these
-    # automatically based on ``project.tracks``.  Capturing them as
-    # SequenceTransitions would duplicate them on re-serialize.
-    if properties.get("internal_added") == "237":
-        return None
-
-    try:
-        a_track = int(properties.get("a_track", "0"))
-        b_track = int(properties.get("b_track", "0"))
-    except (TypeError, ValueError):
-        return None
-
-    in_attr = trans_elem.get("in")
-    out_attr = trans_elem.get("out")
-    try:
-        in_frame = int(in_attr) if in_attr is not None else 0
-        out_frame = int(out_attr) if out_attr is not None else 0
-    except ValueError:
-        # Timecode-format in/out -- skip for now (rare in v25 saves).
-        return None
-
-    extra_props = {
-        k: v for k, v in properties.items()
-        if k not in {"a_track", "b_track", "mlt_service", "kdenlive_id"}
-    }
-    return SequenceTransition(
-        id=trans_elem.get("id", ""),
-        a_track=a_track,
-        b_track=b_track,
-        in_frame=in_frame,
-        out_frame=out_frame,
-        mlt_service=properties.get("mlt_service", ""),
-        kdenlive_id=properties.get("kdenlive_id", ""),
-        properties=extra_props,
+            props[child.get("name", "")] = child.text or ""
+        elif child.tag == "link":
+            link_props: dict[str, str] = {}
+            for lchild in child:
+                if lchild.tag == "property":
+                    link_props[lchild.get("name", "")] = lchild.text or ""
+            links.append(
+                Link(
+                    mlt_service=child.get("mlt_service", ""),
+                    properties=link_props,
+                )
+            )
+    chain_out_raw = elem.get("out")
+    chain_out = int(chain_out_raw) if chain_out_raw is not None else None
+    return Producer(
+        id=producer_id,
+        resource=props.get("resource", ""),
+        properties=props,
+        links=links,
+        chain_out=chain_out,
     )
 
 
-def _parse_entry_filter(filter_elem: ET.Element) -> EntryFilter:
-    """Parse a ``<filter>`` child of a playlist ``<entry>`` into an
-    :class:`EntryFilter` so it round-trips through the model."""
-    properties: dict[str, str] = {}
-    zone_in = None
-    zone_out = None
-    for child in filter_elem:
-        if child.tag != "property":
-            continue
-        name = child.get("name", "")
-        value = child.text or ""
-        if name == "kdenlive:zone_in":
-            try:
-                zone_in = int(value)
-            except (TypeError, ValueError):
-                pass
-            continue
-        if name == "kdenlive:zone_out":
-            try:
-                zone_out = int(value)
-            except (TypeError, ValueError):
-                pass
-            continue
-        properties[name] = value
-    in_attr = filter_elem.get("in")
-    out_attr = filter_elem.get("out")
-    in_frame = None
-    out_frame = None
-    try:
-        if in_attr is not None:
-            in_frame = int(in_attr)
-        if out_attr is not None:
-            out_frame = int(out_attr)
-    except ValueError:
-        pass  # leave None if the attribute is a timecode rather than int
-    return EntryFilter(
-        id=filter_elem.get("id", ""),
-        in_frame=in_frame,
-        out_frame=out_frame,
-        zone_in_frame=zone_in,
-        zone_out_frame=zone_out,
-        properties=properties,
-    )
-
-
-def _parse_playlist(elem: ET.Element) -> tuple[Playlist, list[OpaqueElement]]:
+def _parse_playlist(
+    elem: ET.Element, track_index: int = 0
+) -> tuple[Playlist, list[OpaqueElement]]:
     playlist_id = elem.get("id", "")
     entries: list[PlaylistEntry] = []
     opaques: list[OpaqueElement] = []
+    real_index = 0
     for child in elem:
         if child.tag == "entry":
-            entry_filters: list[EntryFilter] = [
-                _parse_entry_filter(c) for c in child if c.tag == "filter"
-            ]
             entries.append(
                 PlaylistEntry(
                     producer_id=child.get("producer", ""),
                     in_point=int(child.get("in", "0")),
                     out_point=int(child.get("out", "0")),
-                    filters=entry_filters,
                 )
             )
+            # Clip effects are stored by real Kdenlive as <filter> children of
+            # the <entry> (§1.2).  Read them into the flat opaque store, tagged
+            # with the (track, clip) association attributes the effect-stack API
+            # and serializer use so they round-trip back into the entry.
+            for sub in child:
+                if sub.tag != "filter":
+                    continue
+                felem = ET.fromstring(ET.tostring(sub, encoding="unicode"))
+                felem.set("track", str(track_index))
+                felem.set("clip_index", str(real_index))
+                opaques.append(
+                    OpaqueElement(
+                        tag="filter",
+                        xml_string=ET.tostring(felem, encoding="unicode"),
+                        position_hint="after_tractor",
+                    )
+                )
+            real_index += 1
         elif child.tag == "blank":
             # Represent gaps as PlaylistEntry with empty producer_id
             length = int(child.get("length", "0"))
             entries.append(PlaylistEntry(producer_id="", in_point=0, out_point=length - 1))
+        elif child.tag == "filter":
+            # Track-level effects are stored by real Kdenlive/MLT as <filter>
+            # direct children of the track <playlist> (§3 "Track-level audio").
+            # Tag with the track association attribute (no clip_index) so they
+            # round-trip back into the playlist.
+            felem = ET.fromstring(ET.tostring(child, encoding="unicode"))
+            felem.set("track", str(track_index))
+            opaques.append(
+                OpaqueElement(
+                    tag="filter",
+                    xml_string=ET.tostring(felem, encoding="unicode"),
+                    position_hint="track",
+                )
+            )
         else:
             opaques.append(_elem_to_opaque(child, position_hint=f"playlist:{playlist_id}"))
             logger.warning("Unsupported element <%s> inside playlist '%s'", child.tag, playlist_id)
     return Playlist(id=playlist_id, entries=entries), opaques
 
 
-def _parse_tractor(elem: ET.Element) -> tuple[dict, list[Track], list[OpaqueElement]]:
+# ``kdenlive:docproperties.*`` suffixes the serializer regenerates from model
+# state.  Excluded on parse so they don't duplicate in the docproperties bag.
+_MANAGED_DOCPROPERTY_SUFFIXES = frozenset(
+    {
+        "version",
+        "profile",
+        "uuid",
+        "guides",
+        "subtitlesList",
+        "activeSubtitleIndex",
+        # Sequence wiring -- regenerated from the sequence uuid on every write.
+        "opensequences",
+        "activetimeline",
+    }
+)
+
+_DOCPROP_PREFIX = "kdenlive:docproperties."
+
+# Maximum element nesting depth accepted from an input document.  ElementTree
+# parses iteratively (expat) but ``ET.tostring`` -- used to snapshot unknown
+# elements as OpaqueElements -- recurses in Python, so a pathologically deep
+# document raises ``RecursionError`` mid-parse.  Real .kdenlive files nest
+# well under 20 levels; this cap is far above any legitimate document yet well
+# below the interpreter's recursion limit, converting the DoS into a clean
+# ProjectParseError.
+_MAX_NESTING_DEPTH = 256
+
+
+def _max_depth(root: ET.Element) -> int:
+    """Return the maximum element nesting depth of *root* (iterative, no
+    recursion -- safe to run on adversarially deep trees)."""
+    max_d = 1
+    stack: list[tuple[ET.Element, int]] = [(root, 1)]
+    while stack:
+        elem, depth = stack.pop()
+        if depth > max_d:
+            max_d = depth
+        for child in elem:
+            stack.append((child, depth + 1))
+    return max_d
+
+
+def _parse_docproperties(elem: ET.Element) -> dict[str, str]:
+    """Read non-managed ``kdenlive:docproperties.*`` off the main_bin playlist.
+
+    Returns a suffix-keyed dict (e.g. ``{"enableproxy": "1"}``).  Proxy settings
+    live here; the serializer re-emits them so they round-trip.
+    """
+    docprops: dict[str, str] = {}
+    for child in elem:
+        if child.tag != "property":
+            continue
+        name = child.get("name", "")
+        if not name.startswith(_DOCPROP_PREFIX):
+            continue
+        suffix = name[len(_DOCPROP_PREFIX):]
+        if suffix in _MANAGED_DOCPROPERTY_SUFFIXES:
+            continue
+        docprops[suffix] = child.text or ""
+    return docprops
+
+
+# Tractor <property> keys the serializer regenerates from KdenliveProject state.
+# Skipping them on parse prevents a duplicate on the next serialize.
+_REGENERATED_TRACTOR_PROPS = frozenset(
+    {
+        "kdenlive:sequenceproperties.guides",
+        "kdenlive:sequenceproperties.subtitlesList",
+    }
+)
+
+
+def _filter_props(elem: ET.Element) -> dict[str, str]:
+    """Return the ``<property name=...>`` map of a filter/transition element."""
+    props: dict[str, str] = {}
+    for prop in elem:
+        if prop.tag == "property":
+            props[prop.get("name", "")] = prop.text or ""
+    return props
+
+
+def _subtitle_from_filter(elem: ET.Element) -> SubtitleTrack | None:
+    """Build a SubtitleTrack from an ``avfilter.subtitles`` tractor filter."""
+    props = _filter_props(elem)
+    if props.get("mlt_service") != "avfilter.subtitles":
+        return None
+    kid = props.get("kdenlive:id") or elem.get("id", "").replace("subtitle_", "")
+    try:
+        sub_id = int(kid)
+    except (TypeError, ValueError):
+        sub_id = 0
+    return SubtitleTrack(
+        id=sub_id,
+        name="Subtitle",
+        file=props.get("av.filename", ""),
+        style=props.get("av.force_style") or None,
+    )
+
+
+# Sequence-tractor properties the serializer regenerates from model state.
+# Skipping them on parse avoids duplicate properties on the next write; these
+# describe the sequence *architecture* (rebuilt fresh), not user content.
+_REGENERATED_SEQUENCE_PROPS = frozenset(
+    {
+        "kdenlive:uuid",
+        "kdenlive:control_uuid",
+        "kdenlive:clipname",
+        "kdenlive:clip_type",
+        "kdenlive:duration",
+        "kdenlive:maxduration",
+        "kdenlive:producer_type",
+        "kdenlive:id",
+        "kdenlive:file_size",
+        "kdenlive:folderid",
+        "kdenlive:projectTractor",
+        "kdenlive:trackheight",
+        "kdenlive:timeline_active",
+        "kdenlive:thumbs_format",
+        "kdenlive:audio_rec",
+        "kdenlive:collapsed",
+        "kdenlive:audio_track",
+    }
+)
+
+
+def _tractor_role(elem: ET.Element, props: dict[str, str]) -> str:
+    """Classify a ``<tractor>`` in the modern (nested) document.
+
+    Returns one of:
+      * ``"project"``  -- the render-root project tractor (``projectTractor``).
+      * ``"sequence"`` -- a registered sequence tractor (``producer_type=17`` or
+        carrying ``kdenlive:uuid``); holds the black track + track-tractors +
+        compositing transitions.
+      * ``"track"``    -- a per-track lane-wrapper tractor, or a legacy single
+        timeline tractor; its ``<track>`` children reference playlists.
+    """
+    if "kdenlive:projectTractor" in props:
+        return "project"
+    if props.get("kdenlive:producer_type") == "17" or "kdenlive:uuid" in props:
+        return "sequence"
+    return "track"
+
+
+def _parse_tractor(
+    elem: ET.Element,
+    playlist_ids: set[str],
+) -> tuple[dict, list[Track], list[OpaqueElement], list[SubtitleTrack]]:
+    """Parse one ``<tractor>``.
+
+    *playlist_ids* is the set of already-parsed content playlist ids so a
+    track-tractor's lane references can be recognised as timeline tracks (and
+    the sequence tractor's tractor references are NOT mistaken for tracks).
+    """
     tractor_dict: dict = {k: v for k, v in elem.attrib.items()}
     tracks: list[Track] = []
     opaques: list[OpaqueElement] = []
+    subtitles: list[SubtitleTrack] = []
+
+    props = {
+        c.get("name", ""): (c.text or "")
+        for c in elem
+        if c.tag == "property"
+    }
+    role = _tractor_role(elem, props)
+
+    # The project (render-root) tractor is pure infrastructure -- regenerated.
+    if role == "project":
+        return tractor_dict, tracks, opaques, subtitles
+
     for child in elem:
         if child.tag == "track":
             producer_ref = child.get("producer", "")
-            # Skip serializer-generated infrastructure tracks
+            # Only lane references (playlists) become timeline tracks.  In the
+            # sequence tractor the <track> refs point at the black producer and
+            # the track-tractors -- infrastructure, skipped.
+            if producer_ref not in playlist_ids:
+                continue
             if producer_ref == "black_track" or producer_ref.endswith("_kdpair"):
                 continue
-            # Determine type from hide attribute
             hide = child.get("hide", "")
-            if hide == "video":
-                track_type = "audio"
-            elif hide == "audio":
-                track_type = "video"
-            else:
-                track_type = "video"
+            track_type = "audio" if hide == "video" else "video"
             tracks.append(Track(id=producer_ref, track_type=track_type))
-        elif child.tag in ("transition", "filter"):
+        elif child.tag == "filter":
+            # Subtitle tracks are avfilter.subtitles filters; the internal
+            # audio filters (volume/panner/audiolevel, internal_added=237) are
+            # regenerated and dropped.
+            sub = _subtitle_from_filter(child)
+            if sub is not None:
+                subtitles.append(sub)
+                continue
+            fprops = _filter_props(child)
+            if fprops.get("internal_added") == "237":
+                continue
+            opaques.append(_elem_to_opaque(child, position_hint="tractor"))
+        elif child.tag == "transition":
+            # Regenerated always-active compositors carry internal_added=237;
+            # only user transitions (no internal_added) round-trip.
+            tprops = _filter_props(child)
+            if tprops.get("internal_added") == "237":
+                continue
+            opaques.append(_elem_to_opaque(child, position_hint="tractor"))
+        elif child.tag == "property":
+            name = child.get("name", "")
+            if name in _REGENERATED_TRACTOR_PROPS:
+                continue
+            if name in _REGENERATED_SEQUENCE_PROPS:
+                continue
+            if name.startswith("kdenlive:sequenceproperties."):
+                continue
             opaques.append(_elem_to_opaque(child, position_hint="tractor"))
         else:
             opaques.append(_elem_to_opaque(child, position_hint="tractor"))
             logger.warning("Unsupported element <%s> inside tractor", child.tag)
-    return tractor_dict, tracks, opaques
+    return tractor_dict, tracks, opaques, subtitles
 
 
 def _parse_guide(elem: ET.Element) -> Guide | None:
@@ -248,61 +419,95 @@ def _parse_guide(elem: ET.Element) -> Guide | None:
         return None
 
 
-def _classify_tractor(elem: ET.Element) -> str:
-    """Classify a top-level ``<tractor>`` element.
-
-    Returns one of:
-      * ``"per_track"`` -- wraps exactly two ``<playlist>`` references
-        (one content + one paired empty); represents one timeline track.
-      * ``"sequence"`` -- the main sequence (UUID id + ``kdenlive:uuid`` prop).
-      * ``"project"`` -- the outer wrapper (``kdenlive:projectTractor=1``).
-      * ``"legacy"`` -- the old flat-shape single tractor.
-    """
-    tractor_id = elem.get("id", "")
-    props = {
-        c.get("name", ""): (c.text or "")
-        for c in elem
-        if c.tag == "property"
-    }
-    if props.get("kdenlive:projectTractor") == "1" or tractor_id == _PROJECT_TRACTOR_ID:
-        return "project"
-    if _UUID_TRACTOR_RE.match(tractor_id) or "kdenlive:uuid" in props:
-        return "sequence"
-    if tractor_id.startswith(_TRACK_TRACTOR_PREFIX):
-        return "per_track"
-    track_children = elem.findall("track")
-    if len(track_children) == 2:
-        producer_refs = [t.get("producer", "") for t in track_children]
-        # A legitimate per-track tractor pairs one content playlist with its
-        # ``*_kdpair`` empty companion.  Anything else (e.g. a legacy single
-        # tractor that happens to reference exactly two playlists) is *not*
-        # a per-track tractor.
-        if any(ref.endswith("_kdpair") for ref in producer_refs):
-            return "per_track"
-    return "legacy"
-
-
-def parse_project(path: Path) -> KdenliveProject:
+def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
     """Parse a .kdenlive XML file and return a KdenliveProject.
 
-    Handles both the legacy flat-tractor shape and the v25 multi-tractor shape.
-    Unknown XML elements are captured as OpaqueElement objects.  This function
-    never raises; warnings are logged on unsupported constructs.
+    Unknown XML elements are captured as OpaqueElement objects.  Individual
+    malformed *sub*-elements are still tolerated (logged + kept opaque).
+
+    On a missing file or an unparseable document the default behaviour is to
+    raise :class:`ProjectParseError` -- returning an empty project here is
+    dangerous because a downstream tool would then "patch" nothing and
+    serialize it over a corrupt-but-recoverable file.
+
+    Args:
+        path: Path to the .kdenlive file.
+        missing_ok: If True, return an empty ``KdenliveProject`` instead of
+            raising when the file is missing or unparseable.  Reserved for
+            read-only/best-effort callers (resource browsing, profile sniffing)
+            that genuinely want a graceful empty fallback.
+
+    Raises:
+        ProjectParseError: If the file cannot be read/parsed and
+            ``missing_ok`` is False.
     """
     path = Path(path)
+
+    def _fail(exc: Exception) -> KdenliveProject:
+        if missing_ok:
+            return KdenliveProject()
+        raise ProjectParseError(path, exc) from exc
+
     try:
-        tree = ET.parse(path)
+        raw = path.read_bytes()
     except FileNotFoundError as exc:
         logger.error("File not found: %s: %s", path, exc)
-        return KdenliveProject()
+        return _fail(exc)
+    except OSError as exc:
+        logger.error("Could not read %s: %s", path, exc)
+        return _fail(exc)
+
+    # Entity-expansion / XXE guard.  ElementTree (expat) expands *internal*
+    # general entities, so a DOCTYPE carrying nested entities is a billion-laughs
+    # DoS vector, and external SYSTEM entities are an XXE vector (expat rejects
+    # the latter, but the safe blanket rule is: a legitimate .kdenlive file never
+    # declares a DOCTYPE, so reject any document that does).
+    if b"<!DOCTYPE" in raw or b"<!doctype" in raw:
+        logger.error("Rejected DOCTYPE (entity-expansion guard) in %s", path)
+        return _fail(
+            ValueError("DOCTYPE declarations are not allowed (entity-expansion guard)")
+        )
+
+    try:
+        root = ET.fromstring(raw)
     except ET.ParseError as exc:
         logger.error("XML parse error in %s: %s", path, exc)
-        return KdenliveProject()
+        return _fail(exc)
 
-    root = tree.getroot()
+    # The root element MUST be <mlt>.  A wrong root (an HTML error page, a
+    # truncated-then-reopened file, an OTIO/FCPXML document mis-routed here)
+    # would otherwise parse into a near-empty project and let a downstream tool
+    # silently overwrite the source with an empty timeline.
+    root_local = root.tag.rpartition("}")[2] if isinstance(root.tag, str) else root.tag
+    if root_local != "mlt":
+        logger.error("Wrong root element <%s> in %s (expected <mlt>)", root.tag, path)
+        return _fail(ValueError(f"root element is <{root.tag}>, expected <mlt>"))
+
+    # Depth guard (see _MAX_NESTING_DEPTH): convert a pathologically deep tree
+    # into a clean ProjectParseError instead of a raw RecursionError raised deep
+    # inside ET.tostring when an opaque element is snapshotted.
+    depth = _max_depth(root)
+    if depth > _MAX_NESTING_DEPTH:
+        logger.error("Document nesting too deep (%d) in %s", depth, path)
+        return _fail(
+            ValueError(
+                f"document nesting too deep ({depth} > {_MAX_NESTING_DEPTH})"
+            )
+        )
 
     version = root.get("version", "")
     title = root.get("title", "")
+
+    # Pre-pass: collect content-playlist ids so tractor classification (below)
+    # recognises track-tractor lane references regardless of element order.
+    content_playlist_ids: set[str] = set()
+    for elem in root:
+        if elem.tag != "playlist":
+            continue
+        pid = elem.get("id", "")
+        if pid == "main_bin" or pid.endswith("_kdpair"):
+            continue
+        content_playlist_ids.add(pid)
 
     profile = ProjectProfile()
     producers: list[Producer] = []
@@ -310,38 +515,9 @@ def parse_project(path: Path) -> KdenliveProject:
     tracks: list[Track] = []
     tractor: dict | None = None
     guides: list[Guide] = []
+    subtitles: list[SubtitleTrack] = []
+    docproperties: dict[str, str] = {}
     opaque_elements: list[OpaqueElement] = []
-    sequence_transitions: list[SequenceTransition] = []
-    # Map of timewarp variant producer id -> (source_id, speed) so we can
-    # round-trip ``PlaylistEntry.speed``.  The serializer emits one variant
-    # producer per (source, speed) pair and rewrites the entry's producer
-    # ref to point at it; we reverse that here.
-    timewarp_variants: dict[str, tuple[str, float]] = {}
-
-    # Pre-scan tractors to know which playlist ids are "B" (paired empty) playlists
-    # in the v25 shape, so we don't accidentally treat them as content tracks.
-    paired_b_playlist_ids: set[str] = set()
-    track_tractor_to_a_playlist: dict[str, tuple[str, str]] = {}
-    for tractor_elem in root.findall("tractor"):
-        if _classify_tractor(tractor_elem) != "per_track":
-            continue
-        track_children = tractor_elem.findall("track")
-        if len(track_children) != 2:
-            continue
-        a_id = track_children[0].get("producer", "")
-        b_id = track_children[1].get("producer", "")
-        # Determine track type from the hide attribute (consistent on both
-        # sub-tracks; "video" → audio track, "audio" → video track).
-        hide = track_children[0].get("hide", "") or track_children[1].get("hide", "")
-        if hide == "video":
-            track_type = "audio"
-        elif hide == "audio":
-            track_type = "video"
-        else:
-            track_type = "video"
-        paired_b_playlist_ids.add(b_id)
-        if a_id:
-            track_tractor_to_a_playlist[tractor_elem.get("id", "")] = (a_id, track_type)
 
     for elem in root:
         tag = elem.tag
@@ -349,100 +525,82 @@ def parse_project(path: Path) -> KdenliveProject:
         if tag == "profile":
             profile = _parse_profile(elem)
 
-        elif tag in ("producer", "chain"):
+        elif tag == "producer":
             producer_id = elem.get("id", "")
-            # Skip the serializer-generated background producer
-            if producer_id == "black_track":
+            # Skip the serializer-generated background producer (legacy id
+            # "black_track" or E-shape id "producer_black" / playlistid marker).
+            _pprops = {
+                c.get("name", ""): (c.text or "")
+                for c in elem
+                if c.tag == "property"
+            }
+            if (
+                producer_id in ("black_track", "producer_black")
+                or _pprops.get("kdenlive:playlistid") == "black_track"
+            ):
                 continue
-            # Skip the bin twin of a chain -- it duplicates the timeline chain
-            # and would otherwise show up as a second producer in the model.
-            # The serializer emits twins with a ``_kdbin`` suffix; legacy
-            # ``_bin`` suffix is also recognised for round-trip compatibility
-            # with files written before that rename.
-            if producer_id.endswith("_kdbin") or producer_id.endswith("_bin"):
-                continue
-            # Detect timewarp variants: serializer emits these as separate
-            # producers with mlt_service=timewarp, ids of the form
-            # ``<source>_speed_<token>``.  Don't store them as producers --
-            # the serializer rebuilds them when needed.  Instead remember
-            # the variant->(source, speed) mapping so we can fix up
-            # playlist entries below.
             try:
-                tmp_props = {
-                    c.get("name", ""): (c.text or "")
-                    for c in elem
-                    if c.tag == "property"
-                }
-                if tmp_props.get("mlt_service") == "timewarp":
-                    try:
-                        speed = float(tmp_props.get("warp_speed", "1.0"))
-                    except (TypeError, ValueError):
-                        speed = 1.0
-                    # Source id is the variant id stripped of its
-                    # ``_speed_<token>`` suffix.
-                    if "_speed_" in producer_id:
-                        source_id = producer_id.rsplit("_speed_", 1)[0]
-                        timewarp_variants[producer_id] = (source_id, speed)
-                    continue
                 producers.append(_parse_producer(elem))
             except Exception as exc:
-                logger.warning("Skipping malformed <%s>: %s", tag, exc)
+                logger.warning(
+                    "Skipping malformed <producer id=%r>: %s",
+                    elem.get("id", ""), exc,
+                )
+                opaque_elements.append(_elem_to_opaque(elem))
+
+        elif tag == "chain":
+            try:
+                producers.append(_parse_chain(elem))
+            except Exception as exc:
+                logger.warning(
+                    "Skipping malformed <chain id=%r>: %s",
+                    elem.get("id", ""), exc,
+                )
                 opaque_elements.append(_elem_to_opaque(elem))
 
         elif tag == "playlist":
             playlist_id = elem.get("id", "")
-            # Skip serializer-generated infrastructure playlists
-            if playlist_id == "main_bin" or playlist_id.endswith("_kdpair"):
+            # Skip serializer-generated infrastructure playlists, but harvest the
+            # non-managed docproperties (proxy settings) off main_bin first so
+            # they round-trip.
+            if playlist_id == "main_bin":
+                docproperties.update(_parse_docproperties(elem))
                 continue
-            if playlist_id in paired_b_playlist_ids:
+            if playlist_id.endswith("_kdpair"):
                 continue
             try:
-                playlist, child_opaques = _parse_playlist(elem)
+                # track_index = the position this playlist will occupy in the
+                # project's playlist list, matching the effect-stack / serializer
+                # convention (index into project.playlists).
+                playlist, child_opaques = _parse_playlist(elem, track_index=len(playlists))
                 playlists.append(playlist)
                 opaque_elements.extend(child_opaques)
             except Exception as exc:
-                logger.warning("Skipping malformed <playlist>: %s", exc)
+                logger.warning(
+                    "Skipping malformed <playlist id=%r>: %s", playlist_id, exc
+                )
                 opaque_elements.append(_elem_to_opaque(elem))
 
         elif tag == "tractor":
-            classification = _classify_tractor(elem)
             try:
-                if classification == "per_track":
-                    a_id_type = track_tractor_to_a_playlist.get(elem.get("id", ""))
-                    if a_id_type:
-                        a_id, track_type = a_id_type
-                        # Avoid duplicate entries if the same playlist is
-                        # already tracked.
-                        if not any(t.id == a_id for t in tracks):
-                            tracks.append(Track(id=a_id, track_type=track_type))
-                elif classification == "sequence":
-                    # Capture the sequence's in/out as the project tractor metadata
-                    # so the model retains timeline length info.  Only the first
-                    # sequence wins.
-                    if tractor is None:
-                        tractor = {k: v for k, v in elem.attrib.items()}
-                    # Reconstruct user-added cross-track transitions
-                    # (cross-dissolves, wipes, slides) as SequenceTransition
-                    # so they round-trip.  Auto-internal transitions per
-                    # track (mix/qtblend with internal_added=237) are
-                    # auto-rebuilt by the serializer based on the track
-                    # list and must NOT be captured here -- doing so would
-                    # double-emit them.
-                    for trans_elem in elem.findall("transition"):
-                        st = _parse_sequence_transition(trans_elem)
-                        if st is not None:
-                            sequence_transitions.append(st)
-                elif classification == "project":
-                    # Wrapper -- nothing to extract; serializer will rebuild it.
-                    pass
-                else:  # legacy
-                    tractor_dict, tractor_tracks, tractor_opaques = _parse_tractor(elem)
-                    if tractor is None:
-                        tractor = tractor_dict
-                    tracks.extend(tractor_tracks)
-                    opaque_elements.extend(tractor_opaques)
+                tractor_dict, tractor_tracks, tractor_opaques, tractor_subs = (
+                    _parse_tractor(elem, content_playlist_ids)
+                )
+                # Keep the most meaningful tractor dict: the project (render
+                # root) tractor is infrastructure, so never let it clobber a
+                # real timeline/sequence tractor.
+                if "kdenlive:projectTractor" not in {
+                    c.get("name", "") for c in elem if c.tag == "property"
+                }:
+                    tractor = tractor_dict
+                tracks.extend(tractor_tracks)
+                opaque_elements.extend(tractor_opaques)
+                subtitles.extend(tractor_subs)
             except Exception as exc:
-                logger.warning("Skipping malformed <tractor>: %s", exc)
+                logger.warning(
+                    "Skipping malformed <tractor id=%r>: %s",
+                    elem.get("id", ""), exc,
+                )
                 opaque_elements.append(_elem_to_opaque(elem))
 
         elif tag in ("kdenlive:guide", "guide"):
@@ -459,18 +617,6 @@ def parse_project(path: Path) -> KdenliveProject:
                 "Unknown element <%s> preserved as opaque node", tag
             )
 
-    # Re-route any playlist entries that referenced a timewarp variant
-    # back to the source chain, with ``speed`` set so the serializer
-    # rebuilds the variant on next emit.
-    if timewarp_variants:
-        for playlist in playlists:
-            for entry in playlist.entries:
-                mapping = timewarp_variants.get(entry.producer_id)
-                if mapping is not None:
-                    source_id, speed = mapping
-                    entry.producer_id = source_id
-                    entry.speed = speed
-
     return KdenliveProject(
         version=version,
         title=title,
@@ -480,6 +626,7 @@ def parse_project(path: Path) -> KdenliveProject:
         playlists=playlists,
         tractor=tractor,
         guides=guides,
+        subtitles=subtitles,
+        docproperties=docproperties,
         opaque_elements=opaque_elements,
-        sequence_transitions=sequence_transitions,
     )

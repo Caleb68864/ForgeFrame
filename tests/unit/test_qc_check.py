@@ -1,13 +1,11 @@
 """TDD tests for QC automation pipeline."""
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from workshop_video_brain.core.models.qc import QCReport, TimeRange
 from workshop_video_brain.edit_mcp.pipelines.qc_check import ALL_CHECKS, run_qc
 
 

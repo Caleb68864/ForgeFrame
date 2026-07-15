@@ -7,8 +7,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from workshop_video_brain.core.models import MediaAsset
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    FFmpegCommandError,
+    FFmpegNotFound,
+    FFmpegTimeout,
+    _FFMPEG_INSTALL_HINT,
+    _stderr_tail,
+)
 
 logger = logging.getLogger(__name__)
+
+# Proxies re-encode the whole clip; allow a generous ceiling but never hang.
+_PROXY_TIMEOUT_SECONDS = 1800.0
 
 
 @dataclass
@@ -58,33 +68,28 @@ def proxy_path_for(asset: MediaAsset, proxy_dir: Path) -> Path:
     return Path(proxy_dir) / f"{source.stem}_proxy.mp4"
 
 
-PROXY_TIMEOUT_SECONDS = 600  # 10 minutes per clip
-
-
 def generate_proxy(
     asset: MediaAsset,
     output_dir: Path,
     policy: ProxyPolicy | None = None,
-    timeout: int = PROXY_TIMEOUT_SECONDS,
 ) -> Path:
     """Generate a proxy for *asset* in *output_dir*.
 
     Skips generation if a proxy already exists and is newer than the source.
-    Bounded by *timeout* (seconds) so the MCP server never blocks indefinitely.
 
     Args:
         asset: The source media asset.
         output_dir: Directory where the proxy file will be written.
         policy: Optional proxy policy (unused during encoding but kept for API
                 symmetry; encoding parameters are fixed per spec).
-        timeout: Hard wall-clock cap for the ffmpeg subprocess.
 
     Returns:
         Path to the proxy file.
 
     Raises:
-        subprocess.CalledProcessError: if ffmpeg fails.
-        subprocess.TimeoutExpired: if encoding exceeds *timeout*.
+        FFmpegNotFound: if the ffmpeg binary is missing (carries install hint).
+        FFmpegTimeout: if encoding exceeds the proxy timeout.
+        FFmpegCommandError: if ffmpeg exits nonzero (carries the stderr tail).
     """
     if policy is None:
         policy = ProxyPolicy()
@@ -95,6 +100,11 @@ def generate_proxy(
     output_path = proxy_path_for(asset, output_dir)
     source_path = Path(asset.path)
 
+    if not source_path.exists():
+        raise FileNotFoundError(
+            f"Proxy source media does not exist: {source_path}"
+        )
+
     # Skip if proxy already exists and is newer than source
     if output_path.exists():
         if output_path.stat().st_mtime >= source_path.stat().st_mtime:
@@ -102,7 +112,7 @@ def generate_proxy(
             return output_path
         logger.info("Proxy exists but is stale; regenerating: %s", output_path)
 
-    logger.info("Generating proxy %s -> %s (timeout=%ss)", source_path, output_path, timeout)
+    logger.info("Generating proxy %s -> %s", source_path, output_path)
 
     try:
         subprocess.run(
@@ -120,17 +130,26 @@ def generate_proxy(
             ],
             check=True,
             capture_output=True,
-            timeout=timeout,
+            timeout=_PROXY_TIMEOUT_SECONDS,
         )
-    except subprocess.TimeoutExpired:
-        # Remove any partial file so the next attempt re-encodes from scratch.
-        try:
-            if output_path.exists():
-                output_path.unlink()
-        except OSError:
-            pass
-        logger.warning("Proxy generation timed out after %ss for %s", timeout, source_path)
-        raise
+    except FileNotFoundError as exc:
+        raise FFmpegNotFound(
+            f"ffmpeg binary not found on PATH (proxy of {source_path}). "
+            f"{_FFMPEG_INSTALL_HINT}"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise FFmpegTimeout(
+            f"ffmpeg proxy encode timed out after "
+            f"{_PROXY_TIMEOUT_SECONDS:.0f}s on {source_path}."
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", "replace")
+        raise FFmpegCommandError(
+            f"ffmpeg proxy encode failed (rc={exc.returncode}) on {source_path}.\n"
+            f"stderr tail:\n{_stderr_tail(stderr or '')}"
+        ) from exc
 
     logger.info("Proxy created: %s", output_path)
     return output_path

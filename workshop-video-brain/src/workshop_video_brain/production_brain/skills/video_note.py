@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from workshop_video_brain.production_brain.notes.writer import NoteWriter
 from workshop_video_brain.production_brain.notes.updater import (
     update_frontmatter,
     update_section,

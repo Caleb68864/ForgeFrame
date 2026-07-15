@@ -1,0 +1,17 @@
+Kdenlive test-fixture projects — external ground truth for populated bins.
+
+Source: https://invent.kde.org/multimedia/kdenlive  (branch: release/26.04)
+Path:   tests/dataset/
+License: GPL-3.0-or-later, © KDE e.V. / Kdenlive authors.
+Fetched: 2026-07-03 for round-2 bin-rejection investigation.
+
+Per-file raw URLs (release/26.04):
+  av.kdenlive                 https://invent.kde.org/multimedia/kdenlive/-/raw/release/26.04/tests/dataset/av.kdenlive
+  clip-ids.kdenlive           https://invent.kde.org/multimedia/kdenlive/-/raw/release/26.04/tests/dataset/clip-ids.kdenlive
+  test-nesting-effects.kdenlive  https://invent.kde.org/multimedia/kdenlive/-/raw/release/26.04/tests/dataset/test-nesting-effects.kdenlive
+  test-mix.kdenlive           https://invent.kde.org/multimedia/kdenlive/-/raw/release/26.04/tests/dataset/test-mix.kdenlive
+
+Use: structural reference only (they reference sample media that is not vendored).
+Key fact learned: modern (doc version 1.1) media bin clips are <chain> with kdenlive:id and
+NO kdenlive:uuid / NO kdenlive:control_uuid; only sequence tractors (kdenlive:producer_type=17)
+carry kdenlive:uuid. See ../kdenlive-gui-bin-rejection.md (round 2).

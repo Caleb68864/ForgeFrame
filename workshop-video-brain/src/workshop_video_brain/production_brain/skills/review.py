@@ -391,8 +391,6 @@ def _render_review_markdown(
     n_pacing = len(data["pacing_notes"])
     n_rep = len(data["repetition_flags"])
     n_vis = len(data["insert_suggestions"])
-    n_overlay = len(data["overlay_ideas"])
-    n_ch = len(data["chapter_breaks"])
 
     lines.append("## Summary")
     lines.append("")

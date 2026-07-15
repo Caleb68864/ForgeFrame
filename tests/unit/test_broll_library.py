@@ -1,10 +1,8 @@
 """Unit tests for the B-Roll Library cross-project clip index feature."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
-import pytest
 
 from workshop_video_brain.core.models.broll_library import BRollEntry, BRollLibrary
 from workshop_video_brain.core.models.clips import ClipLabel

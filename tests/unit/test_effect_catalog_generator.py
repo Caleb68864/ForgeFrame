@@ -20,8 +20,6 @@ from workshop_video_brain.edit_mcp.pipelines import effect_catalog_gen as gen
 from workshop_video_brain.edit_mcp.pipelines.effect_catalog_gen import (
     DiffReport,
     EffectDef,
-    ParamDef,
-    ParamType,
     build_catalog,
     emit_python_module,
     fetch_upstream_effects,

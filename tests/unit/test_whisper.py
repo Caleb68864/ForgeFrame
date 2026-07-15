@@ -5,10 +5,9 @@ import json
 import re
 import sys
 from types import ModuleType
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import uuid4
 
-import pytest
 
 from workshop_video_brain.core.models.transcript import Transcript, TranscriptSegment
 from workshop_video_brain.edit_mcp.adapters.stt.whisper_engine import (

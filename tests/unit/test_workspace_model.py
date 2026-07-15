@@ -1,7 +1,6 @@
 """Tests for Workspace construction, nested VideoProject, and serialization (MD-16)."""
 from __future__ import annotations
 
-import uuid
 
 import pytest
 from pydantic import ValidationError

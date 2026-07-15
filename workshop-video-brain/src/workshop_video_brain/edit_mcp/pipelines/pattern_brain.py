@@ -125,7 +125,6 @@ def _normalize_unit(unit_str: str) -> str:
         "yard": "yards",
         "yards": "yards",
     }
-    key = unit_str.lower().rstrip("s")
     # Try plural strip, then direct lookup
     for k, v in mapping.items():
         if unit_str.lower().startswith(k):

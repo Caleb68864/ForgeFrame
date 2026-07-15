@@ -33,6 +33,25 @@ class RenderProfile(SerializableMixin):
     extra_args: list[str] = Field(default_factory=list)
     fast_start: bool = False
     movflags: str | None = None
+    # Alpha / advanced melt-consumer settings ------------------------------
+    # pix_fmt: encoder pixel format (e.g. "yuva420p", "argb"); passed to both
+    #   the melt avformat consumer and appended for ffmpeg fallback.
+    pix_fmt: str | None = None
+    # mlt_image_format: MLT internal image format. Must be "rgba" for alpha
+    #   renders so the alpha channel survives the MLT pipeline instead of
+    #   being flattened onto black.
+    mlt_image_format: str | None = None
+    # melt_args: extra raw "key=value" properties for the melt avformat
+    #   consumer (e.g. "f=webm" to force container, "vprofile=4" for ProRes
+    #   4444). Ignored by the ffmpeg fallback path.
+    melt_args: list[str] = Field(default_factory=list)
+    # container: output file extension without the dot (e.g. "webm", "mov",
+    #   "mkv"). Drives the render output filename; defaults to mp4 when unset.
+    container: str | None = None
+    # disable_audio: emit no audio stream. Alpha containers (webm/mkv/mov)
+    #   often pair badly with the default AAC audio codec, and cutout/logo
+    #   exports rarely need audio.
+    disable_audio: bool = False
 
 
 def load_profile(

@@ -1,7 +1,6 @@
 """Unit tests for production_brain skill engines."""
 from __future__ import annotations
 
-import pytest
 
 
 # ---------------------------------------------------------------------------

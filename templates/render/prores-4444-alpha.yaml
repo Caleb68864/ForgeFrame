@@ -1,0 +1,21 @@
+# Render profile: prores-4444-alpha
+# Transparent-background QuickTime MOV using Apple ProRes 4444 with alpha.
+# High-quality intermediate/master for VFX round-tripping (e.g. exporting a
+# masked/rotoscoped cutout back into a compositor). vprofile=4 selects the
+# ProRes 4444 encoder profile; yuva444p10le carries the alpha channel
+# (the encoder promotes to 12-bit yuva444p on this build).
+name: prores-4444-alpha
+width: 1920
+height: 1080
+fps: 30
+video_codec: prores_ks
+video_bitrate: "0"
+audio_codec: pcm_s16le
+audio_bitrate: "0"
+container: mov
+pix_fmt: yuva444p10le
+mlt_image_format: rgba
+disable_audio: true
+melt_args:
+  - "f=mov"
+  - "vprofile=4"

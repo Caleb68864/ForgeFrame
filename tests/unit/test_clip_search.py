@@ -1,11 +1,8 @@
 """Unit tests for clip_search pipeline."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from uuid import uuid4
 
-import pytest
 
 from workshop_video_brain.core.models.clips import ClipLabel
 from workshop_video_brain.edit_mcp.pipelines.clip_search import _score_label, search_clips

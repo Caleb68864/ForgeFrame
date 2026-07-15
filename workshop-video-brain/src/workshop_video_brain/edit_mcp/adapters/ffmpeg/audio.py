@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import tempfile
 from pathlib import Path
 
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import FFmpegResult, run_ffmpeg

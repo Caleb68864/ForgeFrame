@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
 
 from workshop_video_brain.core.models.transcript import Transcript, TranscriptSegment
 from workshop_video_brain.edit_mcp.pipelines.broll_suggestions import (

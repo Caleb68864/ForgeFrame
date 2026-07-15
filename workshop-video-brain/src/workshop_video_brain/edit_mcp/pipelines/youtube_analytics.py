@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from datetime import datetime, timezone
 from pathlib import Path
+
+from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_mmss
 
 from workshop_video_brain.core.models.youtube import (
     ChannelStats,
@@ -28,10 +29,7 @@ from workshop_video_brain.edit_mcp.adapters.youtube.fetcher import (
 
 def _seconds_to_mmss(seconds: float) -> str:
     """Convert float seconds to MM:SS string."""
-    total_secs = int(seconds)
-    minutes = total_secs // 60
-    secs = total_secs % 60
-    return f"{minutes}:{secs:02d}"
+    return seconds_to_mmss(seconds)
 
 
 def _format_date(upload_date: str) -> str:
@@ -332,7 +330,6 @@ def save_channel_to_vault(vault_path: Path, stats: ChannelStats) -> list[Path]:
 
     # 3. Per-video notes
     avg_views = stats.avg_views
-    avg_likes = stats.avg_likes
     avg_views_nonzero = avg_views if avg_views > 0 else None
 
     for video in stats.videos:

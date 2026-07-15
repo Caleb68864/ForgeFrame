@@ -2,10 +2,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 from workshop_video_brain.core.models.markers import Marker, MarkerConfig
 from workshop_video_brain.core.models.media import MediaAsset

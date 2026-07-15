@@ -1,7 +1,6 @@
 """Clip search pipeline: score and rank ClipLabel objects against a query."""
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 

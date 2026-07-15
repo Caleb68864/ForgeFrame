@@ -46,10 +46,14 @@ class ParamType(str, enum.Enum):
     STRING = "string"
     READONLY = "readonly"
     HIDDEN = "hidden"
+    # Kdenlive's keyframable vector rotoscoping spline (``rotoscoping`` /
+    # ``mask_start-rotoscoping``). Adding it lets those effects enter the
+    # catalog so rotoscoping mask stacks can be saved as presets (§1.3 gap).
+    ROTO_SPLINE = "roto-spline"
 
 
 _KEYFRAMABLE_TYPES = frozenset(
-    {ParamType.KEYFRAME, ParamType.ANIMATED, ParamType.GEOMETRY}
+    {ParamType.KEYFRAME, ParamType.ANIMATED, ParamType.GEOMETRY, ParamType.ROTO_SPLINE}
 )
 
 

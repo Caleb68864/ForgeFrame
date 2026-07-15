@@ -4,7 +4,6 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
-import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -522,61 +521,54 @@ class TestCreateTrack:
 
 
 class TestAudioFade:
-    """AudioFade now appends an EntryFilter inside the playlist entry,
-    matching the v25 shape verified against ``audio-mix.kdenlive`` from
-    the KDE test suite.  The previous opaque-element form was rejected
-    by Kdenlive 25.x's bin loader."""
+    def test_fade_in_adds_opaque_element(self):
+        from workshop_video_brain.core.models.timeline import AudioFade
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
-    def test_fade_in_adds_entry_filter(self):
+        project = _make_project(1)
+        intent = AudioFade(
+            track_ref="pl_video",
+            clip_index=0,
+            fade_type="in",
+            duration_frames=24,
+        )
+        patched = patch_project(project, [intent])
+
+        assert len(patched.opaque_elements) == 1
+        elem = patched.opaque_elements[0]
+        assert elem.tag == "filter"
+        assert "fade_in" in elem.xml_string or "fade_type" in elem.xml_string
+        assert "volume" in elem.xml_string
+
+    def test_fade_out_adds_opaque_element(self):
+        from workshop_video_brain.core.models.timeline import AudioFade
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
+
+        project = _make_project(1)
+        intent = AudioFade(
+            track_ref="pl_video",
+            clip_index=0,
+            fade_type="out",
+            duration_frames=24,
+        )
+        patched = patch_project(project, [intent])
+
+        assert len(patched.opaque_elements) == 1
+        elem = patched.opaque_elements[0]
+        assert "out" in elem.xml_string
+
+    def test_fade_xml_contains_level_ramp(self):
         from workshop_video_brain.core.models.timeline import AudioFade
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
         project = _make_project(1)
         patched = patch_project(project, [
-            AudioFade(track_ref="pl_video", clip_index=0,
-                      fade_type="in", duration_frames=24)
+            AudioFade(track_ref="pl_video", clip_index=0, fade_type="in", duration_frames=12)
         ])
-        assert len(patched.opaque_elements) == 0
-
-        entry = next(
-            e for pl in patched.playlists for e in pl.entries if e.producer_id
-        )
-        assert len(entry.filters) == 1
-        f = entry.filters[0]
-        assert f.properties["mlt_service"] == "volume"
-        assert f.properties["kdenlive_id"] == "fadein"
-        assert f.properties["gain"] == "0"
-        assert f.properties["end"] == "1"
-        # fade-in starts at the entry's local frame 0
-        assert f.in_frame == 0
-        assert f.out_frame == 23  # 24-frame fade
-
-    def test_fade_out_adds_entry_filter_at_tail(self):
-        from workshop_video_brain.core.models.timeline import AudioFade
-        from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
-
-        project = _make_project(1)
-        # The default _make_project entry has out_point such that the
-        # entry covers (out_point - in_point + 1) frames.
-        entry_orig = next(
-            e for pl in project.playlists for e in pl.entries if e.producer_id
-        )
-        entry_count = entry_orig.out_point - entry_orig.in_point + 1
-
-        patched = patch_project(project, [
-            AudioFade(track_ref="pl_video", clip_index=0,
-                      fade_type="out", duration_frames=12)
-        ])
-        entry = next(
-            e for pl in patched.playlists for e in pl.entries if e.producer_id
-        )
-        f = entry.filters[0]
-        assert f.properties["kdenlive_id"] == "fadeout"
-        assert f.properties["gain"] == "1"
-        assert f.properties["end"] == "0"
-        # Tail fade: ends at the last frame, starts ``duration`` frames before.
-        assert f.out_frame == entry_count - 1
-        assert f.in_frame == entry_count - 12
+        xml = patched.opaque_elements[0].xml_string
+        # fade-in: a real MLT volume filter with a dB level ramp from silence.
+        assert 'mlt_service="volume"' in xml
+        assert "-60" in xml  # dB floor => start near-silent
 
     def test_fade_does_not_mutate_original(self):
         from workshop_video_brain.core.models.timeline import AudioFade
@@ -584,11 +576,7 @@ class TestAudioFade:
 
         project = _make_project(1)
         patch_project(project, [AudioFade(track_ref="pl_video", clip_index=0)])
-        # Original project's entry filters list is untouched.
-        assert all(
-            len(e.filters) == 0
-            for pl in project.playlists for e in pl.entries
-        )
+        assert len(project.opaque_elements) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -597,31 +585,34 @@ class TestAudioFade:
 
 
 class TestSetTrackMute:
-    def test_mute_track_sets_muted_flag(self):
+    def test_mute_track_adds_opaque_element(self):
         from workshop_video_brain.core.models.timeline import SetTrackMute
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
         project = _make_project(0)
-        intent = SetTrackMute(track_ref="pl_audio", muted=True)
+        intent = SetTrackMute(track_ref="pl_video", muted=True)
         patched = patch_project(project, [intent])
 
-        track = next(t for t in patched.tracks if t.id == "pl_audio")
-        assert track.muted is True
-        assert patched.opaque_elements == []
+        assert len(patched.opaque_elements) == 1
+        elem = patched.opaque_elements[0]
+        # Mute is a hide directive the serializer applies to the tractor entry.
+        assert elem.tag == "kdenlive:hide"
+        assert 'track="pl_video"' in elem.xml_string
+        assert 'hide="audio"' in elem.xml_string  # video track: mute hides audio
 
-    def test_unmute_track_clears_muted_flag(self):
+    def test_unmute_track_adds_opaque_element_with_zero(self):
         from workshop_video_brain.core.models.timeline import SetTrackMute
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
         project = _make_project(0)
-        # Pre-mute, then unmute
-        project.tracks[1].muted = True
-        intent = SetTrackMute(track_ref="pl_audio", muted=False)
+        intent = SetTrackMute(track_ref="pl_video", muted=False)
         patched = patch_project(project, [intent])
 
-        track = next(t for t in patched.tracks if t.id == "pl_audio")
-        assert track.muted is False
-        assert patched.opaque_elements == []
+        assert len(patched.opaque_elements) == 1
+        elem = patched.opaque_elements[0]
+        assert elem.tag == "kdenlive:hide"
+        assert 'track="pl_video"' in elem.xml_string
+        assert 'hide=""' in elem.xml_string  # video track: unmute clears audio hide
 
     def test_mute_unknown_track_is_skipped(self):
         from workshop_video_brain.core.models.timeline import SetTrackMute
@@ -631,12 +622,11 @@ class TestSetTrackMute:
         intent = SetTrackMute(track_ref="nonexistent", muted=True)
         patched = patch_project(project, [intent])
 
-        assert all(t.muted is False for t in patched.tracks)
-        assert patched.opaque_elements == []
+        assert len(patched.opaque_elements) == 0
 
 
 class TestSetTrackVisibility:
-    def test_hide_track_sets_hidden_flag(self):
+    def test_hide_track_adds_hide_property(self):
         from workshop_video_brain.core.models.timeline import SetTrackVisibility
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
@@ -644,22 +634,24 @@ class TestSetTrackVisibility:
         intent = SetTrackVisibility(track_ref="pl_video", visible=False)
         patched = patch_project(project, [intent])
 
-        track = next(t for t in patched.tracks if t.id == "pl_video")
-        assert track.hidden is True
-        assert patched.opaque_elements == []
+        assert len(patched.opaque_elements) == 1
+        elem = patched.opaque_elements[0]
+        assert "hide" in elem.xml_string
+        assert "video" in elem.xml_string
 
-    def test_show_track_clears_hidden_flag(self):
+    def test_show_track_adds_empty_hide_property(self):
         from workshop_video_brain.core.models.timeline import SetTrackVisibility
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
         project = _make_project(0)
-        project.tracks[0].hidden = True
         intent = SetTrackVisibility(track_ref="pl_video", visible=True)
         patched = patch_project(project, [intent])
 
-        track = next(t for t in patched.tracks if t.id == "pl_video")
-        assert track.hidden is False
-        assert patched.opaque_elements == []
+        assert len(patched.opaque_elements) == 1
+        elem = patched.opaque_elements[0]
+        assert "hide" in elem.xml_string
+        # visible=True means the value is empty (removing the hide)
+        assert ">video<" not in elem.xml_string
 
     def test_visibility_unknown_track_is_skipped(self):
         from workshop_video_brain.core.models.timeline import SetTrackVisibility
@@ -669,8 +661,7 @@ class TestSetTrackVisibility:
         intent = SetTrackVisibility(track_ref="nonexistent", visible=False)
         patched = patch_project(project, [intent])
 
-        assert all(t.hidden is False for t in patched.tracks)
-        assert patched.opaque_elements == []
+        assert len(patched.opaque_elements) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -679,34 +670,22 @@ class TestSetTrackVisibility:
 
 
 class TestSetClipSpeed:
-    def test_speed_sets_entry_speed_and_rescales_duration(self):
-        # SetClipSpeed now writes the speed onto the playlist entry (so the
-        # serializer can emit a matching ``<producer mlt_service="timewarp">``)
-        # and rescales the entry's out_point to reflect the timewarped
-        # frame count.  The legacy opaque-element form was rejected by the
-        # Kdenlive 25.x bin loader as "Effect: Remove".
+    def test_speed_adds_opaque_element(self):
         from workshop_video_brain.core.models.timeline import SetClipSpeed
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
         project = _make_project(2)
-        # Find the entry's original duration before the patch.
-        original_entry = next(
-            e for pl in project.playlists for e in pl.entries if e.producer_id
-        )
-        original_count = original_entry.out_point - original_entry.in_point + 1
-
         intent = SetClipSpeed(track_ref="pl_video", clip_index=0, speed=2.0)
         patched = patch_project(project, [intent])
 
-        # No opaque elements -- the speed lives on the entry now.
-        assert len(patched.opaque_elements) == 0
-
-        patched_entry = next(
-            e for pl in patched.playlists for e in pl.entries if e.producer_id
-        )
-        assert patched_entry.speed == 2.0
-        new_count = patched_entry.out_point - patched_entry.in_point + 1
-        assert new_count == max(1, round(original_count / 2.0))
+        # Speed is now a timewarp producer swap (no opaque filter).
+        tw = [p for p in patched.producers if p.properties.get("mlt_service") == "timewarp"]
+        assert len(tw) == 1
+        assert tw[0].resource.startswith("2:")
+        # The clip entry now references the timewarp producer, at half duration.
+        entry = patched.playlists[0].entries[0]
+        assert entry.producer_id == tw[0].id
+        assert entry.out_point == 49  # 100-frame clip -> 50 frames at 2x
 
     def test_speed_invalid_index_skipped(self):
         from workshop_video_brain.core.models.timeline import SetClipSpeed

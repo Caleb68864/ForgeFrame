@@ -1,0 +1,17 @@
+# Title style: thumbnail
+# Bold, high-contrast overlay for YouTube publish thumbnails. Large title with a
+# thick black outline for legibility at small sizes, plus an optional accent
+# subtitle, bottom-anchored and centred by default. Rendered by the
+# thumbnail_generate pipeline via PIL (not the kdenlivetitle producer path) so
+# the heavy stroke/outline draws crisply onto the extracted frame. All sizes are
+# fractions of frame height for resolution independence.
+name: thumbnail
+anchor: bottom
+align: center
+font_family: DejaVu Sans
+title_font_scale: 0.13
+subtitle_font_scale: 0.06
+font_color: "#FFFFFF"
+subtitle_color: "#FFD400"
+outline_color: "#000000"
+outline_width: 8

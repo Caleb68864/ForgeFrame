@@ -104,8 +104,15 @@ def fetch_channel_videos(channel_url: str, max_videos: int = 50) -> list[YouTube
     url = f"{channel_url.rstrip('/')}/videos"
     videos: list[YouTubeVideo] = []
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception as exc:  # yt_dlp.utils.DownloadError et al.
+        raise RuntimeError(
+            f"yt-dlp could not fetch channel '{channel_url}' (tried {url}): "
+            f"{type(exc).__name__}: {exc}. Check the URL is a valid, public "
+            "YouTube channel and that you have network access."
+        ) from exc
 
     if info is None:
         logger.warning("yt-dlp returned no info for %s", url)
@@ -152,8 +159,15 @@ def fetch_single_video(video_url: str) -> YouTubeVideo:
         "ignoreerrors": False,
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(video_url, download=False)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(video_url, download=False)
+    except Exception as exc:  # yt_dlp.utils.DownloadError et al.
+        raise RuntimeError(
+            f"yt-dlp could not fetch video '{video_url}': "
+            f"{type(exc).__name__}: {exc}. Check the URL is a valid, public "
+            "YouTube video and that you have network access."
+        ) from exc
 
     if info is None:
         raise ValueError(f"Could not fetch video data for: {video_url}")

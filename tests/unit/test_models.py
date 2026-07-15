@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 from uuid import uuid4
 
-import pytest
 
 from workshop_video_brain.core.models import (
     AnalysisStatus,

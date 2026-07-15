@@ -27,6 +27,14 @@ models:
 
 The CLI (`app/`) wires them together at the top level.
 
+> **Superseded in part by [ADR 005](005-production-brain-boundary.md).** The
+> "depends on `core/` models only" claim above is no longer accurate:
+> `production_brain.skills` imports `edit_mcp.pipelines` (planning consumes
+> analysis) and `edit_mcp` reaches back into `production_brain` via
+> function-local imports for orchestration. ADR 005 replaces the two-module wall
+> with an explicit, test-enforced layering and direction rule. Treat ADR 005 as
+> the authoritative statement of the `production_brain` <-> `edit_mcp` boundary.
+
 ## Consequences
 
 **Positive:**

@@ -1,15 +1,25 @@
 """Whisper STT engine adapter with faster-whisper primary and whisper fallback."""
 from __future__ import annotations
 
-import json
 import logging
 import subprocess
 from pathlib import Path
 from uuid import UUID
 
 from workshop_video_brain.core.models import Transcript, TranscriptSegment
+from workshop_video_brain.core.models.transcript import WordTiming
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    FFmpegCommandError,
+    FFmpegNotFound,
+    FFmpegTimeout,
+    _FFMPEG_INSTALL_HINT,
+    _stderr_tail,
+)
 
 logger = logging.getLogger(__name__)
+
+# Audio extraction decodes the whole file; generous ceiling, but never hang.
+_EXTRACT_TIMEOUT_SECONDS = 1800.0
 
 
 def is_available() -> bool:
@@ -46,26 +56,53 @@ def extract_audio(video_path: Path, output_path: Path) -> Path:
         *output_path* after successful extraction.
 
     Raises:
-        subprocess.CalledProcessError: if ffmpeg fails.
+        FileNotFoundError: if *video_path* does not exist.
+        FFmpegNotFound: if the ffmpeg binary is missing (carries install hint).
+        FFmpegTimeout: if extraction hangs past the timeout.
+        FFmpegCommandError: if ffmpeg exits nonzero (carries the stderr tail).
     """
     video_path = Path(video_path)
     output_path = Path(output_path)
+
+    if not video_path.exists():
+        raise FileNotFoundError(
+            f"Audio extraction source does not exist: {video_path}"
+        )
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-i", str(video_path),
-            "-vn",
-            "-acodec", "pcm_s16le",
-            "-ar", "16000",
-            "-y",
-            str(output_path),
-        ],
-        check=True,
-        capture_output=True,
-        timeout=300,
-    )
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-i", str(video_path),
+                "-vn",
+                "-acodec", "pcm_s16le",
+                "-ar", "16000",
+                "-y",
+                str(output_path),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=_EXTRACT_TIMEOUT_SECONDS,
+        )
+    except FileNotFoundError as exc:
+        raise FFmpegNotFound(
+            f"ffmpeg binary not found on PATH (audio extraction of "
+            f"{video_path}). {_FFMPEG_INSTALL_HINT}"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise FFmpegTimeout(
+            f"ffmpeg audio extraction timed out after "
+            f"{_EXTRACT_TIMEOUT_SECONDS:.0f}s on {video_path}."
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", "replace")
+        raise FFmpegCommandError(
+            f"ffmpeg audio extraction failed (rc={exc.returncode}) on "
+            f"{video_path}.\nstderr tail:\n{_stderr_tail(stderr or '')}"
+        ) from exc
     return output_path
 
 
@@ -88,6 +125,12 @@ def transcribe(
 
     Raises:
         RuntimeError: if no Whisper backend is installed.
+
+    Note:
+        The transcription itself runs *in-process* (faster-whisper / whisper are
+        Python libraries, not subprocesses), so it cannot be bounded with a
+        subprocess timeout. Long jobs are bounded only by model/CPU speed; the
+        preceding ffmpeg :func:`extract_audio` step is the timeout-guarded part.
     """
     from uuid import uuid4
 
@@ -122,17 +165,32 @@ def _transcribe_faster_whisper(
     if language:
         kwargs["language"] = language
 
-    segments_iter, info = wm.transcribe(str(audio_path), **kwargs)
+    # word_timestamps=True populates the per-word timing on each segment,
+    # unlocking jump-to-word transcript search (index in transcript_index).
+    segments_iter, info = wm.transcribe(
+        str(audio_path), word_timestamps=True, **kwargs
+    )
 
     segments: list[TranscriptSegment] = []
     raw_parts: list[str] = []
 
     for seg in segments_iter:
+        words: list[WordTiming] = []
+        for w in (getattr(seg, "words", None) or []):
+            words.append(
+                WordTiming(
+                    word=(w.word or "").strip(),
+                    start=float(w.start),
+                    end=float(w.end),
+                    confidence=float(getattr(w, "probability", 1.0)),
+                )
+            )
         ts = TranscriptSegment(
             start_seconds=seg.start,
             end_seconds=seg.end,
             text=seg.text.strip(),
             confidence=float(getattr(seg, "avg_logprob", 1.0)),
+            words=words,
         )
         segments.append(ts)
         raw_parts.append(seg.text.strip())

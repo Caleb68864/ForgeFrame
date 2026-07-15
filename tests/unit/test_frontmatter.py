@@ -1,9 +1,7 @@
 """Unit tests for Obsidian frontmatter utilities."""
 from __future__ import annotations
 
-from pathlib import Path
 
-import pytest
 
 from workshop_video_brain.production_brain.notes.frontmatter import (
     merge_frontmatter,

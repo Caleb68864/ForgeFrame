@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
 import yaml
 from workshop_video_brain.core.models._base import SerializableMixin
 

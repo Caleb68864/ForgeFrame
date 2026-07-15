@@ -156,28 +156,13 @@ def render_wrapper_module(effect_def: EffectDef) -> str:
     lines.append("")
     if needs_literal:
         lines.append("from typing import Literal")
-    lines.append("import xml.etree.ElementTree as ET")
-    lines.append("")
+        lines.append("")
     lines.append(
         "from workshop_video_brain.edit_mcp.server.tools_helpers import ("
     )
-    lines.append("    _ok,")
-    lines.append("    _err,")
-    lines.append("    _require_workspace,")
+    lines.append("    apply_simple_effect,")
     lines.append("    register_effect_wrapper,")
     lines.append(")")
-    lines.append(
-        "from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher"
-    )
-    lines.append(
-        "from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import "
-        "parse_project"
-    )
-    lines.append(
-        "from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import "
-        "serialize_project"
-    )
-    lines.append("from workshop_video_brain.workspace import create_snapshot")
     lines.append("")
     lines.append("")
 
@@ -205,77 +190,31 @@ def render_wrapper_module(effect_def: EffectDef) -> str:
     )
     param_map_literal = "{" + param_map_items + "}"
 
+    keyframes_arg = "\n        keyframes=keyframes," if has_animated else ""
     body = f'''    """{doc_summary}."""
-    try:
-        ws_path, _ws = _require_workspace(workspace_path)
-        project_path = ws_path / project_file
-        if not project_path.exists():
-            return _err(f"Project file not found: {{project_file}}")
-
-        project = parse_project(project_path)
-
-        # Build filter XML
-        filt = ET.Element("filter")
-        svc = ET.SubElement(filt, "property", {{"name": "mlt_service"}})
-        svc.text = {repr(effect_def.mlt_service)}
-        kid = ET.SubElement(filt, "property", {{"name": "kdenlive_id"}})
-        kid.text = {repr(effect_def.kdenlive_id)}
-
-        params: dict[str, object] = {param_map_literal}
-        for _mlt_name, _value in params.items():
-            if isinstance(_value, bool):
-                _str_val = "1" if _value else "0"
-            else:
-                _str_val = str(_value)
-            _prop = ET.SubElement(filt, "property", {{"name": _mlt_name}})
-            _prop.text = _str_val
-
-        if keyframes:
-            _kf = ET.SubElement(filt, "property", {{"name": "keyframes"}})
-            _kf.text = keyframes
-
-        xml_string = ET.tostring(filt, encoding="unicode")
-
-        # Determine insertion index (end of stack)
-        existing = patcher.list_effects(project, (track, clip))
-        insert_index = len(existing)
-
-        create_snapshot(
-            ws_path,
-            project_path,
-            description="before_effect_{effect_def.kdenlive_id}",
-        )
-        patcher.insert_effect_xml(project, (track, clip), xml_string, insert_index)
-        snap = create_snapshot(
-            ws_path,
-            project_path,
-            description="after_effect_{effect_def.kdenlive_id}",
-        )
-        serialize_project(project, project_path)
-
-        return _ok({{
-            "effect_index": insert_index,
-            "snapshot_id": snap.snapshot_id,
-        }})
-    except (ValueError, FileNotFoundError, IndexError) as exc:
-        return _err(str(exc))
+    return apply_simple_effect(
+        workspace_path,
+        project_file,
+        track,
+        clip,
+        mlt_service={repr(effect_def.mlt_service)},
+        kdenlive_id={repr(effect_def.kdenlive_id)},
+        params={param_map_literal},{keyframes_arg}
+    )
 '''
 
     sig_block = "\n".join(sig_lines)
-    return _assemble_module(lines, sig_block, has_animated, body)
+    return _assemble_module(lines, sig_block, body)
 
 
 def _assemble_module(
     header_lines: list[str],
     sig_block: str,
-    has_kf_param: bool,
     body: str,
 ) -> str:
     out = "\n".join(header_lines) + "\n"
     out += "@register_effect_wrapper\n"
     out += sig_block + "\n"
-    if not has_kf_param:
-        out += '    keyframes = ""\n'
     # `body` is authored with 4-space leading indent on every line already.
     out += body
     if not out.endswith("\n"):
