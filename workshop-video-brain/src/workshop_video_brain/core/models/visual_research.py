@@ -145,6 +145,7 @@ class ResearchManifest(SerializableMixin):
     source: MediaAsset
     regions: list[ResearchRegion] = Field(default_factory=list)
     captures: list[ResearchCapture] = Field(default_factory=list)
+    errors: list[dict] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
