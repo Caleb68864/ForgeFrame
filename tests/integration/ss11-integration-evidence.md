@@ -52,3 +52,42 @@ prints a JSON list of matching/contextual transcript segments.
 ```
 uv run pytest tests/integration/test_cli_research_smoke.py -q
 ```
+
+## Verification run (SS-11-F14 / SS-11-F15)
+
+```
+$ uv run pytest tests/integration/test_cli_research_smoke.py -q
+.......                                                                  [100%]
+7 passed in 11.17s
+```
+
+Exit code: 0. All 7 CLI smoke tests pass.
+
+```
+$ uv run pytest tests/ -q
+...
+FAILED tests/unit/test_publishing.py::TestPackagePublishBundle::test_publish_bundle_json_is_valid
+FAILED tests/unit/test_stack_presets_io.py::test_load_missing_raises_with_both_paths
+2 failed, 2778 passed, 2 warnings in 131.72s (0:02:11)
+```
+
+The 2 failures are pre-existing and unrelated to this sub-spec's in-scope
+files (`app/cli.py`, `test_cli_research_smoke.py`):
+
+- `test_publishing.py::test_publish_bundle_json_is_valid` fails on Windows
+  because `Path.read_text()` defaults to the `cp1252` codec, which cannot
+  decode a UTF-8 multi-byte character (`0x8d`) written by
+  `package_publish_bundle`; this is an existing encoding bug in the
+  publishing module, not something introduced by the CLI wiring here.
+- `test_stack_presets_io.py::test_load_missing_raises_with_both_paths` fails
+  on Windows because the error message under test embeds a `\`-separated
+  path while the assertion expects the POSIX separator
+  `stacks/nope.yaml`; this is an existing path-separator assumption in the
+  stack-presets test, unrelated to CLI research/frame/scenes/transcript
+  commands.
+
+Total collected test count (2,780) exceeds the spec's baseline of 2,189
+because additional sub-specs (SS-06, SS-12, etc.) landed tests since that
+baseline was recorded; no regression was introduced by SS-11 — the CLI
+smoke suite is fully green and the two unrelated failures are pre-existing
+Windows-environment issues outside this sub-spec's scope.
