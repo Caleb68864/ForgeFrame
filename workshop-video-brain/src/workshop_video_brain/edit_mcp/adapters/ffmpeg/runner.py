@@ -29,6 +29,7 @@ def run_ffmpeg(
     output_path: Path,
     overwrite: bool = True,
     dry_run: bool = False,
+    pre_input_args: list[str] | None = None,
 ) -> FFmpegResult:
     """Execute an FFmpeg command with structured result capture.
 
@@ -38,6 +39,8 @@ def run_ffmpeg(
         output_path: Destination file path
         overwrite: If True, add -y flag
         dry_run: If True, return the command without executing
+        pre_input_args: FFmpeg arguments placed BEFORE ``-i`` (e.g. a fast
+            keyframe seek via ``-ss``).
 
     Returns:
         FFmpegResult with success status, captured logs, and timing
@@ -45,6 +48,8 @@ def run_ffmpeg(
     cmd: list[str] = ["ffmpeg"]
     if overwrite:
         cmd.append("-y")
+    if pre_input_args:
+        cmd += pre_input_args
     cmd += ["-i", str(input_path)]
     cmd += args
     cmd.append(str(output_path))
