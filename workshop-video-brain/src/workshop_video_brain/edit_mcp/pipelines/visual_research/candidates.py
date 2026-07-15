@@ -70,6 +70,8 @@ def generate_candidates(
         interval_seconds=gen_config.burst_spacing_seconds,
         max_frames=gen_config.burst_count,
     )
+    for burst_candidate in burst_candidates:
+        burst_candidate.extraction_method = "uniform_burst"
     raw.extend(burst_candidates)
 
     scene_changes = detect_scene_changes(
