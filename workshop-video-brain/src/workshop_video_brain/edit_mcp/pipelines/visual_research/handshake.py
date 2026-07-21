@@ -432,6 +432,16 @@ def select_from_handshake(
     resolved_output_dir = (
         Path(output_dir) if output_dir is not None else candidates_dir / "export"
     )
+    resolved_candidates = candidates_dir.resolve()
+    resolved_export = resolved_output_dir.resolve()
+    if resolved_export == resolved_candidates or resolved_candidates.is_relative_to(
+        resolved_export
+    ):
+        raise OutputDirNotEmptyError(
+            f"output_dir {resolved_output_dir} contains the live candidates "
+            "directory; exporting there would destroy the handshake state. "
+            "Choose an output_dir outside the candidates directory."
+        )
     if resolved_output_dir.exists() and any(resolved_output_dir.iterdir()):
         has_prior_artifact = (resolved_output_dir / "manifest.json").exists() or (
             resolved_output_dir / CANDIDATES_FILENAME

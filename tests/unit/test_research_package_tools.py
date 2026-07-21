@@ -203,3 +203,25 @@ def test_research_export_package_rejects_unsupported_schema_version(tmp_path):
 
     assert result["status"] == "error"
     assert result["error_type"] == "invalid_input"
+
+
+def test_research_export_package_refuses_export_into_candidates_dir(tmp_path):
+    gen = call_tool(
+        research_candidates.research_generate_candidates,
+        str(FIXTURE),
+        str(tmp_path / "hs2"),
+        start_seconds=0.0,
+        end_seconds=2.0,
+    )
+    assert gen["status"] != "error"
+
+    result = call_tool(
+        research_package.research_export_package,
+        str(tmp_path / "hs2"),
+        str(tmp_path / "hs2"),
+        overwrite=True,
+    )
+
+    assert result["status"] == "error"
+    assert result["error_type"] == "invalid_input"
+    assert (tmp_path / "hs2" / "candidates.json").exists()

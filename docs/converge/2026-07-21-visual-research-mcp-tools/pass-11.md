@@ -1,0 +1,2 @@
+# Converge Pass 11 — standard scan (G1 fix verification)
+- Mode: standard. Result: CLEAN. Independent exploit re-run: protected dir refused, plain non-research dir refused, prior-artifact dir with overwrite=True replaced (positive case). rmtree audit: all three deletion seams across the research surface behind bounded guards; no other unconditional deletion exists. Windows-safe path matching confirmed. candidate tools 9/9. clean_streak: 1

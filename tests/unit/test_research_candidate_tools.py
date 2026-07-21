@@ -202,3 +202,23 @@ def test_research_select_candidate_rejects_empty_candidate_ids(tmp_path):
 
     assert result["status"] == "error"
     assert result["error_type"] == "invalid_input"
+
+
+def test_research_select_candidate_refuses_export_into_candidates_dir(tmp_path):
+    """Post-convergence hardening: exporting into the live candidates dir
+    (or an ancestor) would rmtree the handshake state itself."""
+    generated, output_dir = _generate(tmp_path)
+    gen_data = generated["data"] if "data" in generated else generated
+    chosen = gen_data["candidates"][0]
+
+    result = call_tool(
+        research_candidates.research_select_candidate,
+        str(output_dir),
+        [chosen["id"]],
+        output_dir=str(output_dir),
+        overwrite=True,
+    )
+
+    assert result["status"] == "error"
+    assert result["error_type"] == "invalid_input"
+    assert (output_dir / "candidates.json").exists()

@@ -1,0 +1,2 @@
+# Converge Pass 9 — standard scan (scope-creep / negative-space angle)
+- Mode: standard. Result: CLEAN. Every diff entry vs main classified spec-declared / converge-artifact / factory-artifact — zero undeclared source files. All 9 Out-of-Scope/Must-Not boundaries hold (no caching, vision/OCR, CLI, timeline, transcript_search rename, service/adapters/__init__ edits, pyproject/uv.lock changes). Live: media+transcript 19 passed. clean_streak: 2 → armed adversarial pass 10

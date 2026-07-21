@@ -203,6 +203,17 @@ def research_export_package(
         )
 
     resolved_output_dir = Path(output_dir)
+    resolved_candidates = Path(candidates_dir).resolve()
+    resolved_export = resolved_output_dir.resolve()
+    if resolved_export == resolved_candidates or resolved_candidates.is_relative_to(
+        resolved_export
+    ):
+        return invalid_input(
+            f"output_dir {resolved_output_dir} contains the live candidates "
+            "directory; exporting there would destroy the handshake state.",
+            "Choose an output_dir outside the candidates directory.",
+            candidates_dir=candidates_dir,
+        )
     guard = _prepare_output_dir(resolved_output_dir, overwrite)
     if guard is not None:
         return guard
