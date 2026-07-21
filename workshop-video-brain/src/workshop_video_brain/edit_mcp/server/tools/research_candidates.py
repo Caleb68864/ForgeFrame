@@ -117,6 +117,13 @@ def research_select_candidate(
             keep_candidates=keep_candidates,
             overwrite=overwrite,
         )
+    except OutputDirNotEmptyError as exc:
+        return invalid_input(
+            str(exc),
+            "Pass overwrite=True to replace a prior research package, or "
+            "choose a different output_dir.",
+            output_dir=str(output_dir) if output_dir else None,
+        )
     except CandidatesManifestNotFoundError as exc:
         return not_found(
             "candidates.json",

@@ -412,7 +412,20 @@ def select_from_handshake(
     resolved_output_dir = (
         Path(output_dir) if output_dir is not None else candidates_dir / "export"
     )
-    if resolved_output_dir.exists() and any(resolved_output_dir.iterdir()) and overwrite:
+    if resolved_output_dir.exists() and any(resolved_output_dir.iterdir()):
+        has_prior_artifact = (resolved_output_dir / "manifest.json").exists() or (
+            resolved_output_dir / CANDIDATES_FILENAME
+        ).exists()
+        if not (overwrite and has_prior_artifact) or _is_protected_path(
+            resolved_output_dir
+        ):
+            raise OutputDirNotEmptyError(
+                "Export output directory already exists and is not empty: "
+                f"{resolved_output_dir}. Pass overwrite=True to replace a prior "
+                "research package (only honored when it already contains a "
+                "manifest.json or candidates.json, and never under media/raw/ "
+                "or projects/source/)."
+            )
         shutil.rmtree(resolved_output_dir)
 
     export_package(

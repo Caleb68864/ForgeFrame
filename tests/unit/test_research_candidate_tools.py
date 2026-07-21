@@ -118,3 +118,50 @@ def test_research_select_candidate_missing_manifest_returns_not_found(tmp_path):
     assert result["status"] == "error"
     assert result["error_type"] == "not_found"
     assert "candidates.json" in result["given"]
+
+
+def test_research_select_candidate_overwrite_never_deletes_protected_dirs(tmp_path):
+    """Regression for the adversarial-pass G1 finding: select's export path
+    must enforce the same bounded-overwrite rule as the other tools."""
+    generated, output_dir = _generate(tmp_path)
+    gen_data = generated["data"] if "data" in generated else generated
+    chosen = gen_data["candidates"][0]
+
+    protected = tmp_path / "media" / "raw" / "precious"
+    protected.mkdir(parents=True)
+    sentinel = protected / "original_footage.txt"
+    sentinel.write_text("IRREPLACEABLE", encoding="utf-8")
+
+    result = call_tool(
+        research_candidates.research_select_candidate,
+        str(output_dir),
+        [chosen["id"]],
+        output_dir=str(protected),
+        overwrite=True,
+    )
+
+    assert result["status"] == "error"
+    assert result["error_type"] == "invalid_input"
+    assert sentinel.read_text(encoding="utf-8") == "IRREPLACEABLE"
+
+
+def test_research_select_candidate_overwrite_refuses_non_research_dir(tmp_path):
+    generated, output_dir = _generate(tmp_path)
+    gen_data = generated["data"] if "data" in generated else generated
+    chosen = gen_data["candidates"][0]
+
+    plain = tmp_path / "unrelated"
+    plain.mkdir()
+    (plain / "notes.txt").write_text("not a research package", encoding="utf-8")
+
+    result = call_tool(
+        research_candidates.research_select_candidate,
+        str(output_dir),
+        [chosen["id"]],
+        output_dir=str(plain),
+        overwrite=True,
+    )
+
+    assert result["status"] == "error"
+    assert result["error_type"] == "invalid_input"
+    assert (plain / "notes.txt").exists()

@@ -1,0 +1,7 @@
+# Converge Pass 10 — ADVERSARIAL confirmation (streak was 2)
+
+- Mode: adversarial (fresh subagent, no prior-pass context, execution modality: fresh 48-test run, hand-rolled live tool-call smoke, error-path attacks, graph/import reachability, diff audit)
+- Result: **1 gap — a real one.** G1: `select_from_handshake`'s export path did an UNCONDITIONAL `shutil.rmtree` on `overwrite=True` (handshake.py:415-416), bypassing the bounded-overwrite rule. Proven by execution: it deleted a sentinel file under a `media/raw/` path and reported success. `research_run`/`research_export_package` correctly refused the same path.
+- Fix: `select_from_handshake` now enforces the full bound (non-empty → refuse unless overwrite AND prior manifest.json/candidates.json AND not under media/raw or projects/source → `OutputDirNotEmptyError`); shell maps it to `invalid_input`. Two regression tests added replicating the adversarial exploit (protected dir + plain non-research dir); handshake-family suites 29 passed.
+- Everything else confirmed by execution: 48/48 research tests fresh, live smoke produced real packages, all error envelopes specific (no tracebacks/fake success), all public symbols reachable in the live path, no undeclared scope, frozen-R7 claim logic independently verified (no pre-existing source/test file differs from main except the accepted Windows guard).
+- clean_streak: 0 (reset — the adversarial pass found a gap, which is exactly what it exists for)
