@@ -165,3 +165,40 @@ def test_research_select_candidate_overwrite_refuses_non_research_dir(tmp_path):
     assert result["status"] == "error"
     assert result["error_type"] == "invalid_input"
     assert (plain / "notes.txt").exists()
+
+
+def test_research_select_candidate_rejects_unsupported_schema_version(tmp_path):
+    """Regression for the pass-13 adversarial finding: load_handshake must
+    validate schema_version, not silently accept a future manifest."""
+    import json as _json
+
+    generated, output_dir = _generate(tmp_path)
+    gen_data = generated["data"] if "data" in generated else generated
+    chosen = gen_data["candidates"][0]
+
+    manifest_path = output_dir / "candidates.json"
+    payload = _json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload["schema_version"] = 2
+    manifest_path.write_text(_json.dumps(payload), encoding="utf-8")
+
+    result = call_tool(
+        research_candidates.research_select_candidate,
+        str(output_dir),
+        [chosen["id"]],
+    )
+
+    assert result["status"] == "error"
+    assert result["error_type"] == "invalid_input"
+
+
+def test_research_select_candidate_rejects_empty_candidate_ids(tmp_path):
+    _, output_dir = _generate(tmp_path)
+
+    result = call_tool(
+        research_candidates.research_select_candidate,
+        str(output_dir),
+        [],
+    )
+
+    assert result["status"] == "error"
+    assert result["error_type"] == "invalid_input"

@@ -77,6 +77,14 @@ class SourceFingerprintMismatchError(HandshakeError):
     """Raised when the source video no longer matches the recorded fingerprint."""
 
 
+class SchemaVersionError(HandshakeError):
+    """Raised when ``candidates.json`` carries an unsupported schema_version."""
+
+
+class EmptySelectionError(HandshakeError):
+    """Raised when ``candidate_ids`` is empty (the contract is one or more)."""
+
+
 # ---------------------------------------------------------------------------
 # Region resolution (mirrors service._fallback_region; no import of service
 # privates needed since the fallback is this small)
@@ -293,6 +301,14 @@ def load_handshake(candidates_dir: Path | str) -> dict:
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
+    found_version = manifest.get("schema_version")
+    if found_version != SCHEMA_VERSION:
+        raise SchemaVersionError(
+            f"Unsupported candidates.json schema_version {found_version!r} in "
+            f"{manifest_path}; this build reads version {SCHEMA_VERSION}. "
+            "Re-run generate to produce a compatible manifest."
+        )
+
     source = manifest.get("source", {})
     video_path = Path(source.get("path", ""))
     if not _fingerprint_matches(source, video_path):
@@ -364,6 +380,10 @@ def select_from_handshake(
     building the :class:`ResearchCapture` list handed to :func:`export_package`.
     """
     candidates_dir = Path(candidates_dir)
+    if not candidate_ids:
+        raise EmptySelectionError(
+            "candidate_ids must contain at least one candidate id (e.g. ['cand-001'])."
+        )
     manifest = load_handshake(candidates_dir)
 
     by_id = _candidate_by_id(manifest)

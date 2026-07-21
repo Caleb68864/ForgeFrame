@@ -30,6 +30,7 @@ from workshop_video_brain.edit_mcp.server.errors import (
 from workshop_video_brain.edit_mcp.server.tools_helpers import _ok
 from workshop_video_brain.edit_mcp.pipelines.visual_research.handshake import (
     CandidatesManifestNotFoundError,
+    SchemaVersionError,
     SourceFingerprintMismatchError,
     UnknownCandidateIdsError,
     load_handshake,
@@ -186,6 +187,12 @@ def research_export_package(
             "candidates.json",
             str(Path(candidates_dir) / "candidates.json"),
             hint=str(exc),
+        )
+    except SchemaVersionError as exc:
+        return invalid_input(
+            str(exc),
+            "Re-run research_generate_candidates to produce a compatible manifest.",
+            candidates_dir=candidates_dir,
         )
     except SourceFingerprintMismatchError as exc:
         return invalid_input(

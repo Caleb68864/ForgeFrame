@@ -176,3 +176,30 @@ def test_overwrite_never_honored_under_protected_paths(tmp_path):
     assert result["status"] == "error"
     assert result["error_type"] == "invalid_input"
     assert (protected / "manifest.json").exists()
+
+
+def test_research_export_package_rejects_unsupported_schema_version(tmp_path):
+    import json as _json
+
+    gen = call_tool(
+        research_candidates.research_generate_candidates,
+        str(FIXTURE),
+        str(tmp_path / "hs"),
+        start_seconds=0.0,
+        end_seconds=2.0,
+    )
+    assert gen["status"] != "error"
+
+    manifest_path = tmp_path / "hs" / "candidates.json"
+    payload = _json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload["schema_version"] = 2
+    manifest_path.write_text(_json.dumps(payload), encoding="utf-8")
+
+    result = call_tool(
+        research_package.research_export_package,
+        str(tmp_path / "hs"),
+        str(tmp_path / "out"),
+    )
+
+    assert result["status"] == "error"
+    assert result["error_type"] == "invalid_input"
