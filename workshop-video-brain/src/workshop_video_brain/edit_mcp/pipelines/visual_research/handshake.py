@@ -39,7 +39,6 @@ from workshop_video_brain.edit_mcp.pipelines.visual_research.dedup import dedupl
 from workshop_video_brain.edit_mcp.pipelines.visual_research.export import export_package
 from workshop_video_brain.edit_mcp.pipelines.visual_research.regions import select_regions
 from workshop_video_brain.edit_mcp.pipelines.visual_research.scoring import FrameScorer
-from workshop_video_brain.edit_mcp.pipelines.visual_research.scoring import FrameScorer
 
 SCHEMA_VERSION = 1
 CANDIDATES_FILENAME = "candidates.json"
