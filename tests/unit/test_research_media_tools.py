@@ -109,3 +109,35 @@ class TestResearchDetectScenes:
             )
         assert result["status"] == "error"
         assert result["error_type"] == "missing_binary"
+
+
+class TestVfrPassthrough:
+    @requires_ffmpeg_ffprobe
+    def test_probe_envelope_carries_is_vfr_flag(self):
+        result = _invoke(research_media.research_probe_video, video_path=str(FIXTURE))
+        assert result["status"] != "error"
+        data = result["data"] if "data" in result else result
+        assert "is_vfr" in data
+
+    @requires_ffmpeg_ffprobe
+    def test_extract_frame_passes_vfr_warning_through_envelope(self, tmp_path):
+        from workshop_video_brain.edit_mcp.adapters.ffmpeg import frames as frames_mod
+
+        real_probe = frames_mod.probe_media
+
+        def _vfr_probe(path):
+            asset = real_probe(path)
+            asset.is_vfr = True
+            return asset
+
+        with patch.object(frames_mod, "probe_media", _vfr_probe):
+            result = _invoke(
+                research_media.research_extract_frame,
+                video_path=str(FIXTURE),
+                timestamp_seconds=1.0,
+                output_path=str(tmp_path / "vfr_frame.png"),
+            )
+
+        assert result["status"] != "error"
+        data = result["data"] if "data" in result else result
+        assert "vfr_warning" in data.get("metadata", {})

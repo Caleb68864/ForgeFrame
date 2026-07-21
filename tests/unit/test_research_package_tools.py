@@ -157,3 +157,22 @@ def test_research_export_package_nonempty_dir_without_overwrite_is_invalid_input
 
     assert result["status"] == "error"
     assert result["error_type"] == "invalid_input"
+
+
+def test_overwrite_never_honored_under_protected_paths(tmp_path):
+    protected = tmp_path / "media" / "raw" / "research_out"
+    protected.mkdir(parents=True)
+    (protected / "manifest.json").write_text("{}", encoding="utf-8")
+
+    result = call_tool(
+        research_package.research_run,
+        str(FIXTURE),
+        str(protected),
+        start_seconds=0.0,
+        end_seconds=1.0,
+        overwrite=True,
+    )
+
+    assert result["status"] == "error"
+    assert result["error_type"] == "invalid_input"
+    assert (protected / "manifest.json").exists()

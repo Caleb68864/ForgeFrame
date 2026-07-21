@@ -156,13 +156,25 @@ def _fingerprint_matches(recorded: dict, video_path: Path) -> bool:
 # ---------------------------------------------------------------------------
 
 
+_PROTECTED_SUBSTRINGS = ("media/raw", "projects/source")
+
+
+def _is_protected_path(path: Path) -> bool:
+    posix = path.resolve().as_posix()
+    return any(marker in posix for marker in _PROTECTED_SUBSTRINGS)
+
+
 def _prepare_output_dir(output_dir: Path, overwrite: bool) -> None:
     manifest_path = output_dir / CANDIDATES_FILENAME
     if output_dir.exists() and any(output_dir.iterdir()):
-        if not (overwrite and manifest_path.exists()):
+        if (
+            not (overwrite and manifest_path.exists())
+            or _is_protected_path(output_dir)
+        ):
             raise OutputDirNotEmptyError(
                 f"Output directory already exists and is not empty: {output_dir}. "
-                "Pass overwrite=True to regenerate an existing candidates package."
+                "Pass overwrite=True to regenerate an existing candidates package "
+                "(never honored under media/raw/ or projects/source/)."
             )
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

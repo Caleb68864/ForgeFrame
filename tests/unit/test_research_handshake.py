@@ -175,3 +175,19 @@ def test_load_handshake_rehydrates_manifest(tmp_path):
 
     assert rehydrated["schema_version"] == manifest["schema_version"]
     assert rehydrated["candidates"] == manifest["candidates"]
+
+
+def test_generate_handshake_overwrite_never_honored_under_protected_paths(tmp_path):
+    protected = tmp_path / "projects" / "source" / "handshake_out"
+    protected.mkdir(parents=True)
+    (protected / "candidates.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(OutputDirNotEmptyError):
+        generate_handshake(
+            FIXTURE,
+            start_seconds=0.0,
+            end_seconds=1.0,
+            output_dir=protected,
+            overwrite=True,
+        )
+    assert (protected / "candidates.json").exists()
