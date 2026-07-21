@@ -27,3 +27,4 @@ smoke-test/
 # Stray yt-dlp transcript dumps at repo root (real transcripts live in vault/)
 transcripts/
 bash.exe.stackdump
+tests/fixtures/media_generated/greenscreen_reporter_720_frame_*.png

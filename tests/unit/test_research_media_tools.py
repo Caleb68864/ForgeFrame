@@ -72,10 +72,17 @@ class TestResearchExtractFrame:
 
 class TestResearchExtractFrameBurst:
     @requires_ffmpeg_ffprobe
-    def test_burst_returns_frames(self):
+    def test_burst_returns_frames(self, tmp_path):
+        # Burst frames land beside the source video (the adapter has no
+        # output-dir control), so run against a tmp copy to keep the
+        # fixtures directory clean.
+        import shutil
+
+        video_copy = tmp_path / FIXTURE.name
+        shutil.copyfile(FIXTURE, video_copy)
         result = _invoke(
             research_media.research_extract_frame_burst,
-            video_path=str(FIXTURE),
+            video_path=str(video_copy),
             start_seconds=0.0,
             end_seconds=2.0,
             interval_seconds=0.5,
