@@ -39,6 +39,7 @@ from workshop_video_brain.edit_mcp.pipelines.visual_research.dedup import dedupl
 from workshop_video_brain.edit_mcp.pipelines.visual_research.export import export_package
 from workshop_video_brain.edit_mcp.pipelines.visual_research.regions import select_regions
 from workshop_video_brain.edit_mcp.pipelines.visual_research.scoring import FrameScorer
+from workshop_video_brain.edit_mcp.pipelines.visual_research.scoring import FrameScorer
 
 SCHEMA_VERSION = 1
 CANDIDATES_FILENAME = "candidates.json"
@@ -295,6 +296,40 @@ def load_handshake(candidates_dir: Path | str) -> dict:
 # ---------------------------------------------------------------------------
 # select_from_handshake
 # ---------------------------------------------------------------------------
+
+
+def top_scored_candidate_ids(manifest: dict) -> list[str]:
+    """Pick the deterministic top-scored candidate id for each region.
+
+    Mirrors ``service._process_region``'s "top-ranked surviving candidate"
+    selection, recomputed from the persisted manifest since
+    :func:`generate_handshake` re-sorts candidates by timestamp (discarding
+    rank order) before writing ``candidates.json``.
+    """
+    cfg = ResearchConfig()
+    scorer = FrameScorer()
+
+    by_region: dict[str, list[dict]] = {}
+    for entry in manifest.get("candidates", []):
+        by_region.setdefault(entry.get("region_id"), []).append(entry)
+
+    selected_ids: list[str] = []
+    for region in manifest.get("regions", []):
+        region_id = region.get("region_id")
+        entries = by_region.get(region_id, [])
+        if not entries:
+            continue
+
+        id_by_candidate_uuid = {str(entry["candidate_id"]): entry["id"] for entry in entries}
+        candidates = [
+            FrameCandidate.model_validate({k: v for k, v in entry.items() if k != "id"})
+            for entry in entries
+        ]
+        ranked = scorer.rank(candidates, cfg)
+        top = ranked[0] if ranked else candidates[0]
+        selected_ids.append(id_by_candidate_uuid[str(top.candidate_id)])
+
+    return selected_ids
 
 
 def _candidate_by_id(manifest: dict) -> dict[str, dict]:

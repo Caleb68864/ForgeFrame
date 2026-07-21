@@ -20,7 +20,6 @@ import shutil
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
-from workshop_video_brain.core.models.visual_research import FrameCandidate, ResearchConfig
 from workshop_video_brain.edit_mcp.adapters.transcript.parsers import parse_transcript
 from workshop_video_brain.edit_mcp.server.errors import (
     tool_guard,
@@ -35,8 +34,8 @@ from workshop_video_brain.edit_mcp.pipelines.visual_research.handshake import (
     UnknownCandidateIdsError,
     load_handshake,
     select_from_handshake,
+    top_scored_candidate_ids,
 )
-from workshop_video_brain.edit_mcp.pipelines.visual_research.scoring import FrameScorer
 from workshop_video_brain.edit_mcp.pipelines.visual_research.service import research_video
 
 _PROTECTED_SUBSTRINGS = ("media/raw", "projects/source")
@@ -77,40 +76,6 @@ def _prepare_output_dir(output_dir: Path, overwrite: bool) -> dict | None:
 
     shutil.rmtree(output_dir)
     return None
-
-
-def _top_scored_candidate_ids(manifest: dict) -> list[str]:
-    """Pick the deterministic top-scored candidate id for each region.
-
-    Mirrors ``service._process_region``'s "top-ranked surviving candidate"
-    selection, recomputed from the persisted manifest since
-    ``generate_handshake`` re-sorts candidates by timestamp (discarding rank
-    order) before writing ``candidates.json``.
-    """
-    cfg = ResearchConfig()
-    scorer = FrameScorer()
-
-    by_region: dict[str, list[dict]] = {}
-    for entry in manifest.get("candidates", []):
-        by_region.setdefault(entry.get("region_id"), []).append(entry)
-
-    selected_ids: list[str] = []
-    for region in manifest.get("regions", []):
-        region_id = region.get("region_id")
-        entries = by_region.get(region_id, [])
-        if not entries:
-            continue
-
-        id_by_candidate_uuid = {str(entry["candidate_id"]): entry["id"] for entry in entries}
-        candidates = [
-            FrameCandidate.model_validate({k: v for k, v in entry.items() if k != "id"})
-            for entry in entries
-        ]
-        ranked = scorer.rank(candidates, cfg)
-        top = ranked[0] if ranked else candidates[0]
-        selected_ids.append(id_by_candidate_uuid[str(top.candidate_id)])
-
-    return selected_ids
 
 
 @mcp.tool()
@@ -236,7 +201,7 @@ def research_export_package(
         return guard
 
     selections = manifest.get("selections") or []
-    candidate_ids = selections if selections else _top_scored_candidate_ids(manifest)
+    candidate_ids = selections if selections else top_scored_candidate_ids(manifest)
 
     if not candidate_ids:
         return invalid_input(
