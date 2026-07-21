@@ -9,8 +9,9 @@ committing. ``select_from_handshake`` rehydrates the manifest, validates the
 chosen ids and the source fingerprint, records the selection, and hands the
 chosen candidates to :func:`export_package` for the final package.
 
-No subprocess/argv construction and no ``@mcp.tool()`` live here -- both
-belong to adapters and the ``research_candidates`` shell respectively.
+Process spawning and MCP tool registration are deliberately absent from this
+module -- those belong to the ffmpeg adapters and the ``research_candidates``
+shell respectively.
 """
 from __future__ import annotations
 

@@ -496,8 +496,10 @@ def test_toctou_source_deleted(ws, real_mp4, monkeypatch):
 # ---------------------------------------------------------------------------
 # 10. Read-only output directory
 # ---------------------------------------------------------------------------
-@pytest.mark.skipif(not _FFMPEG or os.geteuid() == 0,
-                    reason="ffmpeg required; chmod ineffective as root")
+@pytest.mark.skipif(
+    not _FFMPEG or getattr(os, "geteuid", lambda: -1)() == 0 or os.name == "nt",
+    reason="ffmpeg required; chmod ineffective as root; POSIX perms only",
+)
 def test_readonly_processed_dir(ws, real_mp4):
     processed = ws / "media" / "processed"
     processed.mkdir(parents=True, exist_ok=True)
