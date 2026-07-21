@@ -26,3 +26,4 @@ smoke-test/
 
 # Stray yt-dlp transcript dumps at repo root (real transcripts live in vault/)
 transcripts/
+bash.exe.stackdump
