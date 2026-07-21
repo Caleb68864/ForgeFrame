@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "spec_slug": "visual-research-mcp-tools",
+  "contracts": [
+    {
+      "owner_sub_spec": 3,
+      "consumer_sub_specs": [4],
+      "name": "load_handshake",
+      "kind": "function",
+      "signature": "load_handshake(candidates_dir: str | Path) -> dict",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/edit_mcp/pipelines/visual_research/handshake.py",
+      "content_sha256": null
+    },
+    {
+      "owner_sub_spec": 3,
+      "consumer_sub_specs": [4, 5],
+      "name": "candidates.json schema v1",
+      "kind": "interface",
+      "signature": "{schema_version: 1, source: {path, size_bytes, mtime_ns}, query, regions, candidates: [serialized FrameCandidate + id/region_id], selections}",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/edit_mcp/pipelines/visual_research/handshake.py",
+      "content_sha256": null
+    },
+    {
+      "owner_sub_spec": 1,
+      "consumer_sub_specs": [5],
+      "name": "research_probe_video",
+      "kind": "route",
+      "signature": "tool names: research_probe_video, research_extract_frame, research_extract_frame_burst, research_detect_scenes",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/edit_mcp/server/tools/research_media.py",
+      "content_sha256": null
+    },
+    {
+      "owner_sub_spec": 2,
+      "consumer_sub_specs": [5],
+      "name": "research_transcript_search",
+      "kind": "route",
+      "signature": "tool names: research_transcript_search, research_transcript_context",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/edit_mcp/server/tools/research_transcript.py",
+      "content_sha256": null
+    },
+    {
+      "owner_sub_spec": 3,
+      "consumer_sub_specs": [5],
+      "name": "research_generate_candidates",
+      "kind": "route",
+      "signature": "tool names: research_generate_candidates, research_select_candidate",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/edit_mcp/server/tools/research_candidates.py",
+      "content_sha256": null
+    },
+    {
+      "owner_sub_spec": 4,
+      "consumer_sub_specs": [5],
+      "name": "research_run",
+      "kind": "route",
+      "signature": "tool names: research_run, research_export_package",
+      "file_path": "workshop-video-brain/src/workshop_video_brain/edit_mcp/server/tools/research_package.py",
+      "content_sha256": null
+    }
+  ]
+}
