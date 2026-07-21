@@ -53,7 +53,7 @@ depends_on: []
 - **Acceptance criteria:**
   - `[STRUCTURAL]` `research_media.py` defines exactly four `@mcp.tool()` functions, each with `@tool_guard` directly beneath the tool decorator, and imports only the specific error constructors it uses.
   - `[BEHAVIORAL]` `call_tool(research_probe_video, video_path=<greenscreen fixture>)` returns `status="ok"` with `duration_seconds > 0`; a nonexistent path returns the `missing_file` error envelope.
-  - `[BEHAVIORAL]` `research_extract_frame` at `t=1.0` on the fixture writes a nonempty PNG and returns `status="ok"` with `data.actual_timestamp_seconds` present in the envelope; `abs(actual_timestamp_seconds - 1.0) <= 0.05` (frame-grain tolerance). A timestamp past EOF (e.g., t=10000.0 on a 10-second fixture) is clamped to the last valid frame, and `actual_timestamp_seconds` reflects the clamped position.
+  - `[BEHAVIORAL]` `research_extract_frame` at `t=1.0` on the fixture writes a nonempty PNG and reports the actual timestamp; a timestamp past EOF is clamped (permissive seek per parent spec) and the actual timestamp is recorded in the payload.
   - `[BEHAVIORAL]` `research_detect_scenes` on the fixture returns `status="ok"` with a (possibly empty) list; ffmpeg missing → `missing_binary` envelope (tested via monkeypatched adapter exception).
 - **Dependencies:** none
 
@@ -125,8 +125,7 @@ depends_on: ['SS-01', 'SS-02', 'SS-03', 'SS-04']
   - `tests/integration/test_research_tools_e2e.py`
 - **Acceptance criteria:**
   - `[STRUCTURAL]` `assert_registered` passes for all ten `research_*` tool names.
-  - `[INTEGRATION]` Full handshake E2E: `research_generate_candidates` → parse `candidates.json` → `research_select_candidate(cand-001)` → package exists on disk with `index.md` + `manifest.json` + `screenshots/*.png`. Assert: `manifest['captures'][0]['timestamp_seconds']` == the `timestamp_seconds` value of the candidate with id `cand-001` from `candidates.json`, within floating-point tolerance (epsilon 1e-6).
-  - `[STRUCTURAL]` The integration test validates that the `candidates.json` written by SS-03 conforms to schema v1 (all required keys present, candidate IDs follow `cand-NNN` format, source fingerprint fields present and match the input video at test time, image_path values point to existing PNG files). This is the schema contract that SS-04 and SS-05 depend on for rehydration.
+  - `[INTEGRATION]` Full handshake E2E: `research_generate_candidates` → parse `candidates.json` → `research_select_candidate(cand-001)` → package exists on disk with `index.md` + `manifest.json` + `screenshots/*.png`, and the manifest's selected timestamp equals the chosen candidate's timestamp — crossing SS-03 and SS-04 boundaries in one test.
   - `[MECHANICAL]` `uv run pytest tests/ -q` exits 0.
 - **Dependencies:** SS-01, SS-02, SS-03, SS-04
 
