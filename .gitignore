@@ -28,3 +28,4 @@ smoke-test/
 transcripts/
 bash.exe.stackdump
 tests/fixtures/media_generated/greenscreen_reporter_720_frame_*.png
+graphify-out/
