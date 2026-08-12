@@ -63,8 +63,9 @@ envelope); real logic lives in `edit_mcp/pipelines/` and `edit_mcp/adapters/`.
    surface the post-write `snapshot_id` in the `_ok` payload.
 5. **Reuse the canonical helpers, don't re-roll:**
    - `edit_mcp/pipelines/_common.py` -- `seconds_to_frames` (the one half-up
-     converter), `seconds_to_mmss`, the three filter-XML builders, unit/text/DSP
-     primitives.
+     converter), `seconds_to_mmss`, the three filter-XML builders,
+     `escape_filter_path` (**mandatory** for any path interpolated into an
+     ffmpeg filtergraph option value -- see below), unit/text/DSP primitives.
    - `edit_mcp/server/tools_helpers/` (package) -- `_ok`/`_err`,
      `_validate_workspace_path`/`_require_workspace`, `latest_project`/
      `_load_latest_project`/`_save_patched`, `apply_simple_effect`,
@@ -177,6 +178,25 @@ This loop is dramatically faster than guessing.
 ## ffmpeg subprocess hygiene
 
 All ffmpeg subprocess calls in `adapters/ffmpeg/*` and `adapters/stt/whisper_engine.py` must pass `timeout=` to `subprocess.run`. Without timeouts, the MCP server blocks indefinitely on UHD proxy generation or Whisper transcription, and the client RPC times out. Existing timeouts: 600s for proxy/runner, 300s for whisper extraction and silence detection. Catch `subprocess.TimeoutExpired` and clean up partial outputs.
+
+### Filtergraph rules (any module building a `-vf`/`-af`/`-lavfi` string)
+
+1. **Every path interpolated into a filtergraph option value must go through
+   `pipelines/_common.escape_filter_path`.** A filtergraph is unescaped
+   *twice* before the filter sees its argument, so the intuitive escaping is
+   wrong: separators must become forward slashes (a native `\` is eaten),
+   `:` needs **two** backslashes and `'` needs **three**. A raw Windows path
+   truncates at the drive colon. Invisible on POSIX and fatal on Windows --
+   Linux CI stays green while the tool is broken for every Windows user.
+   These values are empirical; verify changes against a real ffmpeg, not
+   against a reading of the syntax. See
+   `vault/wiki/ffmpeg-filtergraph-path-escaping.md`.
+2. **Use `os.devnull`, never a hardcoded `"/dev/null"`.** `Path("/dev/null")`
+   renders as `\dev\null` on Windows, pointing a discard sink at a bogus
+   drive-root path.
+3. **Assert on paths portably in tests.** Compare `Path` to `Path`, or against
+   `str(Path("/x"))` -- never a bare POSIX literal, which fails on Windows for
+   reasons unrelated to the behaviour under test.
 
 ### Audio adapter rules (`adapters/ffmpeg/audio.py`)
 

@@ -129,7 +129,7 @@ class TestPatternCommand:
         assert cmd[cmd.index("-i") + 1] == str(Path("/imgs/frame%03d.png"))
         vf = cmd[cmd.index("-vf") + 1]
         assert "scale=1280:720" in vf and "pad=1280:720" in vf
-        assert cmd[-1] == "/out.mp4"
+        assert cmd[-1] == str(Path("/out.mp4"))
         assert "libx264" in cmd
 
     def test_pattern_command_start_number(self):

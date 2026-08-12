@@ -136,7 +136,7 @@ class TestCommandConstruction:
         assert "2.5000" in cmd
         assert cmd[cmd.index("-frames:v") + 1] == "1"
         assert "scale=48:-2" in cmd
-        assert cmd[-1] == "/tmp/f.png"
+        assert cmd[-1] == str(Path("/tmp/f.png"))
 
     def test_frame_extract_clamps_negative_timestamp(self):
         cmd = cd.frame_extract_command(

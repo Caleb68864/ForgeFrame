@@ -37,7 +37,7 @@ class TestPalettegenCommand:
         assert "fps=8" in vf
         assert "scale=320:-2:flags=lanczos" in vf
         assert vf.endswith("palettegen")
-        assert cmd[-1] == "/tmp/p.png"
+        assert cmd[-1] == str(Path("/tmp/p.png"))
 
 
 class TestPaletteuseCommand:
@@ -51,7 +51,7 @@ class TestPaletteuseCommand:
         assert "paletteuse" in lavfi
         assert "fps=8" in lavfi
         assert cmd[cmd.index("-loop") + 1] == "0"
-        assert cmd[-1] == "/out/o.gif"
+        assert cmd[-1] == str(Path("/out/o.gif"))
 
 
 class TestMp4PreviewCommand:
@@ -64,7 +64,7 @@ class TestMp4PreviewCommand:
         assert cmd[cmd.index("-pix_fmt") + 1] == "yuv420p"
         vf = cmd[cmd.index("-vf") + 1]
         assert "fps=10" in vf and "scale=240:-2" in vf
-        assert cmd[-1] == "/out/o.mp4"
+        assert cmd[-1] == str(Path("/out/o.mp4"))
 
 
 class TestSupportedFormats:

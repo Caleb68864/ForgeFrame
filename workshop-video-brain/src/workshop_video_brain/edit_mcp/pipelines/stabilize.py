@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -32,6 +33,7 @@ from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
     FFmpegResult,
     run_ffmpeg,
 )
+from workshop_video_brain.edit_mcp.pipelines._common import escape_filter_path
 
 logger = logging.getLogger(__name__)
 
@@ -88,12 +90,14 @@ def build_detect_filter(
     """Build the pass-1 ``vidstabdetect`` filter string.
 
     Writes the detected transforms to *trf_path* (the ``result=`` option).
+    The path is filtergraph-escaped: an unescaped Windows drive colon would
+    end the option value at ``C``.
     """
     p = clamp_params(shakiness=shakiness, accuracy=accuracy)
     return (
         f"vidstabdetect=shakiness={p['shakiness']}"
         f":accuracy={p['accuracy']}"
-        f":result={trf_path}"
+        f":result={escape_filter_path(trf_path)}"
     )
 
 
@@ -105,11 +109,12 @@ def build_transform_filter(
     """Build the pass-2 ``vidstabtransform`` filter string.
 
     Reads the transforms from *trf_path* (the ``input=`` option) and adds a
-    light ``unsharp`` to recover softness introduced by the warp.
+    light ``unsharp`` to recover softness introduced by the warp. The path is
+    filtergraph-escaped for the same reason as in ``build_detect_filter``.
     """
     p = clamp_params(smoothing=smoothing, zoom=zoom)
     return (
-        f"vidstabtransform=input={trf_path}"
+        f"vidstabtransform=input={escape_filter_path(trf_path)}"
         f":smoothing={p['smoothing']}"
         f":zoom={p['zoom']}"
         ",unsharp=5:5:0.8"
@@ -225,7 +230,10 @@ def stabilize_file(
                 ["-vf", build_detect_filter(trf, params["shakiness"], params["accuracy"]),
                  "-f", "null"],
                 input_path=input_path,
-                output_path=Path("/dev/null"),
+                # os.devnull, not a hardcoded "/dev/null": pathlib renders the
+                # latter as "\dev\null" on Windows, pointing pass 1's discard
+                # sink at a bogus drive-root path.
+                output_path=Path(os.devnull),
                 overwrite=True,
                 dry_run=dry_run,
             )

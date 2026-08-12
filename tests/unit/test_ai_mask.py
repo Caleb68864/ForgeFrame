@@ -123,7 +123,7 @@ def test_derived_mask_path_custom_name_keeps_ext():
 
 def test_build_extract_cmd_all_frames():
     cmd = ai_mask.build_extract_cmd(Path("/s.mp4"), "f_%06d.png")
-    assert cmd[0] == "ffmpeg" and "-i" in cmd and "/s.mp4" in cmd
+    assert cmd[0] == "ffmpeg" and "-i" in cmd and str(Path("/s.mp4")) in cmd
     assert "f_%06d.png" == cmd[-1]
     assert "-frames:v" not in cmd
 
@@ -139,7 +139,7 @@ def test_build_encode_cmd_basic_filterchain_order():
     # gray -> scale -> yuv420p, no box/invert/feather.
     assert vf == "format=gray,scale=320:240,format=yuv420p"
     assert "-framerate" in cmd and cmd[cmd.index("-framerate") + 1] == "25"
-    assert cmd[-1] == "/o.mp4"
+    assert cmd[-1] == str(Path("/o.mp4"))
     assert "libx264" in cmd
 
 

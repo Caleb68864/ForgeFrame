@@ -287,7 +287,8 @@ class TestAudioNormalizeTwoPassTool:
             )
         assert res["status"] == "success"
         data = res["data"]
-        assert data["output"].endswith("media/processed/take_normalized.wav")
+        # Path parts, not a POSIX-separator suffix: the tool returns a native path.
+        assert Path(data["output"]).parts[-3:] == ("media", "processed", "take_normalized.wav")
         assert Path(data["output"]).exists()
         assert data["measured"]["thresh"] == -40.0
         assert data["target"]["i"] == -16.0

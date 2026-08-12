@@ -20,15 +20,17 @@ It currently spans four domains: **time** (``seconds_to_frames``,
 ``seconds_to_mmss``), **XML builders** (``make_filter_xml``,
 ``make_filter_element_xml``, ``_build_filter_xml``), **DSP** math
 (``parabolic_peak_offset``), and **validation / text heuristics**
-(``check_unit_interval``, ``keyword_match_strength``).
+(``check_unit_interval``, ``keyword_match_strength``, ``escape_filter_path``).
 
 Split trigger: when this file exceeds **~250 LOC OR a 5th domain lands**,
 promote it to a ``_common/`` package split by domain (``_common/time.py``,
 ``_common/xml.py``, ``_common/dsp.py``, ``_common/validation.py``) behind a
 same-path shim -- ``_common/__init__.py`` re-exports every current name so the
 import surface stays byte-identical (the patcher/tools-split pattern). As of
-pass 4 it is ~205 LOC / 4 domains -- **under the trigger; documented, not
-split.** Do not pre-split.
+the ``escape_filter_path`` promotion it is ~249 LOC / 4 domains (the escaper
+joins the existing text domain rather than opening a 5th) -- **under the
+trigger; documented, not split.** Do not pre-split. The next helper that
+lands here almost certainly trips the LOC trigger; do the package split then.
 """
 from __future__ import annotations
 
@@ -186,6 +188,39 @@ def check_unit_interval(name: str, value: object) -> float:
     if not 0.0 <= v <= 1.0:
         raise ValueError(f"{name} must be in [0.0, 1.0]; got {v}")
     return v
+
+
+def escape_filter_path(path: object) -> str:
+    """Escape a filesystem path for use inside an ffmpeg filtergraph option value.
+
+    A filtergraph description is unescaped **twice** before a filter sees its
+    argument -- once by the graph parser splitting filters/options, once by the
+    filter's own option parser. That double pass is what makes the naive
+    escaping wrong, and each rule below was established empirically against a
+    real ffmpeg (see ``vault/wiki/ffmpeg-filtergraph-path-escaping.md``), not
+    derived from the docs:
+
+    * **Separators become forward slashes.** A native Windows ``\\`` does not
+      survive: ``\\U`` is consumed as an escape by the second pass, so
+      ``C:\\Users`` arrives as ``C:Users``. Doubling them does not help either
+      -- the two passes simply eat one backslash each.
+    * **``:`` is escaped with TWO backslashes** (``\\\\:``). One backslash is
+      stripped by the first pass, leaving a bare ``:`` that the second pass
+      reads as an option separator -- silently truncating the path.
+    * **``'`` is escaped with THREE backslashes** (``\\\\\\'``). The quote
+      character is handled a pass earlier than ``:``, so it needs one more
+      level. Two or four both fail.
+
+    Practically: a Windows path is mangled without this, and the failure is
+    invisible on POSIX (no drive colon, no backslashes), so Linux CI stays
+    green while the tool is broken for every Windows user.
+
+    Shared by the ``stabilize`` pipeline (``vidstabdetect``'s ``result=`` /
+    ``vidstabtransform``'s ``input=``) and the ``subtitles_burn_in`` tool
+    (the ``ass`` filter's path argument).
+    """
+    posix = str(path).replace("\\", "/")
+    return posix.replace("'", "\\\\\\'").replace(":", "\\\\:")
 
 
 def keyword_match_strength(text_lower: str, keyword: str) -> float:

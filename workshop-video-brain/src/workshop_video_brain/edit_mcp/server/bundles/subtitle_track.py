@@ -40,6 +40,7 @@ from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
 )
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import run_ffmpeg
 from workshop_video_brain.edit_mcp.pipelines import subtitle_track as st
+from workshop_video_brain.edit_mcp.pipelines._common import escape_filter_path
 from workshop_video_brain.workspace import create_snapshot
 
 
@@ -97,11 +98,6 @@ def _resolve_srt(workspace_path: str, srt_path: str) -> Path:
             "(run subtitles_generate first)"
         )
     return latest
-
-
-def _escape_ff(path: Path) -> str:
-    """Escape a path for use inside an ffmpeg filtergraph option value."""
-    return str(path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +288,7 @@ def subtitles_burn_in(
             out_path = processed / out_name
 
             result = run_ffmpeg(
-                args=["-vf", f"ass={_escape_ff(ass_path)}", "-c:a", "copy"],
+                args=["-vf", f"ass={escape_filter_path(ass_path)}", "-c:a", "copy"],
                 input_path=media_input,
                 output_path=out_path,
             )

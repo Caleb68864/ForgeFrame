@@ -6,11 +6,13 @@ execution -- ``run_ffmpeg`` and the availability probe are mocked.
 """
 from __future__ import annotations
 
-from pathlib import Path
+import os
+from pathlib import Path, PureWindowsPath
 from unittest.mock import patch
 
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import FFmpegResult
 from workshop_video_brain.edit_mcp.pipelines import stabilize
+from workshop_video_brain.edit_mcp.pipelines._common import escape_filter_path
 
 _PIPE = "workshop_video_brain.edit_mcp.pipelines.stabilize"
 
@@ -58,20 +60,38 @@ class TestClampParams:
 # ---------------------------------------------------------------------------
 
 class TestFilterConstruction:
+    # The ``.trf`` path is interpolated into a filtergraph option value, so it
+    # is escaped via ``_common.escape_filter_path``. These tests build the
+    # expected substring through the same helper rather than hardcoding a
+    # POSIX rendering -- ``Path("/tmp/x.trf")`` is ``\tmp\x.trf`` on Windows,
+    # and the escaping differs accordingly.
     def test_detect_filter_has_result_path_and_clamps(self):
-        f = stabilize.build_detect_filter(Path("/tmp/x.trf"), shakiness=50, accuracy=1)
+        trf = Path("/tmp/x.trf")
+        f = stabilize.build_detect_filter(trf, shakiness=50, accuracy=1)
         assert f.startswith("vidstabdetect=")
         assert "shakiness=10" in f  # clamped from 50
         assert "accuracy=1" in f
-        assert "result=/tmp/x.trf" in f
+        assert f"result={escape_filter_path(trf)}" in f
 
     def test_transform_filter_reads_trf_and_unsharp(self):
-        f = stabilize.build_transform_filter(Path("/tmp/x.trf"), smoothing=15, zoom=5)
+        trf = Path("/tmp/x.trf")
+        f = stabilize.build_transform_filter(trf, smoothing=15, zoom=5)
         assert "vidstabtransform=" in f
-        assert "input=/tmp/x.trf" in f
+        assert f"input={escape_filter_path(trf)}" in f
         assert "smoothing=15" in f
         assert "zoom=5" in f
         assert "unsharp=5:5:0.8" in f
+
+    def test_windows_drive_colon_does_not_truncate_the_option_value(self):
+        # Regression: an unescaped ``C:\...`` ended the ``result=`` option at
+        # the drive letter, so ffmpeg wrote transforms nowhere and pass 2 read
+        # a file that never existed. Verified against a real ffmpeg: the drive
+        # colon needs two backslashes and the separators must become forward
+        # slashes to survive the graph parser's two unescaping passes.
+        f = stabilize.build_detect_filter(PureWindowsPath(r"C:\ws\media\x.trf"))
+        assert r"result=C\\:/ws/media/x.trf" in f
+        # Only the two genuine option separators remain unescaped.
+        assert f.replace(r"\\:", "").count(":") == 2
 
     def test_deshake_filter(self):
         assert stabilize.build_deshake_filter() == "deshake=edge=1"
@@ -127,7 +147,9 @@ class TestStabilizeFile:
         assert "vidstabdetect" in vf
         assert ".trf" in vf
         assert "-f" in ffmpeg_args and "null" in ffmpeg_args
-        assert str(kwargs["output_path"]) in ("/dev/null",)
+        # The discard sink is os.devnull ("/dev/null" POSIX, "nul" on Windows),
+        # not a hardcoded POSIX literal that pathlib would mangle to "\dev\null".
+        assert Path(kwargs["output_path"]) == Path(os.devnull)
 
     def test_pass2_transform_encodes_to_output(self):
         with patch(f"{_PIPE}.vidstab_available", return_value=True), \
@@ -139,7 +161,8 @@ class TestStabilizeFile:
         assert "vidstabtransform" in vf
         assert "libx264" in ffmpeg_args
         assert "-c:a" in ffmpeg_args  # audio copied through
-        assert str(kwargs["output_path"]) == "/out.mp4"
+        # Compare Path-to-Path: str(Path("/out.mp4")) is "\out.mp4" on Windows.
+        assert Path(kwargs["output_path"]) == Path("/out.mp4")
 
     def test_deshake_fallback_when_unavailable(self):
         with patch(f"{_PIPE}.vidstab_available", return_value=False), \
@@ -228,7 +251,9 @@ class TestMediaStabilizeTool:
         assert res["status"] == "success"
         data = res["data"]
         assert data["method"] == "vidstab"
-        assert data["output"].endswith("media/processed/clip_stabilized.mp4")
+        # Assert on path parts, not a POSIX-separator suffix: the tool returns
+        # a native path, which uses backslashes on Windows.
+        assert Path(data["output"]).parts[-3:] == ("media", "processed", "clip_stabilized.mp4")
         assert Path(data["output"]).exists()
 
     def test_deshake_note_surfaced(self, tmp_path):

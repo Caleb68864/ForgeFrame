@@ -38,8 +38,13 @@ class TestAnalysisCommon:
         assert p == tmp_path / "media" / "raw" / "a.mp4"
 
     def test_resolve_absolute_kept(self, tmp_path):
-        p = analysis_common.resolve_under_workspace(tmp_path, "/abs/a.mp4")
-        assert p == Path("/abs/a.mp4")
+        # Build the absolute path from the host anchor: "/abs/a.mp4" is rooted
+        # but drive-less on Windows, so is_absolute() is False there and the
+        # test would exercise the relative branch instead.
+        absolute = Path(tmp_path.anchor) / "abs" / "a.mp4"
+        p = analysis_common.resolve_under_workspace(tmp_path, str(absolute))
+        assert p == absolute
+        assert tmp_path not in p.parents  # not re-rooted under the workspace
 
     def test_iter_single_file(self, tmp_path):
         f = tmp_path / "a.mp4"

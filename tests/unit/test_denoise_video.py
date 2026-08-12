@@ -148,7 +148,7 @@ class TestDenoiseVideoFile:
             Path("/in.mp4"), Path("/out.mp4"), dry_run=True
         )
         assert res["success"] is True
-        assert res["final_output"] == "/out.mp4"
+        assert res["final_output"] == str(Path("/out.mp4"))
 
 
 # ---------------------------------------------------------------------------
@@ -199,7 +199,8 @@ class TestMediaDenoiseVideoTool:
             )
         assert res["status"] == "success"
         data = res["data"]
-        assert data["output"].endswith("media/processed/clip_denoised.mp4")
+        # Path parts, not a POSIX-separator suffix: the tool returns a native path.
+        assert Path(data["output"]).parts[-3:] == ("media", "processed", "clip_denoised.mp4")
         assert Path(data["output"]).exists()
         assert data["method"] == "hqdn3d"
         assert data["settings"] == [4.0, 3.0, 6.0, 4.5]
