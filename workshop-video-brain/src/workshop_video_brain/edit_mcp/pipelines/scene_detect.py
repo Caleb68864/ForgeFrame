@@ -21,6 +21,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from workshop_video_brain.edit_mcp.pipelines._common import escape_filter_path
+
 logger = logging.getLogger(__name__)
 
 _TIME_RE = re.compile(r"pts_time:(-?\d+\.?\d*)")
@@ -28,9 +30,18 @@ _SCORE_RE = re.compile(r"lavfi\.scene_score=(-?\d+\.?\d*)")
 
 
 def build_select_filter(threshold: float, stats_file: Path) -> str:
-    """Build the ``select``/``metadata`` scene-scoring filter string."""
+    """Build the ``select``/``metadata`` scene-scoring filter string.
+
+    *stats_file* is filtergraph-escaped: an unescaped Windows drive colon ends
+    the ``file=`` option at ``C``, so ffmpeg errors out and the stats file is
+    never written -- and the caller's ``if stats_file.exists()`` guard then
+    degrades that into a silently empty scene list.
+    """
     t = max(0.0, min(1.0, float(threshold)))
-    return f"select='gt(scene\\,{t:g})',metadata=print:file={stats_file}"
+    return (
+        f"select='gt(scene\\,{t:g})',"
+        f"metadata=print:file={escape_filter_path(stats_file)}"
+    )
 
 
 def build_scan_command(source: Path, threshold: float, stats_file: Path) -> list[str]:

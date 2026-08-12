@@ -188,6 +188,28 @@ def test_force_style_string():
     assert "Alignment=2" in s
 
 
+def test_font_commas_cannot_shift_the_ass_style_fields():
+    # ASS "Style:" lines are comma-delimited and the font sits mid-line, so a
+    # comma in the font name would shift every subsequent field by one.
+    s = st.SubtitleStyle(font="Arial,999,&HFF0000")
+    assert "," not in s.font
+    line = st.build_ass_style_line(s)
+    # Field count is what actually matters -- a shifted line still parses.
+    assert len(line.split(",")) == len(st.build_ass_style_line(st.SubtitleStyle()).split(","))
+
+
+def test_font_newlines_cannot_inject_an_extra_ass_directive():
+    s = st.SubtitleStyle(font="Arial\nDialogue: 0,0:00:00.00,0:00:05.00,Default,PWNED")
+    assert "\n" not in s.font and "\r" not in s.font
+    assert "\n" not in st.build_ass_style_line(s)
+    # The same field feeds the comma-separated force_style override.
+    assert "\n" not in st.force_style_string(s) and "," in st.force_style_string(s)
+
+
+def test_font_stripped_to_nothing_falls_back_to_the_default():
+    assert st.SubtitleStyle(font=",,,").font == "DejaVu Sans"
+
+
 def test_latest_srt_picks_newest(tmp_path):
     import os
     import time

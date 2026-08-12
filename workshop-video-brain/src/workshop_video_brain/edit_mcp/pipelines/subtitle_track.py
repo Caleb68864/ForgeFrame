@@ -21,7 +21,7 @@ import json
 import re
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from workshop_video_brain.core.models.kdenlive import KdenliveProject, SubtitleTrack
 from workshop_video_brain.core.models.timeline import SubtitleCue
@@ -58,6 +58,22 @@ class SubtitleStyle(BaseModel):
     shadow: float = 0.0
     alignment: int = 2               # numpad, or set via `position`
     margin_v: int = 20               # vertical margin from the aligned edge
+
+    @field_validator("font")
+    @classmethod
+    def _strip_ass_separators(cls, value: str) -> str:
+        """Drop characters that would break out of the ASS ``Style:`` field.
+
+        ``Style:`` lines are comma-delimited and newline-terminated, and the
+        font name is interpolated into the middle of one (and into the
+        comma-separated ``force_style`` string). A comma or newline in the
+        font name therefore shifts every subsequent field or injects a whole
+        extra directive -- neither is ever a legitimate font name, so they are
+        stripped rather than rejected, keeping a cosmetic input from failing
+        an otherwise valid styling call.
+        """
+        cleaned = re.sub(r"[,\r\n]", "", value).strip()
+        return cleaned or "DejaVu Sans"
 
     @classmethod
     def from_input(cls, value) -> "SubtitleStyle | None":

@@ -25,6 +25,7 @@ import tempfile
 from pathlib import Path
 
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
+from workshop_video_brain.edit_mcp.pipelines._common import escape_filter_path
 
 logger = logging.getLogger(__name__)
 
@@ -58,12 +59,18 @@ def build_video_filter(
     freeze_noise_db: float,
     freeze_min: float,
 ) -> str:
-    """Build the combined video-analysis filtergraph."""
+    """Build the combined video-analysis filtergraph.
+
+    *stats_file* is filtergraph-escaped: an unescaped Windows drive colon ends
+    the ``file=`` option at ``C``, so ffmpeg errors out and the stats file is
+    never written -- and the caller's ``if stats_file.exists()`` guard then
+    degrades that into a silently empty scan.
+    """
     return (
         f"blackdetect=d={black_min}:pix_th={black_pix_th},"
         f"freezedetect=n={freeze_noise_db}dB:d={freeze_min},"
         f"signalstats,blurdetect,"
-        f"metadata=print:file={stats_file}"
+        f"metadata=print:file={escape_filter_path(stats_file)}"
     )
 
 

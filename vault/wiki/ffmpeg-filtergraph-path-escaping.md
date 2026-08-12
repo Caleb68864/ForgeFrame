@@ -52,6 +52,25 @@ Two separate traps:
 
 Spaces need no escaping at all.
 
+## Where it applies
+
+Four call sites across three pipelines, all found by auditing for *any* path
+interpolated into a filter string:
+
+| Site | Option | Failure mode on Windows |
+|---|---|---|
+| `stabilize.build_detect_filter` | `vidstabdetect result=` | hard error |
+| `stabilize.build_transform_filter` | `vidstabtransform input=` | hard error |
+| `qc_scan.build_video_filter` | `metadata=print:file=` | **silent** |
+| `scene_detect.build_select_filter` | `metadata=print:file=` | **silent** |
+
+The two `metadata=print:file=` sites are the nastier pair. Both callers read
+the stats file back behind an `if stats_file.exists()` guard, so a path that
+never got written degrades into an *empty result* — `clips_qc_scan` reports
+no quality issues, `detect_scenes` reports no scenes — rather than an error.
+A tool that confidently returns "nothing wrong" is worse than one that
+crashes.
+
 ## How this bit us — twice
 
 The escaper originally existed as a private `_escape_ff` inside
@@ -78,6 +97,13 @@ Two takeaways worth generalising:
 - Escaping rules are **empirical**. Assert them against the real binary, not
   against a reading of the syntax. `tests/unit/test_common_filter_escape.py`
   pins the verified values; `scratchpad` probes generated them.
+- A test that only asserts success proves little. Every case in
+  `tests/integration/external/test_filter_path_escaping.py` was
+  mutation-checked — the escaper was temporarily replaced with `str(path)`
+  and all 15 positive cases confirmed to go red — and the file carries a
+  standing negative control asserting the *old* escaping still fails. A
+  plain path succeeds under any escaping at all, so without the awkward-path
+  parametrisation and that control, the suite would be decorative.
 
 ## Related
 
