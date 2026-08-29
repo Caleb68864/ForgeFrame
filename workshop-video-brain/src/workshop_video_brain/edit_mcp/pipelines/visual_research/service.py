@@ -17,6 +17,8 @@ rather than aborting.
 from __future__ import annotations
 
 import logging
+import shutil
+import tempfile
 from pathlib import Path
 
 from workshop_video_brain.core.models.transcript import Transcript, TranscriptSegment
@@ -149,13 +151,17 @@ def _process_region(
     region: ResearchRegion,
     source,
     config: ResearchConfig,
+    scratch_dir: Path | None = None,
 ) -> ResearchCapture:
     """Run candidate generation/scoring/dedup/selection for one region.
 
     Raises on any stage failure; the caller is responsible for isolating
-    that failure into the manifest's error list.
+    that failure into the manifest's error list. Scratch frames are written
+    to ``scratch_dir`` (never beside the source video).
     """
-    candidates: list[FrameCandidate] = generate_candidates(video_path, region, source, config)
+    candidates: list[FrameCandidate] = generate_candidates(
+        video_path, region, source, config, output_dir=scratch_dir
+    )
 
     scorer = FrameScorer()
     ranked = scorer.rank(candidates, config)
@@ -233,9 +239,62 @@ def research_video(
 
     manifest = ResearchManifest(source=source_asset)
 
+    # Scratch frames live in a private temp dir for the duration of the run
+    # and are removed once export_package has copied the survivors. Writing
+    # them beside the source video would leak every dropped candidate into
+    # the user's media tree (media/raw/ is a protected path).
+    scratch_dir = Path(tempfile.mkdtemp(prefix="wvb-research-frames-"))
+    try:
+        _run_regions(video_path, regions, source_asset, cfg, manifest, scratch_dir)
+
+        if manifest.captures:
+            resolved_output_dir = (
+                Path(output_dir)
+                if output_dir is not None
+                else video_path.parent / cfg.export.output_dir / str(manifest.manifest_id)[:8]
+            )
+            export_package(
+                manifest,
+                resolved_output_dir,
+                obsidian=obsidian,
+                keep_candidates=keep_candidates,
+                config=cfg,
+            )
+    finally:
+        _forget_scratch_paths(manifest, scratch_dir)
+        shutil.rmtree(scratch_dir, ignore_errors=True)
+
+    return manifest
+
+
+def _forget_scratch_paths(manifest: ResearchManifest, scratch_dir: Path) -> None:
+    """Blank ``image_path`` on candidates whose only copy is in *scratch_dir*.
+
+    ``export_package`` repoints every candidate it retains at the exported
+    copy; whatever still points into the scratch dir was not retained and is
+    about to be deleted, so an empty path is the honest value -- never a
+    dangling one.
+    """
+    for capture in manifest.captures:
+        for candidate in capture.candidates:
+            if not candidate.image_path:
+                continue
+            if Path(candidate.image_path).resolve().is_relative_to(scratch_dir.resolve()):
+                candidate.image_path = ""
+
+
+def _run_regions(
+    video_path: Path,
+    regions: list[ResearchRegion],
+    source_asset,
+    cfg: ResearchConfig,
+    manifest: ResearchManifest,
+    scratch_dir: Path,
+) -> None:
+    """Process every region with error isolation, appending to *manifest*."""
     for region in regions:
         try:
-            capture = _process_region(video_path, region, source_asset, cfg)
+            capture = _process_region(video_path, region, source_asset, cfg, scratch_dir)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Region %s failed during research: %s", region.region_id, exc)
             manifest.errors.append(
@@ -250,19 +309,3 @@ def research_video(
 
         manifest.regions.append(region)
         manifest.captures.append(capture)
-
-    if manifest.captures:
-        resolved_output_dir = (
-            Path(output_dir)
-            if output_dir is not None
-            else video_path.parent / cfg.export.output_dir / str(manifest.manifest_id)[:8]
-        )
-        export_package(
-            manifest,
-            resolved_output_dir,
-            obsidian=obsidian,
-            keep_candidates=keep_candidates,
-            config=cfg,
-        )
-
-    return manifest

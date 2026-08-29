@@ -66,11 +66,11 @@ def test_research_video_records_partial_manifest_on_region_error(tmp_path, monke
     call_count = {"n": 0}
     real_generate_candidates = service_mod.generate_candidates
 
-    def _flaky_generate_candidates(video_path_arg, region, source, config):
+    def _flaky_generate_candidates(*args, **kwargs):
         call_count["n"] += 1
         if call_count["n"] == 1:
             raise RuntimeError("simulated extraction failure")
-        return real_generate_candidates(video_path_arg, region, source, config)
+        return real_generate_candidates(*args, **kwargs)
 
     monkeypatch.setattr(service_mod, "generate_candidates", _flaky_generate_candidates)
 

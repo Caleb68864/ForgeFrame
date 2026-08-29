@@ -204,6 +204,10 @@ def research(
 @click.option("--burst", default=None, help="'start:end' seconds range for a uniform frame burst.")
 @click.option("--interval", default=0.5, type=float, help="Interval in seconds between burst frames.")
 @click.option("--format", "fmt", default="png", help="Output image format.")
+@click.option(
+    "--output-dir", "output_dir", default=None, type=click.Path(file_okay=False),
+    help="Directory for extracted frames (default: a <stem>_frames/ folder beside VIDEO).",
+)
 @click.option("--json", "as_json", is_flag=True, default=False, help="Emit machine-readable JSON.")
 def frame(
     video: str,
@@ -211,6 +215,7 @@ def frame(
     burst: str | None,
     interval: float,
     fmt: str,
+    output_dir: str | None,
     as_json: bool,
 ) -> None:
     """Extract one frame (or a burst of frames) from VIDEO."""
@@ -223,11 +228,16 @@ def frame(
 
     try:
         video_path = _Path(video)
+        frames_dir = (
+            _Path(output_dir) if output_dir
+            else video_path.parent / f"{video_path.stem}_frames"
+        )
 
         if burst:
             start_seconds, end_seconds = _parse_range(burst)
             candidates = extract_frame_burst(
-                video_path, start_seconds, end_seconds, interval_seconds=interval
+                video_path, start_seconds, end_seconds, interval_seconds=interval,
+                output_dir=frames_dir,
             )
             if as_json:
                 click.echo(json.dumps([c.model_dump(mode="json") for c in candidates], indent=2))
@@ -241,7 +251,7 @@ def frame(
             click.echo("Error: one of --timestamp or --burst is required.", err=True)
             sys.exit(1)
 
-        candidate = extract_frame(video_path, timestamp, fmt=fmt)
+        candidate = extract_frame(video_path, timestamp, fmt=fmt, output_dir=frames_dir)
         if as_json:
             click.echo(json.dumps(candidate.model_dump(mode="json"), indent=2))
         else:
@@ -362,7 +372,7 @@ def media_ingest(workspace_path: str) -> None:
         ws = WorkspaceManager.open(workspace_path)
         config = load_config()
         report = run_ingest(ws, config)
-        click.echo(f"Ingest complete:")
+        click.echo("Ingest complete:")
         click.echo(f"  Scanned:     {report.scanned_count}")
         click.echo(f"  Proxied:     {report.proxied_count}")
         click.echo(f"  Transcribed: {report.transcribed_count}")
@@ -1382,7 +1392,7 @@ def wvb_pattern_extract(workspace_path: str) -> None:
 
         notes_path = save_build_notes(ws_path, build_notes_md)
 
-        click.echo(f"Pattern Brain extraction complete:")
+        click.echo("Pattern Brain extraction complete:")
         click.echo(f"  Materials:    {len(build_data.materials)}")
         click.echo(f"  Measurements: {len(build_data.measurements)}")
         click.echo(f"  Steps:        {len(build_data.steps)}")
@@ -1708,7 +1718,7 @@ def assembly_build_cmd(
         click.echo(f"Error: {result['message']}", err=True)
         sys.exit(1)
     d = result["data"]
-    click.echo(f"Assembly complete.")
+    click.echo("Assembly complete.")
     click.echo(f"  Project: {d['kdenlive_path']}")
     click.echo(f"  Steps:   {d['steps_count']}")
     click.echo(f"  Duration: {d['total_estimated_duration']:.1f}s estimated")
@@ -1885,7 +1895,7 @@ def init(vault_path: str, projects_root: str, media_library: str) -> None:
 
     # Config
     click.echo("Writing config...")
-    click.echo(f"  + .env")
+    click.echo("  + .env")
     click.echo(f"  + {result.config_file_written}")
     click.echo("")
 
@@ -1923,7 +1933,7 @@ def init_quick(vault_path: str, projects_root: str) -> None:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
 
-    click.echo(f"ForgeFrame initialized.")
+    click.echo("ForgeFrame initialized.")
     click.echo(f"  Vault:         {result.vault_path}")
     click.echo(f"  Projects root: {result.projects_root}")
     click.echo(f"  Config:        {result.config_file_written}")
@@ -2240,7 +2250,7 @@ def broll_library_stats() -> None:
 
     try:
         stats = get_library_stats(vault)
-        click.echo(f"B-Roll Library Statistics:")
+        click.echo("B-Roll Library Statistics:")
         click.echo(f"  Total clips:      {stats['total_clips']}")
         click.echo(f"  Projects indexed: {len(stats['projects_indexed'])}")
         if stats["projects_indexed"]:

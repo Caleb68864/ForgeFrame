@@ -121,6 +121,7 @@ def research_extract_frame_burst(
     end_seconds: float,
     interval_seconds: float = 0.5,
     max_frames: int = 20,
+    output_dir: str | None = None,
 ) -> dict:
     """Extract a uniform burst of frames across a time range.
 
@@ -130,6 +131,9 @@ def research_extract_frame_burst(
         end_seconds: End of the burst range, in seconds.
         interval_seconds: Nominal spacing between extracted frames.
         max_frames: Maximum number of frames to extract.
+        output_dir: Directory to write the frames into. Defaults to a
+            ``<stem>_frames/`` folder beside the source video -- never the
+            source's own folder, so a burst can't litter ``media/raw/``.
 
     Returns:
         List of FrameCandidate dicts, chronologically ordered.
@@ -140,6 +144,10 @@ def research_extract_frame_burst(
 
     from workshop_video_brain.edit_mcp.adapters.ffmpeg.frames import extract_frame_burst
 
+    frames_dir = (
+        Path(output_dir) if output_dir else path.parent / f"{path.stem}_frames"
+    )
+
     try:
         candidates = extract_frame_burst(
             path,
@@ -147,6 +155,7 @@ def research_extract_frame_burst(
             end_seconds,
             interval_seconds=interval_seconds,
             max_frames=max_frames,
+            output_dir=frames_dir,
         )
     except FFmpegNotFound as exc:
         return missing_binary("ffmpeg", str(exc))
@@ -158,6 +167,7 @@ def research_extract_frame_burst(
     return _ok({
         "frames": [c.model_dump(mode="json") for c in candidates],
         "count": len(candidates),
+        "output_dir": str(frames_dir),
     })
 
 

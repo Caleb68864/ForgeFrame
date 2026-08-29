@@ -73,24 +73,24 @@ class TestResearchExtractFrame:
 class TestResearchExtractFrameBurst:
     @requires_ffmpeg_ffprobe
     def test_burst_returns_frames(self, tmp_path):
-        # Burst frames land beside the source video (the adapter has no
-        # output-dir control), so run against a tmp copy to keep the
-        # fixtures directory clean.
-        import shutil
-
-        video_copy = tmp_path / FIXTURE.name
-        shutil.copyfile(FIXTURE, video_copy)
+        frames_dir = tmp_path / "burst"
         result = _invoke(
             research_media.research_extract_frame_burst,
-            video_path=str(video_copy),
+            video_path=str(FIXTURE),
             start_seconds=0.0,
             end_seconds=2.0,
             interval_seconds=0.5,
             max_frames=20,
+            output_dir=str(frames_dir),
         )
         assert result["status"] == "success"
         assert result["data"]["count"] > 0
         assert len(result["data"]["frames"]) == result["data"]["count"]
+        assert result["data"]["output_dir"] == str(frames_dir)
+        # Every frame landed in output_dir -- none beside the fixture video.
+        for frame in result["data"]["frames"]:
+            assert Path(frame["image_path"]).parent == frames_dir
+        assert not list(FIXTURE.parent.glob(f"{FIXTURE.stem}_frame_*.png"))
 
 
 class TestResearchDetectScenes:

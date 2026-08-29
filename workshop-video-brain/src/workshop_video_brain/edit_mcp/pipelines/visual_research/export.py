@@ -108,7 +108,16 @@ def export_package(
         shutil.copy2(src_path, dest_path)
 
         if keep_candidates:
-            _copy_candidates(capture, output_dir / "candidates" / f"{index:03d}")
+            # Copies *every* candidate (selected included, under its original
+            # name) -- must run before the selected one is repointed below.
+            _copy_candidates(
+                capture, output_dir / "candidates" / f"{index:03d}", selected=candidate
+            )
+
+        # The in-memory manifest now points at the exported copy, so callers
+        # (research_run, the CLI --json dump) never see a scratch path that
+        # the pipeline is about to clean up.
+        candidate.image_path = str(dest_path)
 
         entries.append(
             {
@@ -207,13 +216,22 @@ def _frame_extension(candidate: FrameCandidate, config: ResearchConfig) -> str:
     return ext or config.export.image_format
 
 
-def _copy_candidates(capture: ResearchCapture, dest_dir: Path) -> None:
+def _copy_candidates(
+    capture: ResearchCapture, dest_dir: Path, *, selected: FrameCandidate | None = None
+) -> None:
+    """Copy every candidate image into *dest_dir* and repoint each
+    candidate's ``image_path`` at its retained copy -- except *selected*,
+    whose canonical retained copy is the ``screenshots/`` slot (the caller
+    repoints it there)."""
     for candidate in capture.candidates:
         src_path = Path(candidate.image_path)
         if not src_path.exists():
             continue
         dest_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src_path, dest_dir / src_path.name)
+        dest_path = dest_dir / src_path.name
+        shutil.copy2(src_path, dest_path)
+        if candidate is not selected:
+            candidate.image_path = str(dest_path)
 
 
 # ---------------------------------------------------------------------------

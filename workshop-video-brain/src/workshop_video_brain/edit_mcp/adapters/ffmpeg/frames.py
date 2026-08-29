@@ -23,10 +23,24 @@ from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import run_ffmpeg
 logger = logging.getLogger(__name__)
 
 
-def _default_output_path(video_path: Path, timestamp_seconds: float, fmt: str) -> Path:
+def _default_output_path(
+    video_path: Path,
+    timestamp_seconds: float,
+    fmt: str,
+    output_dir: Path | None = None,
+) -> Path:
+    """``<output_dir or video_path.parent>/<stem>_frame_<ts>.<fmt>``.
+
+    Callers that extract *scratch* frames (bursts, candidate generation) must
+    pass ``output_dir`` -- the beside-the-source default exists for the
+    explicit single-frame CLI/tool case only. Writing scratch PNGs next to a
+    user's source video pollutes ``media/raw/`` (a protected tree) and makes
+    two concurrent runs on the same file race on identical filenames.
+    """
     stem = video_path.stem
     ts_tag = f"{timestamp_seconds:.3f}".replace(".", "_")
-    return video_path.parent / f"{stem}_frame_{ts_tag}.{fmt}"
+    base = Path(output_dir) if output_dir is not None else video_path.parent
+    return base / f"{stem}_frame_{ts_tag}.{fmt}"
 
 
 def extract_frame(
@@ -35,8 +49,13 @@ def extract_frame(
     output_path: Path | None = None,
     quality: str = "high",
     fmt: str = "png",
+    output_dir: Path | None = None,
 ) -> FrameCandidate:
     """Extract a single frame from *video_path* at *timestamp_seconds*.
+
+    ``output_path`` names the file exactly; otherwise the frame is written to
+    ``output_dir`` (or, when that is also omitted, beside the source video --
+    see :func:`_default_output_path`).
 
     ``quality="high"`` uses accurate (post-``-i``) seek; ``quality="fast"``
     uses a pre-input (keyframe) seek via ``pre_input_args``. VFR sources
@@ -44,7 +63,7 @@ def extract_frame(
     """
     video_path = Path(video_path)
     if output_path is None:
-        output_path = _default_output_path(video_path, timestamp_seconds, fmt)
+        output_path = _default_output_path(video_path, timestamp_seconds, fmt, output_dir)
     else:
         output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -119,11 +138,14 @@ def extract_frame_burst(
     end_seconds: float,
     interval_seconds: float = 0.5,
     max_frames: int = 20,
+    output_dir: Path | None = None,
 ) -> list[FrameCandidate]:
     """Extract frames uniformly across ``[start_seconds, end_seconds]``.
 
     Widens ``interval_seconds`` (evenly) if the naive count would exceed
     ``max_frames``. Timestamps are deduplicated and returned chronologically.
+    Frames land in ``output_dir`` when given (pipelines must pass one; see
+    :func:`_default_output_path`).
     """
     video_path = Path(video_path)
     if end_seconds < start_seconds:
@@ -154,7 +176,7 @@ def extract_frame_burst(
 
     candidates: list[FrameCandidate] = []
     for t in deduped:
-        candidate = extract_frame(video_path, t, quality="fast")
+        candidate = extract_frame(video_path, t, quality="fast", output_dir=output_dir)
         candidate.extraction_method = "uniform_burst"
         candidates.append(candidate)
 
@@ -168,6 +190,7 @@ def extract_centered_burst(
     before_seconds: float = 3,
     after_seconds: float = 5,
     interval_seconds: float = 0.5,
+    output_dir: Path | None = None,
 ) -> list[FrameCandidate]:
     """Extract a uniform burst of frames centered on ``anchor_seconds``."""
     start_seconds = max(0.0, anchor_seconds - before_seconds)
@@ -177,4 +200,5 @@ def extract_centered_burst(
         start_seconds,
         end_seconds,
         interval_seconds=interval_seconds,
+        output_dir=output_dir,
     )

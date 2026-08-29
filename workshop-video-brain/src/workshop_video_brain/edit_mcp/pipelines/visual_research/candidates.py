@@ -41,6 +41,7 @@ def generate_candidates(
     region: ResearchRegion,
     source: MediaAsset,
     config: ResearchConfig,
+    output_dir: Path | None = None,
 ) -> list[FrameCandidate]:
     """Generate a capped, deduplicated candidate list for ``region``.
 
@@ -48,6 +49,10 @@ def generate_candidates(
     fall back to periodic sampling on a static source), then dedupes by
     rounded timestamp and caps at
     ``config.candidate_generation.max_candidates_per_region``.
+
+    ``output_dir`` is where the scratch frames are written. Pass one: with
+    it omitted the ffmpeg adapter falls back to writing beside the source
+    video, which leaks dropped candidates into the user's media tree.
     """
     video_path = Path(video_path)
     gen_config = config.candidate_generation
@@ -59,7 +64,9 @@ def generate_candidates(
     if anchor_seconds is None:
         anchor_seconds = (region.start_seconds + region.end_seconds) / 2.0
     anchor_seconds = max(region.start_seconds, min(region.end_seconds, anchor_seconds))
-    anchor_candidate = extract_frame(video_path, anchor_seconds, quality="high")
+    anchor_candidate = extract_frame(
+        video_path, anchor_seconds, quality="high", output_dir=output_dir
+    )
     anchor_candidate.extraction_method = "exact_timestamp"
     raw.append(anchor_candidate)
 
@@ -69,6 +76,7 @@ def generate_candidates(
         region.end_seconds,
         interval_seconds=gen_config.burst_spacing_seconds,
         max_frames=gen_config.burst_count,
+        output_dir=output_dir,
     )
     for burst_candidate in burst_candidates:
         burst_candidate.extraction_method = "uniform_burst"
@@ -80,7 +88,9 @@ def generate_candidates(
         end_seconds=region.end_seconds,
     )
     for change in scene_changes:
-        scene_candidate = extract_frame(video_path, change.timestamp_seconds, quality="fast")
+        scene_candidate = extract_frame(
+            video_path, change.timestamp_seconds, quality="fast", output_dir=output_dir
+        )
         scene_candidate.extraction_method = "scene_change"
         scene_candidate.metadata["scene_score"] = change.score
         raw.append(scene_candidate)

@@ -6,7 +6,7 @@ Ten MCP tools expose the deterministic visual-research pipeline to agents. They 
 
 - `research_probe_video(video_path)` — ffprobe result (duration, streams, `is_vfr`, geometry).
 - `research_extract_frame(video_path, timestamp_seconds, ...)` — one frame; past-EOF seeks clamp and the payload reports `actual_timestamp_seconds`; VFR sources force accurate seek and carry `metadata.vfr_warning`.
-- `research_extract_frame_burst(video_path, start_seconds, end_seconds, ...)` — uniform burst. **Caveat:** frames land beside the source video (the adapter has no output-dir parameter yet).
+- `research_extract_frame_burst(video_path, start_seconds, end_seconds, ..., output_dir=None)` — uniform burst. Frames go to `output_dir`, defaulting to a `<stem>_frames/` folder beside the source (never the source's own folder, so `media/raw/` stays clean); the response echoes `output_dir`.
 - `research_detect_scenes(video_path, ...)` — scene-change timestamps.
 - `research_transcript_search(transcript_path, query, limit)` / `research_transcript_context(transcript_path, timestamp_seconds, window_seconds)` — `.json`/`.srt`/`.vtt`; search results are **unscored**, transcript order.
 

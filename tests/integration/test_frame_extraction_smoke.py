@@ -78,8 +78,10 @@ def test_extract_frame_burst_respects_max_frames(tmp_path):
         end_seconds=2.0,
         interval_seconds=0.1,
         max_frames=5,
+        output_dir=tmp_path,
     )
     assert len(candidates) == 5
+    assert all(Path(c.image_path).parent == tmp_path for c in candidates)
 
     timestamps = [c.timestamp_seconds for c in candidates]
     assert timestamps == sorted(timestamps)
@@ -94,7 +96,9 @@ def test_extract_centered_burst_spans_anchor(tmp_path):
         before_seconds=0.5,
         after_seconds=0.5,
         interval_seconds=0.25,
+        output_dir=tmp_path,
     )
     assert len(candidates) > 0
+    assert all(Path(c.image_path).parent == tmp_path for c in candidates)
     for c in candidates:
         assert -1e-6 <= c.timestamp_seconds <= 1.5 + 1e-6

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import tempfile
 from pathlib import Path
 
 from workshop_video_brain.core.models.visual_research import (
@@ -229,9 +230,46 @@ def generate_handshake(
         repo, source_asset.id, query, start_seconds, end_seconds, duration_seconds, cfg
     )
 
+    # Scratch frames go into a private temp dir *inside* output_dir (same
+    # filesystem, so the survivor move below is a rename) and never beside the
+    # source video: that would leak every deduped/dropped frame into the
+    # user's media tree and make concurrent runs race on identical names.
+    scratch_dir = Path(tempfile.mkdtemp(prefix=".frames-", dir=output_dir))
+    try:
+        per_region_candidates = _generate_per_region(
+            video_path, regions, source_asset, cfg, scratch_dir
+        )
+        all_entries = _move_survivors(regions, per_region_candidates, candidates_dir)
+    finally:
+        shutil.rmtree(scratch_dir, ignore_errors=True)
+
+    manifest = {
+        "schema_version": SCHEMA_VERSION,
+        "source": _fingerprint_source(video_path),
+        "query": query,
+        "regions": [region.model_dump(mode="json") for region in regions],
+        "candidates": all_entries,
+        "selections": [],
+    }
+
+    manifest_path = output_dir / CANDIDATES_FILENAME
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    return manifest
+
+
+def _generate_per_region(
+    video_path: Path,
+    regions: list[ResearchRegion],
+    source_asset,
+    cfg: ResearchConfig,
+    scratch_dir: Path,
+) -> list[tuple[ResearchRegion, list[FrameCandidate]]]:
     per_region_candidates: list[tuple[ResearchRegion, list[FrameCandidate]]] = []
     for region in regions:
-        raw = generate_candidates(video_path, region, source_asset, cfg)
+        raw = generate_candidates(
+            video_path, region, source_asset, cfg, output_dir=scratch_dir
+        )
         scorer = FrameScorer()
         ranked = scorer.rank(raw, cfg)
         if cfg.deduplication.enabled and ranked:
@@ -242,7 +280,15 @@ def generate_handshake(
             kept = ranked
         kept.sort(key=lambda c: c.timestamp_seconds)
         per_region_candidates.append((region, kept))
+    return per_region_candidates
 
+
+def _move_survivors(
+    regions: list[ResearchRegion],
+    per_region_candidates: list[tuple[ResearchRegion, list[FrameCandidate]]],
+    candidates_dir: Path,
+) -> list[dict]:
+    """Rename surviving scratch frames to ``cand-NNN.png`` and build entries."""
     all_entries: list[dict] = []
     total = sum(len(candidates) for _region, candidates in per_region_candidates)
     id_width = max(3, len(str(total)))
@@ -264,20 +310,7 @@ def generate_handshake(
             entry["id"] = candidate_id
             entry["region_id"] = str(region.region_id)
             all_entries.append(entry)
-
-    manifest = {
-        "schema_version": SCHEMA_VERSION,
-        "source": _fingerprint_source(video_path),
-        "query": query,
-        "regions": [region.model_dump(mode="json") for region in regions],
-        "candidates": all_entries,
-        "selections": [],
-    }
-
-    manifest_path = output_dir / CANDIDATES_FILENAME
-    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-
-    return manifest
+    return all_entries
 
 
 # ---------------------------------------------------------------------------

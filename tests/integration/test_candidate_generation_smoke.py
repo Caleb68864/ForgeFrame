@@ -49,7 +49,7 @@ def test_generate_candidates_respects_cap_and_includes_uniform_burst(tmp_path):
         anchor_seconds=min(duration, 1.0),
     )
 
-    candidates = generate_candidates(VIDEO_CLIP, region, source, config)
+    candidates = generate_candidates(VIDEO_CLIP, region, source, config, output_dir=tmp_path)
 
     assert len(candidates) > 0
     assert len(candidates) <= config.candidate_generation.max_candidates_per_region
@@ -73,7 +73,7 @@ def test_generate_candidates_static_region_falls_back_to_periodic_scene_sampling
         anchor_seconds=0.0,
     )
 
-    candidates = generate_candidates(VIDEO_CLIP, region, source, config)
+    candidates = generate_candidates(VIDEO_CLIP, region, source, config, output_dir=tmp_path)
 
     assert len(candidates) > 0
     methods = {c.extraction_method for c in candidates}
@@ -92,7 +92,7 @@ def test_generate_candidates_returns_deduplicated_timestamps(tmp_path):
         anchor_seconds=0.5,
     )
 
-    candidates = generate_candidates(VIDEO_CLIP, region, source, config)
+    candidates = generate_candidates(VIDEO_CLIP, region, source, config, output_dir=tmp_path)
 
     rounded_timestamps = [round(c.timestamp_seconds, 3) for c in candidates]
     assert len(rounded_timestamps) == len(set(rounded_timestamps))
