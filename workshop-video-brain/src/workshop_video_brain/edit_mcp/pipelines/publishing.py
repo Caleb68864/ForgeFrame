@@ -363,7 +363,7 @@ def generate_tags(
             "will", "its", "your", "our", "but", "also", "about", "from",
             "one", "all", "out", "use", "using", "make", "made", "into",
             "now", "them", "they", "some", "more", "than", "get", "bit",
-            "little", "gonna", "wanna", "come", "back", "okay", "right",
+            "little", "wanna", "come", "back", "okay", "right",
             "let", "got", "see", "need", "take", "put", "lot", "good",
         }
         freq = Counter(t for t in tokens if len(t) > 3 and t not in stopwords)
@@ -809,7 +809,7 @@ def generate_publish_note(
 
     # Build body
     body_lines = [
-        f"## Summary",
+        "## Summary",
         "",
         bundle.summary.medium_summary,
         "",

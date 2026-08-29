@@ -84,45 +84,19 @@ def clip_insert(
 
         fps = project.profile.fps or 25.0
 
-        # Probe media for duration using ffprobe if available
+        # Probe media for duration/fps via the canonical ffprobe adapter
+        # (best-effort: a missing binary or unreadable file falls back to the
+        # project fps and a single-frame out-point, as before).
         duration_seconds: float | None = None
         try:
-            import shutil
-            if shutil.which("ffprobe"):
-                import subprocess
-                import json as _json
-                probe_result = subprocess.run(
-                    [
-                        "ffprobe", "-v", "quiet",
-                        "-print_format", "json",
-                        "-show_streams",
-                        str(media_file),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
-                if probe_result.returncode == 0:
-                    probe_data = _json.loads(probe_result.stdout)
-                    for stream in probe_data.get("streams", []):
-                        if stream.get("codec_type") == "video":
-                            dur = stream.get("duration")
-                            if dur:
-                                duration_seconds = float(dur)
-                                r_num = stream.get("r_frame_rate", "")
-                                if "/" in r_num:
-                                    num, den = r_num.split("/")
-                                    if int(den) > 0:
-                                        fps = int(num) / int(den)
-                            break
-                    if duration_seconds is None:
-                        # fallback: check format
-                        fmt = probe_data.get("format", {})
-                        dur = fmt.get("duration")
-                        if dur:
-                            duration_seconds = float(dur)
-        except Exception:
-            pass  # ffprobe unavailable or failed; continue with defaults
+            from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
+            asset = probe_media(media_file)
+            if asset.duration > 0:
+                duration_seconds = asset.duration
+            if asset.fps > 0:
+                fps = asset.fps
+        except Exception:  # noqa: BLE001 -- documented best-effort probe
+            pass
 
         # Convert seconds to frames (half-up, canonical helper)
         in_frame = seconds_to_frames(in_seconds, fps)

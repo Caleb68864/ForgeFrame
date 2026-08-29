@@ -216,7 +216,7 @@ def _render_outline_markdown(data: dict) -> str:
 
     # Metadata footer
     if data.get("constraints"):
-        lines.append(f"---")
+        lines.append("---")
         lines.append(f"*Constraints noted: {data['constraints']}*")
         lines.append(f"*Audience: {data['audience']}*")
         lines.append("")

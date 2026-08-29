@@ -40,3 +40,10 @@
 - Surfaces: a Windows-verified smoke output in the user's hands (memory: Kdenlive 25.08.3 opens them) does not prove rule 6 holds in general — those smokes were built from workspace-relative or already-posix inputs. The defect only appears when a tool receives an absolute Windows path, which is exactly what an MCP client on Windows sends. The test-side path literals are a recurring tax: every Windows-only failure costs a triage pass to separate "test is non-portable" from "product is broken", and this session found one of each on the same line pair.
 - Watch: `kdenlive:proxy` and `kdenlive:originalurl` are also path-valued properties and are *not* normalised (they flow through the generic properties loop). No evidence yet that Kdenlive's loader chokes on them; if a Windows user reports a proxy that will not attach, that is the first place to look. New tests: assert `Path`-to-`Path` or `.as_posix()` — never a bare POSIX literal.
 - Commit: this entry's commit on `main`.
+
+## 2026-08-28 — clip_insert uses the probe adapter; lint nits
+- Symptom: `server/tools/clips_nle.clip_insert` hand-rolled a 40-line `ffprobe` argv + JSON parse inside a shell module (authoring checklist rule 5: never hand-roll ffprobe argv in a shell) to get duration and fps — both of which `adapters/ffmpeg/probe.probe_media` already returns. `publishing.py`'s stopword set listed `"gonna"` twice (B033); nine `f"..."` strings had no placeholders (F541).
+- Fix: `clip_insert` calls `probe_media` (best-effort, same fallback to project fps / single-frame out-point). Duplicate and empty-prefix nits removed. Dead-code baseline is unchanged: the 39 F401 in the `patcher.py` shim and the 14 test-side F841 are the documented intentional set.
+- Surfaces: nothing beyond the checklist violation; recorded so the shell stays thin.
+- Watch: none.
+- Commit: this entry's commit on `main`.
