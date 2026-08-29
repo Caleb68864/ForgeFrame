@@ -72,7 +72,8 @@ class TestApplyMaskedWipe:
 
         intent = mock_patch.call_args[0][1][0]
         assert intent.composition_type == "luma"
-        assert intent.params["resource"] == os.path.join(LUMA_DIR, "luma05.pgm")
+        # Rule 6: resources are always emitted with forward slashes.
+        assert intent.params["resource"] == os.path.join(LUMA_DIR, "luma05.pgm").replace("\\", "/")
         assert intent.params["invert"] == "0"
         assert intent.params["softness"] == "0.0"
         assert intent.start_frame == 100

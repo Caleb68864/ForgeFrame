@@ -115,7 +115,8 @@ def apply_masked_wipe(
     if not 0.0 <= softness <= 1.0:
         raise ValueError(f"softness must be in [0.0, 1.0] (got {softness})")
 
-    resource = resolve_luma(luma_file)
+    # Forward slashes even on Windows (CLAUDE.md hard rule 6 for resources).
+    resource = resolve_luma(luma_file).replace("\\", "/")
 
     params = {
         "resource": resource,

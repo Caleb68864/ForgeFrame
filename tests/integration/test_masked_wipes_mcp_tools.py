@@ -156,7 +156,8 @@ def test_masked_wipe_custom_matte_invert_softness(tmp_path):
 
     props = _props([t for t in _transitions(ws / pf)
                     if t.attrib.get("mlt_service") == "luma"][-1])
-    assert props["resource"] == str(matte)
+    # Rule 6: the serialized resource always uses forward slashes.
+    assert props["resource"] == Path(matte).as_posix()
     assert props["invert"] == "1"
     assert props["softness"] == "0.4"
 

@@ -191,7 +191,7 @@ def test_vo_plan_guides_then_attach_and_status(tmp_path):
         assert gap.out_point == expected_frame - 1
     # Producer resource points at the recorded take.
     prod = next(p for p in proj2.producers if p.id == real[0].producer_id)
-    assert prod.resource == str(take)
+    assert prod.resource == Path(take).as_posix()  # rule 6: forward slashes
 
     # Status shows one recorded, two missing.
     status = vo_status(workspace_path=str(ws))

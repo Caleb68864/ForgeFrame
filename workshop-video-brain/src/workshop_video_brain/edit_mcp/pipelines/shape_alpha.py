@@ -87,7 +87,9 @@ def _shape_inner_props(
     if mask_out < -1:
         raise ValueError(f"mask_out={mask_out} must be >= -1 (-1 = clip end)")
     return [
-        ("resource", str(resource)),
+        # Kdenlive resource paths use forward slashes even on Windows (hard
+        # rule 6 in CLAUDE.md): a backslash path confuses the bin loader.
+        ("resource", str(resource).replace("\\", "/")),
         ("mix", str(mix)),
         ("softness", f"{softness}"),
         ("invert", _bool01(invert)),

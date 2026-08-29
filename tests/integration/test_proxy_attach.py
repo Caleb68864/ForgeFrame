@@ -102,7 +102,7 @@ def test_attach_wires_touched_proxy(tmp_path):
 
     reparsed = parse_project(proj)
     prod = reparsed.producers[0]
-    assert prod.resource == str(proxy)
+    assert prod.resource == proxy.as_posix()  # rule 6: forward slashes
     assert prod.properties["kdenlive:proxy"] == str(proxy)
     assert prod.properties["kdenlive:originalurl"] == "/raw/clip.mp4"
     assert reparsed.docproperties["enableproxy"] == "1"
@@ -207,7 +207,7 @@ def test_real_proxy_generate_status_attach(tmp_path):
     assert out["data"]["attached"] == ["producer0"]
 
     reparsed = parse_project(proj)
-    assert reparsed.producers[0].resource == str(proxy_path_for(asset, proxy_dir))
+    assert reparsed.producers[0].resource == proxy_path_for(asset, proxy_dir).as_posix()
 
     # After attach the status reports the proxy present.
     st2 = proxy_status(workspace_path=str(ws), project_file=str(proj))

@@ -207,7 +207,7 @@ def test_clip_place_tool_missing_media_errors(project_ws):
     )
     assert res["status"] == "error"
     assert res["error_type"] == "missing_file"
-    assert "/nope/missing.mp4" in res["message"]
+    assert str(Path("/nope/missing.mp4")) in res["message"]
 
 
 def test_clip_place_tool_bad_track(project_ws):

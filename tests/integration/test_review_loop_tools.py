@@ -19,7 +19,7 @@ from pathlib import Path
 
 from PIL import Image, ImageStat
 
-from tests._testkit import unwrap
+from tests._testkit import requires_melt, unwrap
 
 from workshop_video_brain.core.models.kdenlive import (
     KdenliveProject,
@@ -77,6 +77,7 @@ def _dominant(png: Path) -> tuple[float, float, float]:
 
 # --- 5a: render_review_frames ---------------------------------------------
 
+@requires_melt
 def test_render_review_frames_extracts_looks_and_qc(tmp_path):
     proj = tmp_path / "cut.kdenlive"
     _two_clip_project(proj)
@@ -124,6 +125,7 @@ def test_render_review_frames_extracts_looks_and_qc(tmp_path):
     assert "reports/review/" in data["output_dir"].replace("\\", "/")
 
 
+@requires_melt
 def test_render_review_frames_at_markers(tmp_path):
     """with every_seconds=0 and at_markers, frames come only from markers."""
     proj = tmp_path / "cut.kdenlive"
@@ -216,6 +218,7 @@ def test_thumbnail_generate_overlays_text(tmp_path):
     assert any(p > 235 for p in txt_px), "no bright glyph pixels"
 
 
+@requires_melt
 def test_thumbnail_generate_from_kdenlive_project(tmp_path):
     """Frame can be pulled straight from a .kdenlive via melt."""
     proj = tmp_path / "cut.kdenlive"

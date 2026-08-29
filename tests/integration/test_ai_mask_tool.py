@@ -184,8 +184,8 @@ def test_mask_generate_wiring(tmp_path, monkeypatch):
     out = mask_generate(workspace_path=str(ws), source="media/raw/clip.mp4")
     assert out["status"] == "success", out
     assert out["data"]["engine"] == "rembg"
-    assert out["data"]["output"].endswith("media/derived_masks/clip_matte.mp4")
-    assert out["data"]["input"].endswith("media/raw/clip.mp4")
+    assert Path(out["data"]["output"]).as_posix().endswith("media/derived_masks/clip_matte.mp4")
+    assert Path(out["data"]["input"]).as_posix().endswith("media/raw/clip.mp4")
 
 
 def test_mask_generate_no_source_error(tmp_path):
@@ -219,7 +219,7 @@ def test_mask_generate_and_apply_wiring(tmp_path, monkeypatch):
     assert out["data"]["mlt_service"] == "shape"
     assert out["data"]["type"] == "image_alpha"
     assert "snapshot_id" in out["data"]
-    assert out["data"]["mask_file"].endswith(matte_rel)
+    assert Path(out["data"]["mask_file"]).as_posix().endswith(matte_rel)
 
     # A Shape Alpha effect referencing the matte was inserted at index 0.
     from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project

@@ -199,7 +199,7 @@ class TestSegmentAtSilence:
         for p in data["segment_paths"]:
             assert Path(p).exists()
             # Output lives under media/processed, never media/raw.
-            assert "media/processed" in p
+            assert "media/processed" in Path(p).as_posix()
             assert "media/raw" not in p
 
 

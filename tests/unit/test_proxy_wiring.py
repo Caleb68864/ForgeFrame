@@ -238,7 +238,7 @@ def test_roundtrip_preserves_producer_proxy_props(tmp_path):
     reparsed = parse_project(proj_file)
 
     prod = reparsed.producers[0]
-    assert prod.resource == str(proxy_dir / "clip_proxy.mp4")
+    assert prod.resource == (proxy_dir / "clip_proxy.mp4").as_posix()  # rule 6: forward slashes
     assert prod.properties["kdenlive:proxy"] == str(proxy_dir / "clip_proxy.mp4")
     assert prod.properties["kdenlive:originalurl"] == "/raw/clip.mp4"
 

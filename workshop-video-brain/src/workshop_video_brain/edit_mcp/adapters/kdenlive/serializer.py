@@ -502,11 +502,14 @@ def serialize_project(
         else:
             p_elem = ET.SubElement(root, "producer")
             p_elem.set("id", producer.id)
-        # resource property first (critical for Kdenlive to find media)
+        # resource property first (critical for Kdenlive to find media).
+        # Hard rule 6: resource paths use forward slashes even on Windows --
+        # a backslash path confuses Kdenlive's bin loader. Callers hand us
+        # whatever ``str(Path)`` produced, so normalise at the one write site.
         if producer.resource:
             resource_prop = ET.SubElement(p_elem, "property")
             resource_prop.set("name", "resource")
-            resource_prop.text = producer.resource
+            resource_prop.text = producer.resource.replace("\\", "/")
         # A media bin producer needs an mlt_service so Kdenlive classifies it.
         # Default AV producers that carry only a resource (smoke fixtures) to
         # ``avformat`` -- the *validating* demuxer, which probes the file and
