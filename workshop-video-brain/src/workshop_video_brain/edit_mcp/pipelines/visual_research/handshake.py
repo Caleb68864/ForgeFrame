@@ -20,6 +20,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+from workshop_video_brain.core.utils.paths import is_protected_path
 from workshop_video_brain.core.models.visual_research import (
     FrameCandidate,
     ResearchCapture,
@@ -165,12 +166,10 @@ def _fingerprint_matches(recorded: dict, video_path: Path) -> bool:
 # ---------------------------------------------------------------------------
 
 
-_PROTECTED_SUBSTRINGS = ("media/raw", "projects/source")
-
-
 def _is_protected_path(path: Path) -> bool:
-    posix = path.resolve().as_posix()
-    return any(marker in posix for marker in _PROTECTED_SUBSTRINGS)
+    # Shared segment-based check (core.utils.paths) -- one definition of
+    # "protected tree" for the whole package.
+    return is_protected_path(path)
 
 
 def _prepare_output_dir(output_dir: Path, overwrite: bool) -> None:

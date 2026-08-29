@@ -220,9 +220,8 @@ def title_card_add(
         result = cp.plan_overwrite(target.entries, place_at, placed)
         target.entries = result.entries
 
-        # --- snapshot before write (best effort) ----------------------
-        _snapshot_before_write(project_path)
-
+        # serialize_project snapshots any existing file before overwriting
+        # (adapters/kdenlive/serializer.py) -- no bundle-local copy needed.
         serialize_project(new, project_path)
 
         return _ok(
@@ -241,26 +240,3 @@ def title_card_add(
         )
     except Exception as exc:  # pragma: no cover - defensive
         return operation_failed(str(exc), cause=exc)
-
-
-def _snapshot_before_write(project_path: Path) -> None:
-    """Snapshot *project_path* if it lives inside a workspace (best effort)."""
-    try:
-        from workshop_video_brain.workspace import snapshot as snapshot_manager
-
-        ws_root = project_path.parent
-        for _ in range(10):
-            if (ws_root / "projects" / "working_copies").exists():
-                break
-            if ws_root.parent == ws_root:
-                return
-            ws_root = ws_root.parent
-        else:
-            return
-        snapshot_manager.create(
-            workspace_root=ws_root,
-            file_to_snapshot=project_path,
-            description=f"before_title_card_{project_path.name}",
-        )
-    except Exception:
-        pass

@@ -45,6 +45,8 @@ import math
 import subprocess
 from typing import Any, Callable
 
+from workshop_video_brain.core.utils.paths import ProtectedPathError
+
 logger = logging.getLogger("workshop_video_brain.edit_mcp.tools")
 
 # ---------------------------------------------------------------------------
@@ -356,6 +358,19 @@ def from_exception(exc: BaseException) -> dict:
             cause=_one_line_cause(getattr(exc, "cause", exc)),
             path=path or None,
         )
+    if isinstance(exc, ProtectedPathError):
+        return err(
+            msg,
+            error_type=INVALID_INPUT,
+            suggestion=(
+                "media/raw/ and projects/source/ are read-only by design -- "
+                "they hold the user's only copy of the footage and the original "
+                "projects. Write to media/processed/, projects/working_copies/ "
+                "or reports/ instead (project_create_working_copy makes an "
+                "editable copy)."
+            ),
+            cause=cause,
+        )
     if isinstance(exc, FileNotFoundError):
         return err(
             msg,
@@ -486,6 +501,10 @@ def tool_guard(fn: Callable[..., Any]) -> Callable[..., Any]:
         try:
             return fn(*args, **kwargs)
         except Exception as exc:  # noqa: BLE001 -- deliberate backstop
+            if isinstance(exc, ProtectedPathError):
+                # Safety-rule refusal: a known, actionable condition.
+                logger.warning("Tool %s: %s", fn.__name__, _one_line_cause(exc))
+                return from_exception(exc)
             classified = _classify_subprocess_exception(exc)
             if classified is not None:
                 # Known environment condition (timeout / missing binary): log

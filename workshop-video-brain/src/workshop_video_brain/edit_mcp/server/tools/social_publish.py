@@ -5,6 +5,8 @@ registers with the shared FastMCP singleton via ``@mcp.tool()``.
 """
 from __future__ import annotations
 
+import logging
+
 import json
 from pathlib import Path
 
@@ -27,6 +29,8 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     _validate_workspace_path,
 )
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -79,8 +83,8 @@ def social_find_clips(
                         "text": seg.text,
                     })
                     all_text_parts.append(seg.text)
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001 -- one bad transcript must not hide the rest
+                logger.warning("Skipping unreadable transcript %s: %s", json_path, exc)
 
         transcript_text = " ".join(all_text_parts)
         candidates = find_highlight_segments(

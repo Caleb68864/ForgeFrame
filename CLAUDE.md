@@ -82,8 +82,16 @@ envelope); real logic lives in `edit_mcp/pipelines/` and `edit_mcp/adapters/`.
    video-editing guide / vault research notes so it is discoverable to users.
 
 ### Safety Rules
-- Never overwrite files in `media/raw/` or `projects/source/`
-- Always create snapshots before writing project files
+- Never overwrite files in `media/raw/` or `projects/source/`. **Enforced** at
+  the two write choke points: `serialize_project` refuses any `.kdenlive` write
+  under either tree and `run_ffmpeg` refuses to overwrite an existing file
+  there (`core/utils/paths.assert_not_protected`, raises `ProtectedPathError`
+  -> `invalid_input` via `tool_guard`). Matching is on path segments, so a
+  `raw_footage/` folder elsewhere is fine. `tests/unit/test_protected_paths.py`.
+- Always create snapshots before writing project files. `serialize_project`
+  snapshots any existing file it is about to overwrite (best-effort, logged),
+  so a shell that writes through the serializer inherits this -- do not add a
+  bundle-local snapshot helper on top of it.
 - Obsidian section boundaries: `<!-- wvb:section:name -->` ... `<!-- /wvb:section:name -->`
 - Frontmatter updates merge, never overwrite unrelated keys
 

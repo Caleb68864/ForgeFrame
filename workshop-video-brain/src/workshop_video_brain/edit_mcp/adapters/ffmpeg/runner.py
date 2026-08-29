@@ -8,6 +8,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from workshop_video_brain.core.utils.paths import assert_not_protected
+
 logger = logging.getLogger(__name__)
 
 # Generous default wall-clock ceiling for a single FFmpeg invocation. Renders,
@@ -122,11 +124,19 @@ def run_ffmpeg(
         caller can inspect), not raised.
 
     Raises:
+        ProtectedPathError: if *output_path* already exists inside
+            ``media/raw/`` or ``projects/source/`` (never overwritten).
         FFmpegNotFound: if the ffmpeg binary is not on PATH (environment error,
             carries an install hint).
         FFmpegTimeout: if the process exceeds *timeout* seconds; the message
             names the command and elapsed time.
     """
+    # Never overwrite a file in media/raw/ or projects/source/ (safety rule).
+    # New files there are the caller's business (e.g. an explicit single-frame
+    # extract beside its source); clobbering the user's only copy is not.
+    if Path(output_path).exists():
+        assert_not_protected(output_path, "ffmpeg output")
+
     cmd: list[str] = ["ffmpeg"]
     if overwrite:
         cmd.append("-y")

@@ -5,6 +5,8 @@ registers with the shared FastMCP singleton via ``@mcp.tool()``.
 """
 from __future__ import annotations
 
+import logging
+
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
@@ -26,6 +28,8 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _ok,
     latest_project,
 )
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -69,8 +73,8 @@ def timeline_build_review(workspace_path: str, mode: str = "ranked") -> dict:
                 raw = _json.loads(mf.read_text(encoding="utf-8"))
                 for item in raw:
                     markers.append(Marker(**item))
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001 -- one bad file must not hide the rest
+                logger.warning("Skipping unreadable markers file %s: %s", mf, exc)
 
         if not markers:
             return err("No markers found in this workspace.",
@@ -135,8 +139,8 @@ def timeline_build_selects(workspace_path: str, min_confidence: float = 0.5) -> 
                 raw = _json.loads(mf.read_text(encoding="utf-8"))
                 for item in raw:
                     markers.append(Marker(**item))
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001 -- one bad file must not hide the rest
+                logger.warning("Skipping unreadable markers file %s: %s", mf, exc)
 
         if not markers:
             return err("No markers found in this workspace.",

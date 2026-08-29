@@ -14,6 +14,7 @@ from math import gcd
 from pathlib import Path
 
 from workshop_video_brain.core.models.kdenlive import KdenliveProject
+from workshop_video_brain.core.utils.paths import assert_not_protected
 from workshop_video_brain.workspace import snapshot as snapshot_manager
 
 logger = logging.getLogger(__name__)
@@ -404,6 +405,10 @@ def serialize_project(
     The file is written only after the XML is verified as well-formed.
     """
     output_path = Path(output_path)
+
+    # Never write a project into media/raw/ or projects/source/ (safety
+    # rule). Guarded here, at the one write site, so every tool inherits it.
+    assert_not_protected(output_path, "project file")
 
     # Refuse structurally-inconsistent models *before* any file I/O so a bad
     # project never leaves a partial/broken document behind.

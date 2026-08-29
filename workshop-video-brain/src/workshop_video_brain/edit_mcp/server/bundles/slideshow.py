@@ -79,8 +79,8 @@ def _resolve_profile(
         # A corrupt user project must fail loudly, not silently fall back to
         # defaults; surface it to the tool body which routes to corrupt_project.
         raise
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001 -- best-effort profile lookup
+        logger.warning("Could not read project profile; using defaults: %s", exc)
 
     if resolution and resolution.strip():
         raw = resolution.lower().replace(" ", "")
