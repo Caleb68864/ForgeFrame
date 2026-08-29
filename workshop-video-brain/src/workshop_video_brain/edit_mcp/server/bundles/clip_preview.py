@@ -29,6 +29,9 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 )
 from workshop_video_brain.edit_mcp.pipelines import clip_preview as _cp
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_frame_geometry
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    ANALYSIS_TIMEOUT_SECONDS as _ANALYSIS_TIMEOUT_SECONDS,
+)
 
 
 # ffprobe frame-geometry probe relocated to ``adapters/ffmpeg/probe``; delegate
@@ -98,19 +101,28 @@ def clips_preview_gif(
         if fmt == "gif":
             palette = previews / f"{src.stem}_palette.png"
             pass1 = _cp.palettegen_command(src, palette, seconds, fps, width)
-            p1 = subprocess.run(pass1, capture_output=True, text=True, check=False)
+            p1 = subprocess.run(
+                pass1, capture_output=True, text=True, check=False,
+                timeout=_ANALYSIS_TIMEOUT_SECONDS,
+            )
             if p1.returncode != 0 or not palette.exists():
                 return operation_failed("palettegen failed", cause=p1.stderr[-400:], suggestion="The external command exited non-zero; the stderr tail is in 'cause'. Check the input media/codecs and that the tool's filters are supported by your ffmpeg/melt build.")
             pass2 = _cp.paletteuse_command(
                 src, palette, output_path, seconds, fps, width
             )
-            p2 = subprocess.run(pass2, capture_output=True, text=True, check=False)
+            p2 = subprocess.run(
+                pass2, capture_output=True, text=True, check=False,
+                timeout=_ANALYSIS_TIMEOUT_SECONDS,
+            )
             palette.unlink(missing_ok=True)
             if p2.returncode != 0 or not output_path.exists():
                 return operation_failed("paletteuse failed", cause=p2.stderr[-400:], suggestion="The external command exited non-zero; the stderr tail is in 'cause'. Check the input media/codecs and that the tool's filters are supported by your ffmpeg/melt build.")
         else:
             cmd = _cp.mp4_preview_command(src, output_path, seconds, fps, width)
-            proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, check=False,
+                timeout=_ANALYSIS_TIMEOUT_SECONDS,
+            )
             if proc.returncode != 0 or not output_path.exists():
                 return operation_failed("mp4 preview failed", cause=proc.stderr[-400:], suggestion="The external command exited non-zero; the stderr tail is in 'cause'. Check the input media/codecs and that the tool's filters are supported by your ffmpeg/melt build.")
 

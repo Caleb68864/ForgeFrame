@@ -7,6 +7,9 @@ import subprocess
 from pathlib import Path
 
 from workshop_video_brain.core.models.qc import QCReport, TimeRange
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    ANALYSIS_TIMEOUT_SECONDS as _ANALYSIS_TIMEOUT_SECONDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +68,8 @@ def _run_ffmpeg(args: list[str]) -> str:
         ["ffmpeg", *args],
         capture_output=True,
         text=True,
+        check=False,
+        timeout=_ANALYSIS_TIMEOUT_SECONDS,
     )
     return result.stderr
 

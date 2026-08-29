@@ -42,6 +42,7 @@ from __future__ import annotations
 import functools
 import logging
 import math
+import subprocess
 from typing import Any, Callable
 
 logger = logging.getLogger("workshop_video_brain.edit_mcp.tools")
@@ -338,6 +339,10 @@ def from_exception(exc: BaseException) -> dict:
     msg = str(exc)
     cause = _one_line_cause(exc)
 
+    classified = _classify_subprocess_exception(exc)
+    if classified is not None:
+        return classified
+
     if ProjectParseError and isinstance(exc, ProjectParseError):
         path = str(getattr(exc, "path", ""))
         return err(
@@ -364,7 +369,7 @@ def from_exception(exc: BaseException) -> dict:
             msg,
             error_type=MISSING_DEPENDENCY,
             suggestion=(
-                f"A required Python package is missing"
+                "A required Python package is missing"
                 + (f" ('{name}')" if name else "")
                 + ". Install it into the environment (e.g. `uv add <package>`)."
             ),
@@ -382,6 +387,76 @@ def from_exception(exc: BaseException) -> dict:
             cause=cause,
         )
     return operation_failed(msg, cause=exc)
+
+
+def _classify_subprocess_exception(exc: BaseException) -> dict | None:
+    """Map child-process environment failures to actionable errors, or None.
+
+    Two conditions are *known*, not bugs, and must never be reported with the
+    "unexpected error, please report it" voice:
+
+    * a wall-clock timeout (``subprocess.TimeoutExpired`` or the runner's
+      ``FFmpegTimeout``) -- every subprocess site carries a ``timeout=`` (see
+      ``tests/unit/test_subprocess_timeouts.py``), so a wedged or oversized
+      job surfaces here rather than hanging the server;
+    * a missing ffmpeg/ffprobe binary (``FFmpegNotFound``) -- an install
+      problem the user fixes in their environment.
+    """
+    # The runner's exception classes live in the ffmpeg adapter; import lazily
+    # so this module keeps no hard import-time dependency on adapters.
+    try:
+        from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+            FFmpegNotFound,
+            FFmpegTimeout,
+        )
+    except Exception:  # pragma: no cover - adapter always present in practice
+        FFmpegNotFound = FFmpegTimeout = ()  # type: ignore[assignment]
+
+    if isinstance(exc, subprocess.TimeoutExpired):
+        binary = ""
+        if exc.cmd:
+            first = exc.cmd[0] if isinstance(exc.cmd, (list, tuple)) else str(exc.cmd).split()[0]
+            binary = str(first)
+        limit = float(exc.timeout)
+        return err(
+            f"{binary or 'External command'} timed out after {limit:.0f}s.",
+            error_type=OPERATION_FAILED,
+            suggestion=(
+                "The child process exceeded its wall-clock ceiling and was killed. "
+                "For very long or high-resolution media, work on a shorter range "
+                "or a proxy first; if the input is small, the process was likely "
+                "wedged -- check the server log and that the binary runs by hand."
+            ),
+            cause=_one_line_cause(exc),
+            timed_out_after=limit,
+            binary=binary or None,
+        )
+    if FFmpegTimeout and isinstance(exc, FFmpegTimeout):
+        return err(
+            str(exc),
+            error_type=OPERATION_FAILED,
+            suggestion=(
+                "ffmpeg exceeded its wall-clock ceiling and was killed. For very "
+                "long or high-resolution media, work on a shorter range or a proxy "
+                "first; if the input is small, check the server log for a wedged "
+                "process."
+            ),
+            cause=_one_line_cause(exc),
+            binary="ffmpeg",
+        )
+    if FFmpegNotFound and isinstance(exc, FFmpegNotFound):
+        name = "ffprobe" if "ffprobe" in str(exc) else "ffmpeg"
+        return err(
+            str(exc),
+            error_type=MISSING_BINARY,
+            suggestion=(
+                "Install FFmpeg and ensure it is on PATH (e.g. 'apt install ffmpeg', "
+                "'brew install ffmpeg', or the Windows gyan.dev build)."
+            ),
+            cause=_one_line_cause(exc),
+            binary=name,
+        )
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -411,6 +486,14 @@ def tool_guard(fn: Callable[..., Any]) -> Callable[..., Any]:
         try:
             return fn(*args, **kwargs)
         except Exception as exc:  # noqa: BLE001 -- deliberate backstop
+            classified = _classify_subprocess_exception(exc)
+            if classified is not None:
+                # Known environment condition (timeout / missing binary): log
+                # at WARNING with the one-line cause, not a full traceback.
+                logger.warning(
+                    "Tool %s: %s", fn.__name__, _one_line_cause(exc)
+                )
+                return classified
             logger.exception("Unhandled exception in tool %s", fn.__name__)
             return operation_failed(
                 f"{fn.__name__} failed unexpectedly: {type(exc).__name__}",

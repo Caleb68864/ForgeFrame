@@ -22,6 +22,9 @@ import tempfile
 from pathlib import Path
 
 from workshop_video_brain.edit_mcp.pipelines._common import escape_filter_path
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    ANALYSIS_TIMEOUT_SECONDS as _ANALYSIS_TIMEOUT_SECONDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +92,10 @@ def detect_scenes(
                     "threshold": threshold, "command": cmd, "cuts": []}
 
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, check=False,
+                timeout=_ANALYSIS_TIMEOUT_SECONDS,
+            )
         except FileNotFoundError:
             # ffmpeg binary itself missing -- an environment error, not "no cuts".
             return {

@@ -17,6 +17,9 @@ import subprocess
 from pathlib import Path
 
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    ANALYSIS_TIMEOUT_SECONDS as _ANALYSIS_TIMEOUT_SECONDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +143,10 @@ def generate_thumbnail_sheet(
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    proc = subprocess.run(frames_cmd, capture_output=True, text=True, check=False)
+    proc = subprocess.run(
+        frames_cmd, capture_output=True, text=True, check=False,
+        timeout=_ANALYSIS_TIMEOUT_SECONDS,
+    )
     if proc.returncode != 0:
         return {**base, "success": False,
                 "error": f"frame extraction failed: {proc.stderr[-400:]}",
@@ -153,7 +159,10 @@ def generate_thumbnail_sheet(
 
     sheet_out: str | None = None
     if grid:
-        sproc = subprocess.run(sheet_cmd, capture_output=True, text=True, check=False)
+        sproc = subprocess.run(
+            sheet_cmd, capture_output=True, text=True, check=False,
+            timeout=_ANALYSIS_TIMEOUT_SECONDS,
+        )
         if sproc.returncode == 0 and sheet_path.exists():
             sheet_out = str(sheet_path)
         else:

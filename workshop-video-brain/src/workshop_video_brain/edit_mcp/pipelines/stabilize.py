@@ -34,6 +34,9 @@ from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
     run_ffmpeg,
 )
 from workshop_video_brain.edit_mcp.pipelines._common import escape_filter_path
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    CAPABILITY_TIMEOUT_SECONDS as _CAPABILITY_TIMEOUT_SECONDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -165,8 +168,9 @@ def vidstab_available() -> bool:
             capture_output=True,
             text=True,
             check=False,
+            timeout=_CAPABILITY_TIMEOUT_SECONDS,
         )
-    except (OSError, ValueError):
+    except (OSError, ValueError, subprocess.TimeoutExpired):
         return False
     out = proc.stdout
     return "vidstabdetect" in out and "vidstabtransform" in out

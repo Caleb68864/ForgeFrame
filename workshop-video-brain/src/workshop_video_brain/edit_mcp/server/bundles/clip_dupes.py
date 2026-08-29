@@ -36,6 +36,9 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 )
 from workshop_video_brain.edit_mcp.pipelines import clip_dupes as _cd
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_format_duration
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    ANALYSIS_TIMEOUT_SECONDS as _ANALYSIS_TIMEOUT_SECONDS,
+)
 
 logger = logging.getLogger("workshop_video_brain.edit_mcp.tools")
 
@@ -76,7 +79,10 @@ def _hash_clip_phash(
     for idx, ts in enumerate(stamps):
         frame_path = tmp_dir / f"{clip.stem}_{idx}.png"
         cmd = _cd.frame_extract_command(clip, ts, frame_path)
-        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, check=False,
+            timeout=_ANALYSIS_TIMEOUT_SECONDS,
+        )
         if proc.returncode != 0 or not frame_path.exists():
             continue
         try:
@@ -137,7 +143,8 @@ def _find_signature(
         for j in range(i + 1, len(clips)):
             cmd = _cd.signature_pair_command(clips[i], clips[j])
             proc = subprocess.run(
-                cmd, capture_output=True, text=True, check=False
+                cmd, capture_output=True, text=True, check=False,
+                timeout=_ANALYSIS_TIMEOUT_SECONDS,
             )
             verdict = _cd.parse_signature_match(proc.stderr)
             if verdict["matched"]:

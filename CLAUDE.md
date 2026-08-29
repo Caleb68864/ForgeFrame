@@ -177,7 +177,36 @@ This loop is dramatically faster than guessing.
 
 ## ffmpeg subprocess hygiene
 
-All ffmpeg subprocess calls in `adapters/ffmpeg/*` and `adapters/stt/whisper_engine.py` must pass `timeout=` to `subprocess.run`. Without timeouts, the MCP server blocks indefinitely on UHD proxy generation or Whisper transcription, and the client RPC times out. Existing timeouts: 600s for proxy/runner, 300s for whisper extraction and silence detection. Catch `subprocess.TimeoutExpired` and clean up partial outputs.
+**Every blocking `subprocess` call in the source tree must pass `timeout=`**
+-- not just the ffmpeg adapters. `tests/unit/test_subprocess_timeouts.py`
+walks the ASTs and fails on any `subprocess.run/check_output/check_call/call`
+without one. Without a ceiling, a wedged child (UHD proxy generation, Whisper,
+a broken Store-alias binary, an AV-scanner stall) hangs the MCP server forever
+and the client RPC times out with no diagnosable cause.
+
+Pick the ceiling from the shared vocabulary in `adapters/ffmpeg/runner.py`:
+- `CAPABILITY_TIMEOUT_SECONDS` (30s) -- `ffmpeg -version` / `-filters` /
+  `-muxers` feature probes.
+- `ANALYSIS_TIMEOUT_SECONDS` (600s) -- one-pass reads that scale with clip
+  length but render nothing: loudness/silence/scene scans, frame extraction.
+- `DEFAULT_TIMEOUT_SECONDS` (3600s) -- full transcodes and renders.
+- `probe.py` has its own `_PROBE_TIMEOUT_SECONDS` (120s) for ffprobe.
+
+Best-effort helpers that return `None`/`False`/`0` on failure must add
+`subprocess.TimeoutExpired` to their `except` tuple (it is *not* an `OSError`).
+Anything that escapes reaches `tool_guard`, which classifies timeouts and a
+missing ffmpeg/ffprobe into actionable errors (`timed_out_after`, `binary`)
+rather than the "unexpected error, please report it" backstop.
+
+### Scratch frames never go beside the source video
+
+`adapters/ffmpeg/frames.extract_frame` writes beside the source only when
+neither `output_path` nor `output_dir` is given. Any *burst* or pipeline
+extraction (`extract_frame_burst`, `generate_candidates`, the handshake, the
+`research_video` service) must pass `output_dir` -- otherwise dropped
+candidates orphan into `media/raw/` (a protected tree) and concurrent runs
+race on identical filenames. `tests/integration/test_frames_never_beside_source.py`
+enforces it.
 
 ### Filtergraph rules (any module building a `-vf`/`-af`/`-lavfi` string)
 

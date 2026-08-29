@@ -39,6 +39,10 @@ from workshop_video_brain.edit_mcp.adapters.render.profiles import load_profile
 from workshop_video_brain.edit_mcp.pipelines.qc_check import run_qc as _run_qc_pipeline
 from workshop_video_brain.edit_mcp.pipelines.thumbnail_sheet import grid_dimensions
 from workshop_video_brain.edit_mcp.pipelines.titles import normalize_color
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    ANALYSIS_TIMEOUT_SECONDS as _ANALYSIS_TIMEOUT_SECONDS,
+    DEFAULT_TIMEOUT_SECONDS as _RENDER_TIMEOUT_SECONDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +194,10 @@ def _extract_frame(source: Path, at_seconds: float, out_png: Path, width: int) -
         "-vf", f"scale={int(width)}:-2",
         str(out_png),
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(
+        cmd, capture_output=True, text=True, check=False,
+        timeout=_ANALYSIS_TIMEOUT_SECONDS,
+    )
     if proc.returncode != 0:
         logger.debug("frame extract failed @%.3fs: %s", at_seconds, proc.stderr[-300:])
     return proc.returncode == 0 and out_png.exists()
@@ -291,7 +298,10 @@ def render_review_frames(
             "-frames:v", "1",
             str(sheet),
         ]
-        sproc = subprocess.run(scmd, capture_output=True, text=True)
+        sproc = subprocess.run(
+            scmd, capture_output=True, text=True, check=False,
+            timeout=_ANALYSIS_TIMEOUT_SECONDS,
+        )
         if sproc.returncode == 0 and sheet.exists():
             sheet_path = str(sheet)
         else:
@@ -391,7 +401,10 @@ def _render_kdenlive_frame(project_path: Path, at_seconds: float, out_png: Path)
         "melt", str(project_path), f"out={frame}",
         "-consumer", f"avformat:{tmp_dir}/f_%05d.png",
     ]
-    subprocess.run(cmd, capture_output=True, text=True)
+    subprocess.run(
+        cmd, capture_output=True, text=True, check=False,
+        timeout=_RENDER_TIMEOUT_SECONDS,
+    )
     frames = sorted(tmp_dir.glob("f_*.png"))
     if not frames:
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -412,7 +425,10 @@ def _extract_base_frame(src: Path, at_seconds: float, out_png: Path) -> bool:
         "-frames:v", "1",
         str(out_png),
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(
+        cmd, capture_output=True, text=True, check=False,
+        timeout=_ANALYSIS_TIMEOUT_SECONDS,
+    )
     return proc.returncode == 0 and out_png.exists()
 
 

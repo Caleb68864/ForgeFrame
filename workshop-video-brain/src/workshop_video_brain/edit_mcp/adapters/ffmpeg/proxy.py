@@ -72,6 +72,8 @@ def generate_proxy(
     asset: MediaAsset,
     output_dir: Path,
     policy: ProxyPolicy | None = None,
+    *,
+    timeout: float | None = None,
 ) -> Path:
     """Generate a proxy for *asset* in *output_dir*.
 
@@ -80,6 +82,9 @@ def generate_proxy(
     Args:
         asset: The source media asset.
         output_dir: Directory where the proxy file will be written.
+        timeout: Wall-clock ceiling for the encode in seconds; defaults to
+            the module's proxy budget. On expiry the partial output file is
+            removed and :class:`FFmpegTimeout` is raised.
         policy: Optional proxy policy (unused during encoding but kept for API
                 symmetry; encoding parameters are fixed per spec).
 
@@ -93,6 +98,8 @@ def generate_proxy(
     """
     if policy is None:
         policy = ProxyPolicy()
+    if timeout is None:
+        timeout = _PROXY_TIMEOUT_SECONDS
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -130,7 +137,7 @@ def generate_proxy(
             ],
             check=True,
             capture_output=True,
-            timeout=_PROXY_TIMEOUT_SECONDS,
+            timeout=timeout,
         )
     except FileNotFoundError as exc:
         raise FFmpegNotFound(
@@ -138,11 +145,15 @@ def generate_proxy(
             f"{_FFMPEG_INSTALL_HINT}"
         ) from exc
     except subprocess.TimeoutExpired as exc:
+        # A killed encode leaves a truncated, unplayable file that would pass
+        # the "already up-to-date" mtime check on the next call. Remove it.
+        output_path.unlink(missing_ok=True)
         raise FFmpegTimeout(
             f"ffmpeg proxy encode timed out after "
-            f"{_PROXY_TIMEOUT_SECONDS:.0f}s on {source_path}."
+            f"{timeout:.0f}s on {source_path}."
         ) from exc
     except subprocess.CalledProcessError as exc:
+        output_path.unlink(missing_ok=True)
         stderr = exc.stderr
         if isinstance(stderr, bytes):
             stderr = stderr.decode("utf-8", "replace")

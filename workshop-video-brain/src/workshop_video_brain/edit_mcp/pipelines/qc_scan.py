@@ -26,6 +26,9 @@ from pathlib import Path
 
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
 from workshop_video_brain.edit_mcp.pipelines._common import escape_filter_path
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    ANALYSIS_TIMEOUT_SECONDS as _ANALYSIS_TIMEOUT_SECONDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -226,7 +229,10 @@ def scan_clip(
         except Exception:  # noqa: BLE001
             duration = 0.0
 
-        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, check=False,
+            timeout=_ANALYSIS_TIMEOUT_SECONDS,
+        )
         stderr = proc.stderr
         stats_text = stats_file.read_text(encoding="utf-8") if stats_file.exists() else ""
 

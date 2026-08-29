@@ -40,6 +40,9 @@ import importlib.util
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    ANALYSIS_TIMEOUT_SECONDS as _ANALYSIS_TIMEOUT_SECONDS,
+)
 
 # Suffix appended to the source stem for the generated matte (mirrors the
 # ``_stabilized`` / ``_proxy`` / ``_cfr`` conventions in the ffmpeg adapters).
@@ -425,7 +428,10 @@ def plan_matte(
 
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, capture_output=True, text=True, check=False)
+    return subprocess.run(
+        cmd, capture_output=True, text=True, check=False,
+        timeout=_ANALYSIS_TIMEOUT_SECONDS,
+    )
 
 
 def generate_matte(

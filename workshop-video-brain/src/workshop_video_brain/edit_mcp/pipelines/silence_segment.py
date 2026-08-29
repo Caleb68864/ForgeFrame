@@ -20,6 +20,9 @@ from pathlib import Path
 
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.silence import detect_silence
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    DEFAULT_TIMEOUT_SECONDS as _RENDER_TIMEOUT_SECONDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +117,10 @@ def segment_at_silence(
         return base
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    proc = subprocess.run(
+        cmd, capture_output=True, text=True, check=False,
+        timeout=_RENDER_TIMEOUT_SECONDS,
+    )
     if proc.returncode != 0:
         return {**base, "success": False,
                 "error": f"segment muxer failed: {proc.stderr[-400:]}",

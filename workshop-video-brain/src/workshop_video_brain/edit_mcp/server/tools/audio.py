@@ -28,6 +28,9 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
     _validate_workspace_path,
     find_source_or_latest,
 )
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    ANALYSIS_TIMEOUT_SECONDS as _ANALYSIS_TIMEOUT_SECONDS,
+)
 
 # Audio/container suffixes accepted for the media/raw newest-file fallback.
 _AUDIO_EXTS = {".wav", ".mp3", ".flac", ".m4a", ".aac", ".mp4", ".mov", ".mkv"}
@@ -280,6 +283,7 @@ def audio_analyze(workspace_path: str, file_path: str = "") -> dict:
             capture_output=True,
             text=True,
             check=False,
+            timeout=_ANALYSIS_TIMEOUT_SECONDS,
         )
 
         # ffmpeg writes loudnorm JSON to stderr

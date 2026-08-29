@@ -342,9 +342,12 @@ def test_whisper_extract_audio(tmp_path):
 
 def test_proxy_timeout_fires_on_unrealistic_budget(tmp_path):
     """Set an absurdly short timeout and confirm ``generate_proxy`` raises
-    ``subprocess.TimeoutExpired`` rather than blocking.  This guards
-    against timeouts being silently dropped during refactors."""
+    ``FFmpegTimeout`` (the adapter's typed wrapper around
+    ``subprocess.TimeoutExpired``) rather than blocking, and removes the
+    partial output. This guards against timeouts being silently dropped
+    during refactors."""
     from workshop_video_brain.core.models import MediaAsset
+    from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import FFmpegTimeout
     from workshop_video_brain.edit_mcp.adapters.ffmpeg.proxy import generate_proxy
 
     src = USER_TEST_KDENLIVE / "8832126-uhd_3840_2160_30fps.mp4"  # ~32s UHD
@@ -358,7 +361,7 @@ def test_proxy_timeout_fires_on_unrealistic_budget(tmp_path):
         bitrate=17_000_000, video_codec="h264",
     )
     out_dir = tmp_path / "timeout_proxies"
-    with pytest.raises(subprocess.TimeoutExpired):
+    with pytest.raises(FFmpegTimeout):
         # 1 second is well below the ~10-30s the proxy encode would need.
         generate_proxy(asset, out_dir, timeout=1)
     # Partial output should be cleaned up.

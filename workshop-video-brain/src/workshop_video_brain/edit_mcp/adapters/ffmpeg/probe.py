@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 # A probe should be near-instant; this only guards against a wedged ffprobe.
 _PROBE_TIMEOUT_SECONDS = 120.0
+# ``-count_frames`` decodes every frame of the stream, so it scales with clip
+# length; bound it like an analysis pass, not a metadata probe.
+_COUNT_FRAMES_TIMEOUT_SECONDS = 600.0
 
 DEFAULT_EXTENSIONS: set[str] = {
     ".mp4", ".mkv", ".mov", ".avi", ".webm",
@@ -276,9 +279,16 @@ def probe_format_duration(path: Path, *, log_label: str = "duration probe") -> f
                 str(path),
             ],
             capture_output=True, text=True, check=False,
+            timeout=_PROBE_TIMEOUT_SECONDS,
         )
     except FileNotFoundError:
         logger.warning("%s: ffprobe binary not on PATH", log_label)
+        return None
+    except subprocess.TimeoutExpired:
+        logger.warning(
+            "%s: ffprobe timed out after %.0fs on %s",
+            log_label, _PROBE_TIMEOUT_SECONDS, path,
+        )
         return None
     except OSError as exc:
         logger.warning("%s: ffprobe failed on %s: %s", log_label, path, exc)
@@ -345,12 +355,13 @@ def count_audio_streams(path: Path | str) -> int:
                 "-of", "json", str(path),
             ],
             capture_output=True, text=True, check=False,
+            timeout=_PROBE_TIMEOUT_SECONDS,
         )
         if proc.returncode != 0:
             return 0
         data = json.loads(proc.stdout or "{}")
         return len(data.get("streams", []))
-    except (OSError, ValueError):
+    except (OSError, ValueError, subprocess.TimeoutExpired):
         return 0
 
 
@@ -374,13 +385,16 @@ def probe_frame_geometry(
                 str(path),
             ],
             capture_output=True, text=True, check=False,
+            # -count_frames decodes the whole stream, so allow the full
+            # (generous) decode budget rather than the near-instant probe one.
+            timeout=_COUNT_FRAMES_TIMEOUT_SECONDS,
         )
         vals = out.stdout.split()
         if len(vals) >= 3:
             return int(vals[0]), int(vals[1]), int(vals[2])
         if len(vals) == 2:
             return int(vals[0]), int(vals[1]), None
-    except (ValueError, OSError):
+    except (ValueError, OSError, subprocess.TimeoutExpired):
         pass
     return None, None, None
 

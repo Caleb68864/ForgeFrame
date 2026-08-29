@@ -13,6 +13,9 @@ from pathlib import Path
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import (
     probe_media,
 )
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    DEFAULT_TIMEOUT_SECONDS as _RENDER_TIMEOUT_SECONDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +119,10 @@ def transcode_to_cfr(
 
     logger.info("Transcoding VFR -> CFR: %s", " ".join(cmd))
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, check=False,
+        timeout=_RENDER_TIMEOUT_SECONDS,
+    )
 
     if result.returncode != 0:
         raise RuntimeError(

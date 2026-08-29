@@ -34,6 +34,9 @@ from workshop_video_brain.edit_mcp.pipelines import _common
 from workshop_video_brain.edit_mcp.pipelines.overlay_looks import (
     append_clip_to_playlist,
 )
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    ANALYSIS_TIMEOUT_SECONDS as _ANALYSIS_TIMEOUT_SECONDS,
+)
 
 DEFAULT_WPM = 150.0
 DEFAULT_FPS = 25.0
@@ -213,7 +216,10 @@ def audio_duration_seconds(path: Path) -> float:
         "default=nokey=1:noprint_wrappers=1",
         str(path),
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    proc = subprocess.run(
+        cmd, capture_output=True, text=True, check=False,
+        timeout=_ANALYSIS_TIMEOUT_SECONDS,
+    )
     if proc.returncode != 0:
         tail = (proc.stderr or "").strip().splitlines()
         raise RuntimeError(

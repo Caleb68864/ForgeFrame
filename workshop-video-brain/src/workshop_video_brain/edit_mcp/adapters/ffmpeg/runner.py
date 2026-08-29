@@ -16,6 +16,22 @@ logger = logging.getLogger(__name__)
 # exists only to stop a wedged/hung process from hanging the server forever.
 DEFAULT_TIMEOUT_SECONDS: float = 3600.0
 
+# Shared wall-clock tiers for the *other* subprocess sites in this package
+# (pipelines/bundles that build their own ffmpeg/ffprobe/melt argv rather than
+# going through :func:`run_ffmpeg`). Every ``subprocess.run`` in the source
+# tree must carry a ``timeout=`` -- ``tests/unit/test_subprocess_timeouts.py``
+# enforces it -- and these are the vocabulary to pick from:
+#
+# * ``CAPABILITY_TIMEOUT_SECONDS`` -- ``ffmpeg -version`` / ``-filters`` /
+#   ``-muxers`` style feature probes. Near-instant; the bound only catches a
+#   wedged binary (e.g. a broken Store alias or an AV-scanner stall).
+# * ``ANALYSIS_TIMEOUT_SECONDS`` -- single-pass reads of one media file that
+#   scale with its length but produce no full render: loudness scans, silence
+#   detection, scene detection, frame/thumbnail extraction, VFR checks.
+# * ``DEFAULT_TIMEOUT_SECONDS`` -- full transcodes and renders (see above).
+CAPABILITY_TIMEOUT_SECONDS: float = 30.0
+ANALYSIS_TIMEOUT_SECONDS: float = 600.0
+
 # Install hint surfaced when the ffmpeg binary itself is missing from PATH.
 _FFMPEG_INSTALL_HINT = (
     "Install FFmpeg and ensure it is on PATH "

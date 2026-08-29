@@ -39,6 +39,10 @@ from pathlib import Path
 import numpy as np
 
 from workshop_video_brain.edit_mcp.pipelines._common import parabolic_peak_offset
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    ANALYSIS_TIMEOUT_SECONDS as _ANALYSIS_TIMEOUT_SECONDS,
+    CAPABILITY_TIMEOUT_SECONDS as _CAPABILITY_TIMEOUT_SECONDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,9 +95,10 @@ def ffmpeg_available() -> bool:
             ["ffmpeg", "-hide_banner", "-version"],
             capture_output=True,
             check=False,
+            timeout=_CAPABILITY_TIMEOUT_SECONDS,
         )
         return True
-    except (OSError, ValueError):
+    except (OSError, ValueError, subprocess.TimeoutExpired):
         return False
 
 
@@ -109,8 +114,9 @@ def chromaprint_available() -> bool:
             capture_output=True,
             text=True,
             check=False,
+            timeout=_CAPABILITY_TIMEOUT_SECONDS,
         )
-    except (OSError, ValueError):
+    except (OSError, ValueError, subprocess.TimeoutExpired):
         return False
     return "chromaprint" in proc.stdout
 
@@ -141,7 +147,9 @@ def decode_mono_pcm(
         "-acodec", "pcm_s16le",
         "-",
     ]
-    proc = subprocess.run(cmd, capture_output=True, check=False)
+    proc = subprocess.run(
+        cmd, capture_output=True, check=False, timeout=_ANALYSIS_TIMEOUT_SECONDS
+    )
     if proc.returncode != 0:
         tail = proc.stderr.decode("utf-8", "replace").strip().splitlines()
         raise RuntimeError(
@@ -264,7 +272,9 @@ def chromaprint_raw(
         "-silence_threshold", "-1",
         "-",
     ]
-    proc = subprocess.run(cmd, capture_output=True, check=False)
+    proc = subprocess.run(
+        cmd, capture_output=True, check=False, timeout=_ANALYSIS_TIMEOUT_SECONDS
+    )
     if proc.returncode != 0:
         tail = proc.stderr.decode("utf-8", "replace").strip().splitlines()
         raise RuntimeError(

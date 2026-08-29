@@ -32,6 +32,9 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    CAPABILITY_TIMEOUT_SECONDS as _CAPABILITY_TIMEOUT_SECONDS,
+)
 
 # ---------------------------------------------------------------------------
 # Perceptual hash (dHash) math -- pure, PIL-free
@@ -286,8 +289,9 @@ def has_signature_filter() -> bool:
         out = subprocess.run(
             ["ffmpeg", "-hide_banner", "-filters"],
             capture_output=True, text=True, check=False,
+            timeout=_CAPABILITY_TIMEOUT_SECONDS,
         )
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return False
     return bool(re.search(r"^\s*\S*\s+signature\s", out.stdout, re.MULTILINE))
 

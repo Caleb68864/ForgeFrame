@@ -42,6 +42,9 @@ from workshop_video_brain.edit_mcp.pipelines.keyframes import (
     VALID_EASE_FAMILIES,
     build_keyframe_string,
 )
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    ANALYSIS_TIMEOUT_SECONDS as _ANALYSIS_TIMEOUT_SECONDS,
+)
 
 Rect = tuple[float, float, float, float]
 
@@ -761,7 +764,8 @@ def extract_locator_frames(
         cmd = build_extract_frame_cmd(source, t, out, ffmpeg=ffmpeg)
         try:
             proc = subprocess.run(
-                cmd, capture_output=True, text=True, check=False
+                cmd, capture_output=True, text=True, check=False,
+                timeout=_ANALYSIS_TIMEOUT_SECONDS,
             )
         except FileNotFoundError as exc:
             raise FfmpegUnavailable(
