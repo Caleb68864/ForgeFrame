@@ -16,6 +16,7 @@ import logging
 from pathlib import Path
 from uuid import UUID
 
+from workshop_video_brain.core.models.media import MediaAsset
 from workshop_video_brain.core.models.visual_research import FrameCandidate
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import run_ffmpeg
@@ -43,6 +44,17 @@ def _default_output_path(
     return base / f"{stem}_frame_{ts_tag}.{fmt}"
 
 
+def _probe_once(video_path: Path, asset: MediaAsset | None) -> MediaAsset | None:
+    """Return *asset* if usable, else probe *video_path* once (None on failure)."""
+    if asset is not None:
+        return asset
+    try:
+        return probe_media(video_path)
+    except Exception as exc:  # noqa: BLE001 -- extract_frame degrades gracefully
+        logger.warning("Could not probe %s: %s", video_path, exc)
+        return None
+
+
 def extract_frame(
     video_path: Path,
     timestamp_seconds: float,
@@ -50,12 +62,17 @@ def extract_frame(
     quality: str = "high",
     fmt: str = "png",
     output_dir: Path | None = None,
+    asset: MediaAsset | None = None,
 ) -> FrameCandidate:
     """Extract a single frame from *video_path* at *timestamp_seconds*.
 
     ``output_path`` names the file exactly; otherwise the frame is written to
     ``output_dir`` (or, when that is also omitted, beside the source video --
     see :func:`_default_output_path`).
+
+    ``asset`` is the already-probed source (for VFR detection and frame
+    dimensions). Bursts and candidate generation probe once and pass it down;
+    without it every frame costs two extra ffprobe spawns.
 
     ``quality="high"`` uses accurate (post-``-i``) seek; ``quality="fast"``
     uses a pre-input (keyframe) seek via ``pre_input_args``. VFR sources
@@ -70,11 +87,12 @@ def extract_frame(
 
     metadata: dict = {}
     vfr_warning: str | None = None
-    try:
-        asset = probe_media(video_path)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Could not probe %s for VFR detection: %s", video_path, exc)
-        asset = None
+    if asset is None:
+        try:
+            asset = probe_media(video_path)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not probe %s for VFR detection: %s", video_path, exc)
+            asset = None
 
     effective_quality = quality
     if asset is not None and asset.is_vfr:
@@ -109,14 +127,17 @@ def extract_frame(
 
     width = asset.width if asset is not None else 0
     height = asset.height if asset is not None else 0
-    try:
-        probed_frame = probe_media(output_path)
-        if probed_frame.width:
-            width = probed_frame.width
-        if probed_frame.height:
-            height = probed_frame.height
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Could not probe extracted frame %s: %s", output_path, exc)
+    if not (width and height):
+        # No scale filter is applied, so the frame has the source's coded
+        # dimensions; only probe the PNG when the source probe lacked them.
+        try:
+            probed_frame = probe_media(output_path)
+            if probed_frame.width:
+                width = probed_frame.width
+            if probed_frame.height:
+                height = probed_frame.height
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not probe extracted frame %s: %s", output_path, exc)
 
     if vfr_warning:
         metadata["vfr_warning"] = vfr_warning
@@ -139,6 +160,7 @@ def extract_frame_burst(
     interval_seconds: float = 0.5,
     max_frames: int = 20,
     output_dir: Path | None = None,
+    asset: MediaAsset | None = None,
 ) -> list[FrameCandidate]:
     """Extract frames uniformly across ``[start_seconds, end_seconds]``.
 
@@ -174,9 +196,12 @@ def extract_frame_burst(
         deduped.append(t)
     deduped = deduped[:max_frames]
 
+    asset = _probe_once(video_path, asset)
     candidates: list[FrameCandidate] = []
     for t in deduped:
-        candidate = extract_frame(video_path, t, quality="fast", output_dir=output_dir)
+        candidate = extract_frame(
+            video_path, t, quality="fast", output_dir=output_dir, asset=asset
+        )
         candidate.extraction_method = "uniform_burst"
         candidates.append(candidate)
 
@@ -191,6 +216,7 @@ def extract_centered_burst(
     after_seconds: float = 5,
     interval_seconds: float = 0.5,
     output_dir: Path | None = None,
+    asset: MediaAsset | None = None,
 ) -> list[FrameCandidate]:
     """Extract a uniform burst of frames centered on ``anchor_seconds``."""
     start_seconds = max(0.0, anchor_seconds - before_seconds)
@@ -201,4 +227,5 @@ def extract_centered_burst(
         end_seconds,
         interval_seconds=interval_seconds,
         output_dir=output_dir,
+        asset=asset,
     )

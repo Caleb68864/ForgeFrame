@@ -103,9 +103,7 @@ def _run_ffmpeg_filter_stderr(image_path: Path, vf: str) -> str:
     return result.stderr
 
 
-def _run_signalstats(image_path: Path) -> dict[str, float]:
-    """Run ffmpeg's ``signalstats`` filter and parse YAVG/YMIN/YMAX."""
-    stderr = _run_ffmpeg_filter_stderr(image_path, "signalstats")
+def _parse_signalstats(stderr: str) -> dict[str, float]:
     stats: dict[str, float] = {}
     for pattern, key in ((_YAVG_RE, "yavg"), (_YMIN_RE, "ymin"), (_YMAX_RE, "ymax")):
         match = pattern.search(stderr)
@@ -114,12 +112,31 @@ def _run_signalstats(image_path: Path) -> dict[str, float]:
     return stats
 
 
+def _run_frame_stats(
+    image_path: Path, picture_black_ratio_th: float = 0.98
+) -> tuple[dict[str, float], bool]:
+    """One ffmpeg pass per frame: ``signalstats`` YAVG/YMIN/YMAX plus the
+    ``blackdetect`` verdict.
+
+    ``signalstats`` passes frames through unchanged (it only attaches
+    metadata), so chaining ``blackdetect`` behind it yields both results from
+    a single process. Process spawn dominates the cost of analysing one PNG
+    (~0.3 s on Windows), so this halves the scoring bill for every candidate.
+    """
+    stderr = _run_ffmpeg_filter_stderr(
+        image_path, f"signalstats,blackdetect=d=0:pic_th={picture_black_ratio_th}"
+    )
+    return _parse_signalstats(stderr), "black_start" in stderr
+
+
+def _run_signalstats(image_path: Path) -> dict[str, float]:
+    """Run ffmpeg's ``signalstats`` filter and parse YAVG/YMIN/YMAX."""
+    return _run_frame_stats(image_path)[0]
+
+
 def _run_blackdetect(image_path: Path, picture_black_ratio_th: float = 0.98) -> bool:
     """Run ffmpeg's ``blackdetect`` filter; True if the frame is flagged black."""
-    stderr = _run_ffmpeg_filter_stderr(
-        image_path, f"blackdetect=d=0:pic_th={picture_black_ratio_th}"
-    )
-    return "black_start" in stderr
+    return _run_frame_stats(image_path, picture_black_ratio_th)[1]
 
 
 def _laplacian_variance(gray) -> float:
@@ -209,12 +226,12 @@ class FrameScorer:
         image_path = Path(candidate.image_path)
 
         if image_path.exists():
-            stats = _run_signalstats(image_path)
+            stats, is_black = _run_frame_stats(image_path)
             if "yavg" in stats:
                 metrics.brightness = max(0.0, min(1.0, stats["yavg"] / 255.0))
             if "ymin" in stats and "ymax" in stats:
                 metrics.contrast = max(0.0, min(1.0, (stats["ymax"] - stats["ymin"]) / 255.0))
-            if metrics.brightness is None and _run_blackdetect(image_path):
+            if metrics.brightness is None and is_black:
                 metrics.brightness = 0.0
             if metrics.brightness is not None:
                 candidate.metadata["overexposed"] = metrics.brightness >= 0.98

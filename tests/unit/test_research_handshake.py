@@ -91,11 +91,8 @@ def test_generate_handshake_overwrite_regenerates_existing_package(tmp_path):
     assert len(manifest["candidates"]) >= 1
 
 
-def test_select_from_handshake_exports_package_with_chosen_timestamp(tmp_path):
-    output_dir = tmp_path / "run"
-    manifest = generate_handshake(
-        FIXTURE, start_seconds=0.0, end_seconds=2.0, output_dir=output_dir
-    )
+def test_select_from_handshake_exports_package_with_chosen_timestamp(tmp_path, research_candidates_pkg):
+    manifest, output_dir = research_candidates_pkg
     chosen = manifest["candidates"][0]
 
     result = select_from_handshake(output_dir, [chosen["id"]])
@@ -110,11 +107,8 @@ def test_select_from_handshake_exports_package_with_chosen_timestamp(tmp_path):
     )
 
 
-def test_select_from_handshake_persists_selection_into_candidates_json(tmp_path):
-    output_dir = tmp_path / "run"
-    manifest = generate_handshake(
-        FIXTURE, start_seconds=0.0, end_seconds=2.0, output_dir=output_dir
-    )
+def test_select_from_handshake_persists_selection_into_candidates_json(tmp_path, research_candidates_pkg):
+    manifest, output_dir = research_candidates_pkg
     chosen_id = manifest["candidates"][0]["id"]
 
     select_from_handshake(output_dir, [chosen_id])
@@ -123,11 +117,8 @@ def test_select_from_handshake_persists_selection_into_candidates_json(tmp_path)
     assert chosen_id in on_disk["selections"]
 
 
-def test_select_from_handshake_unknown_id_lists_valid_ids(tmp_path):
-    output_dir = tmp_path / "run"
-    manifest = generate_handshake(
-        FIXTURE, start_seconds=0.0, end_seconds=2.0, output_dir=output_dir
-    )
+def test_select_from_handshake_unknown_id_lists_valid_ids(tmp_path, research_candidates_pkg):
+    manifest, output_dir = research_candidates_pkg
     valid_ids = {c["id"] for c in manifest["candidates"]}
 
     with pytest.raises(UnknownCandidateIdsError) as exc_info:
@@ -165,11 +156,8 @@ def test_select_from_handshake_detects_source_fingerprint_mismatch(tmp_path):
         select_from_handshake(output_dir, [chosen_id])
 
 
-def test_load_handshake_rehydrates_manifest(tmp_path):
-    output_dir = tmp_path / "run"
-    manifest = generate_handshake(
-        FIXTURE, start_seconds=0.0, end_seconds=2.0, output_dir=output_dir
-    )
+def test_load_handshake_rehydrates_manifest(tmp_path, research_candidates_pkg):
+    manifest, output_dir = research_candidates_pkg
 
     rehydrated = load_handshake(output_dir)
 

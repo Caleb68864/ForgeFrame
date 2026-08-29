@@ -80,8 +80,8 @@ def test_research_run_overwrite_replaces_package(tmp_path):
     assert (output_dir / "manifest.json").exists()
 
 
-def test_research_export_package_no_selections_uses_top_scored(tmp_path):
-    generated, candidates_dir = _generate(tmp_path)
+def test_research_export_package_no_selections_uses_top_scored(tmp_path, research_candidates_pkg):
+    generated, candidates_dir = research_candidates_pkg
     gen_data = generated["data"] if "data" in generated else generated
     assert gen_data["selections"] == []
 
@@ -101,8 +101,8 @@ def test_research_export_package_no_selections_uses_top_scored(tmp_path):
     assert len(payload["captures"]) >= 1
 
 
-def test_research_export_package_uses_recorded_selection(tmp_path):
-    generated, candidates_dir = _generate(tmp_path)
+def test_research_export_package_uses_recorded_selection(tmp_path, research_candidates_pkg):
+    generated, candidates_dir = research_candidates_pkg
     gen_data = generated["data"] if "data" in generated else generated
     chosen = gen_data["candidates"][0]
 
@@ -139,8 +139,8 @@ def test_research_export_package_missing_manifest_returns_not_found(tmp_path):
     assert result["error_type"] == "not_found"
 
 
-def test_research_export_package_nonempty_dir_without_overwrite_is_invalid_input(tmp_path):
-    _generated, candidates_dir = _generate(tmp_path)
+def test_research_export_package_nonempty_dir_without_overwrite_is_invalid_input(tmp_path, research_candidates_pkg):
+    _generated, candidates_dir = research_candidates_pkg
 
     export_dir = tmp_path / "export"
     call_tool(

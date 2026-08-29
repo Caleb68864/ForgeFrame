@@ -71,8 +71,8 @@ def test_research_generate_candidates_overwrite_regenerates(tmp_path):
     assert (output_dir / "candidates.json").exists()
 
 
-def test_research_select_candidate_exports_package_naming_timestamp(tmp_path):
-    generated, output_dir = _generate(tmp_path)
+def test_research_select_candidate_exports_package_naming_timestamp(tmp_path, research_candidates_pkg):
+    generated, output_dir = research_candidates_pkg
     gen_data = generated["data"] if "data" in generated else generated
     chosen = gen_data["candidates"][0]
 
@@ -94,8 +94,8 @@ def test_research_select_candidate_exports_package_naming_timestamp(tmp_path):
     assert payload["captures"][0]["timestamp_seconds"] == chosen["timestamp_seconds"]
 
 
-def test_research_select_candidate_unknown_id_lists_valid_ids(tmp_path):
-    _generated, output_dir = _generate(tmp_path)
+def test_research_select_candidate_unknown_id_lists_valid_ids(tmp_path, research_candidates_pkg):
+    _generated, output_dir = research_candidates_pkg
 
     result = call_tool(
         research_candidates.research_select_candidate,
@@ -120,10 +120,10 @@ def test_research_select_candidate_missing_manifest_returns_not_found(tmp_path):
     assert "candidates.json" in result["given"]
 
 
-def test_research_select_candidate_overwrite_never_deletes_protected_dirs(tmp_path):
+def test_research_select_candidate_overwrite_never_deletes_protected_dirs(tmp_path, research_candidates_pkg):
     """Regression for the adversarial-pass G1 finding: select's export path
     must enforce the same bounded-overwrite rule as the other tools."""
-    generated, output_dir = _generate(tmp_path)
+    generated, output_dir = research_candidates_pkg
     gen_data = generated["data"] if "data" in generated else generated
     chosen = gen_data["candidates"][0]
 
@@ -145,8 +145,8 @@ def test_research_select_candidate_overwrite_never_deletes_protected_dirs(tmp_pa
     assert sentinel.read_text(encoding="utf-8") == "IRREPLACEABLE"
 
 
-def test_research_select_candidate_overwrite_refuses_non_research_dir(tmp_path):
-    generated, output_dir = _generate(tmp_path)
+def test_research_select_candidate_overwrite_refuses_non_research_dir(tmp_path, research_candidates_pkg):
+    generated, output_dir = research_candidates_pkg
     gen_data = generated["data"] if "data" in generated else generated
     chosen = gen_data["candidates"][0]
 
@@ -167,12 +167,12 @@ def test_research_select_candidate_overwrite_refuses_non_research_dir(tmp_path):
     assert (plain / "notes.txt").exists()
 
 
-def test_research_select_candidate_rejects_unsupported_schema_version(tmp_path):
+def test_research_select_candidate_rejects_unsupported_schema_version(tmp_path, research_candidates_pkg):
     """Regression for the pass-13 adversarial finding: load_handshake must
     validate schema_version, not silently accept a future manifest."""
     import json as _json
 
-    generated, output_dir = _generate(tmp_path)
+    generated, output_dir = research_candidates_pkg
     gen_data = generated["data"] if "data" in generated else generated
     chosen = gen_data["candidates"][0]
 
@@ -191,8 +191,8 @@ def test_research_select_candidate_rejects_unsupported_schema_version(tmp_path):
     assert result["error_type"] == "invalid_input"
 
 
-def test_research_select_candidate_rejects_empty_candidate_ids(tmp_path):
-    _, output_dir = _generate(tmp_path)
+def test_research_select_candidate_rejects_empty_candidate_ids(tmp_path, research_candidates_pkg):
+    _, output_dir = research_candidates_pkg
 
     result = call_tool(
         research_candidates.research_select_candidate,
@@ -204,10 +204,10 @@ def test_research_select_candidate_rejects_empty_candidate_ids(tmp_path):
     assert result["error_type"] == "invalid_input"
 
 
-def test_research_select_candidate_refuses_export_into_candidates_dir(tmp_path):
+def test_research_select_candidate_refuses_export_into_candidates_dir(tmp_path, research_candidates_pkg):
     """Post-convergence hardening: exporting into the live candidates dir
     (or an ancestor) would rmtree the handshake state itself."""
-    generated, output_dir = _generate(tmp_path)
+    generated, output_dir = research_candidates_pkg
     gen_data = generated["data"] if "data" in generated else generated
     chosen = gen_data["candidates"][0]
 

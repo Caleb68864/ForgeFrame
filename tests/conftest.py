@@ -17,6 +17,7 @@ The ``external`` marker itself is declared in ``pyproject.toml``.
 from __future__ import annotations
 
 import shutil
+from pathlib import Path
 
 import pytest
 
@@ -111,3 +112,49 @@ def pytest_runtest_protocol(item, nextitem):
             f"{_RENDER_RETRY_ATTEMPTS} under load -- retrying",
         )
     return True
+
+
+# ---------------------------------------------------------------------------
+# Shared research candidates package (generate once per session, copy per test)
+# ---------------------------------------------------------------------------
+# A real ``generate_handshake`` over the 20 s fixture costs ~40 ffmpeg/ffprobe
+# spawns (~10 s, far more under CPU contention). Tests that exercise *selection*
+# / *export* / *manifest validation* only need *a* valid package, not a fresh
+# one, so they share one generation and work on a private copy. Tests of
+# generation itself (overwrite, stable ids, output-dir prep) keep calling
+# ``generate_handshake`` directly.
+
+
+@pytest.fixture(scope="session")
+def _research_candidates_seed(tmp_path_factory):
+    if not (HAVE_FFMPEG and HAVE_FFPROBE):
+        pytest.skip("ffmpeg/ffprobe not available on PATH")
+    from workshop_video_brain.edit_mcp.pipelines.visual_research.handshake import (
+        generate_handshake,
+    )
+
+    fixture = Path("tests/fixtures/media_generated/greenscreen_reporter_720.mp4").resolve()
+    seed = tmp_path_factory.mktemp("research-seed") / "run"
+    manifest = generate_handshake(
+        fixture, start_seconds=0.0, end_seconds=2.0, output_dir=seed
+    )
+    return manifest, seed
+
+
+@pytest.fixture
+def research_candidates_pkg(_research_candidates_seed, tmp_path):
+    """``(manifest_dict, candidates_dir)`` -- a private copy of the shared
+    package under this test's ``tmp_path`` with image paths repointed."""
+    import json
+    import shutil
+
+    _manifest, seed = _research_candidates_seed
+    dest = tmp_path / "run"
+    shutil.copytree(seed, dest)
+    manifest_path = dest / "candidates.json"
+    text = manifest_path.read_text(encoding="utf-8")
+    # Paths are JSON-encoded (backslashes escaped on Windows); swap the
+    # encoded prefix so every image_path points into the copy.
+    text = text.replace(json.dumps(str(seed))[1:-1], json.dumps(str(dest))[1:-1])
+    manifest_path.write_text(text, encoding="utf-8")
+    return json.loads(text), dest

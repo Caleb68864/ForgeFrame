@@ -28,6 +28,7 @@ from workshop_video_brain.core.models.visual_research import (
     ResearchRegion,
 )
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.frames import (
+    _probe_once,
     extract_frame,
     extract_frame_burst,
 )
@@ -58,6 +59,11 @@ def generate_candidates(
     gen_config = config.candidate_generation
     max_candidates = gen_config.max_candidates_per_region
 
+    # Probe the source once for the whole region; a caller-supplied asset is
+    # trusted only when it actually carries dimensions (test doubles and
+    # transcript-derived assets may not).
+    asset = _probe_once(video_path, source if (source.width and source.height) else None)
+
     raw: list[FrameCandidate] = []
 
     anchor_seconds = region.anchor_seconds
@@ -65,7 +71,7 @@ def generate_candidates(
         anchor_seconds = (region.start_seconds + region.end_seconds) / 2.0
     anchor_seconds = max(region.start_seconds, min(region.end_seconds, anchor_seconds))
     anchor_candidate = extract_frame(
-        video_path, anchor_seconds, quality="high", output_dir=output_dir
+        video_path, anchor_seconds, quality="high", output_dir=output_dir, asset=asset
     )
     anchor_candidate.extraction_method = "exact_timestamp"
     raw.append(anchor_candidate)
@@ -77,6 +83,7 @@ def generate_candidates(
         interval_seconds=gen_config.burst_spacing_seconds,
         max_frames=gen_config.burst_count,
         output_dir=output_dir,
+        asset=asset,
     )
     for burst_candidate in burst_candidates:
         burst_candidate.extraction_method = "uniform_burst"
@@ -89,7 +96,8 @@ def generate_candidates(
     )
     for change in scene_changes:
         scene_candidate = extract_frame(
-            video_path, change.timestamp_seconds, quality="fast", output_dir=output_dir
+            video_path, change.timestamp_seconds, quality="fast",
+            output_dir=output_dir, asset=asset,
         )
         scene_candidate.extraction_method = "scene_change"
         scene_candidate.metadata["scene_score"] = change.score
