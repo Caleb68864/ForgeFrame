@@ -35,6 +35,14 @@ class RenderJob(SerializableMixin):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     log_path: str = ""
+    # Why a failed render failed, in words a user can act on -- e.g. the media
+    # files a project references that are no longer on disk. Empty on success
+    # and on failures whose only detail is the renderer's own log.
+    error_message: str = ""
+    # The structured error category for ``error_message`` (a value from
+    # ``edit_mcp.server.errors.VALID_ERROR_TYPES``), so a tool can report the
+    # failure without having to re-derive what went wrong. Empty when unset.
+    error_type: str = ""
 
 
 class SnapshotRecord(SerializableMixin):

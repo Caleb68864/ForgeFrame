@@ -264,6 +264,25 @@ def subtitles_burn_in(
             if source_kind == "project":
                 if not shutil.which("melt"):
                     return missing_binary("melt", "apt install melt (Debian/Ubuntu) or brew install mlt (macOS).")
+                # Burning subtitles into a project means rendering the project
+                # first, so this path carries the same hole the render executor
+                # closes: melt renders footage it cannot open as blank frames
+                # and exits 0, and `rendered.exists()` below is then true. Stop
+                # before producing a subtitled video with shots missing.
+                from workshop_video_brain.edit_mcp.adapters.render.media_check import (
+                    missing_media, missing_media_message,
+                )
+                absent = missing_media(source)
+                if absent:
+                    return err(
+                        missing_media_message(source, absent),
+                        error_type="missing_file",
+                        suggestion=(
+                            "Restore or relink the media named above, then burn "
+                            "the subtitles again."
+                        ),
+                        path=absent[0],
+                    )
                 rendered = tmpdir / "render.mp4"
                 content_frames = _project_frame_count(source)
                 melt_cmd = [

@@ -114,6 +114,12 @@ class RenderArtifactRegistry:
             entry["started_at"] = job.started_at.isoformat()
         if job.completed_at:
             entry["completed_at"] = job.completed_at.isoformat()
+        # Only written when a failure had something to say, so entries for
+        # successful renders keep their existing shape.
+        if job.error_message:
+            entry["error_message"] = job.error_message
+        if job.error_type:
+            entry["error_type"] = job.error_type
         return entry
 
     def _capture_source_version(self, project_path: str) -> dict:
