@@ -5,6 +5,8 @@ import subprocess
 
 import pytest
 
+from tests._testkit import requires_ffmpeg
+
 from workshop_video_brain.core.models import FrameCandidate, MediaAsset
 from workshop_video_brain.edit_mcp.pipelines.visual_research.dedup import (
     compute_perceptual_hash,
@@ -56,6 +58,7 @@ def asset():
     return MediaAsset(path="/tmp/video.mp4")
 
 
+@requires_ffmpeg
 def test_compute_perceptual_hash_returns_hex_string(tmp_path, asset):
     image_path = tmp_path / "red.png"
     _make_solid_image(image_path, "red")
@@ -82,6 +85,7 @@ def test_hamming_distance_differs_by_bit_count():
     assert hamming_distance("0000000000000000", "ffffffffffffffff") == 64
 
 
+@requires_ffmpeg
 def test_near_identical_frames_collapse_to_one(tmp_path, asset):
     image_a = tmp_path / "solid_a.png"
     image_b = tmp_path / "solid_b.png"
@@ -98,6 +102,7 @@ def test_near_identical_frames_collapse_to_one(tmp_path, asset):
     assert duplicate_map[str(candidate_a.candidate_id)] == [str(candidate_b.candidate_id)]
 
 
+@requires_ffmpeg
 def test_distinct_frames_both_survive(tmp_path, asset):
     image_a = tmp_path / "solid.png"
     image_b = tmp_path / "checker.png"
@@ -117,6 +122,7 @@ def test_distinct_frames_both_survive(tmp_path, asset):
     assert duplicate_map[str(candidate_b.candidate_id)] == []
 
 
+@requires_ffmpeg
 def test_deduplicate_keeps_higher_ranked_candidate(tmp_path, asset):
     image_a = tmp_path / "solid_low.png"
     image_b = tmp_path / "solid_high.png"
@@ -139,6 +145,7 @@ def test_deduplicate_keeps_higher_ranked_candidate(tmp_path, asset):
     assert duplicate_map[str(candidate_high.candidate_id)] == [str(candidate_low.candidate_id)]
 
 
+@requires_ffmpeg
 def test_deduplicate_records_perceptual_hash_on_metrics(tmp_path, asset):
     image_path = tmp_path / "solid.png"
     _make_solid_image(image_path, "yellow")
@@ -150,6 +157,7 @@ def test_deduplicate_records_perceptual_hash_on_metrics(tmp_path, asset):
     int(candidate.metrics.dedup_hash, 16)
 
 
+@requires_ffmpeg
 def test_deduplicate_never_deletes_candidate_image_files(tmp_path, asset):
     image_a = tmp_path / "solid_a.png"
     image_b = tmp_path / "solid_b.png"

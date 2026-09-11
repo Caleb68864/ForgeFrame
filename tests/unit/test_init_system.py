@@ -1,6 +1,7 @@
 """Unit tests for the ForgeFrame initialization system."""
 from __future__ import annotations
 
+import builtins
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -468,10 +469,17 @@ class TestForgeframeStatus:
         }
         (cfg_dir / "config.json").write_text(json.dumps(config_data))
 
+        # Bind the real importer BEFORE patching. A bare ``__import__`` inside
+        # the side_effect resolves at call time to the patched builtin, so any
+        # import statement run under the patch recursed forever -- CI's
+        # /usr/lib/python3.12 pathlib runs ``import ntpath`` inside
+        # PurePath.__init__, which made this the one test failing in every CI run.
+        real_import = builtins.__import__
+
         with patch("pathlib.Path.home", return_value=fake_home), \
              patch("shutil.which", return_value="/usr/bin/ffmpeg"), \
              patch("builtins.__import__", side_effect=lambda name, *a, **kw: (
-                 __import__(name, *a, **kw) if name != "faster_whisper" else None
+                 real_import(name, *a, **kw) if name != "faster_whisper" else None
              )):
             # Just check vault/projects exist checks — ffmpeg/whisper may vary
             status = check_status()
