@@ -1,12 +1,17 @@
 """Tests for VFR detection and CFR transcode pipeline."""
 from __future__ import annotations
 
+import subprocess
 from dataclasses import asdict
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tests._testkit import HAVE_FFMPEG, HAVE_FFPROBE
+
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
+from workshop_video_brain.edit_mcp.pipelines import vfr_check
 from workshop_video_brain.edit_mcp.pipelines.vfr_check import (
     VFRFile,
     VFRReport,
@@ -156,20 +161,6 @@ class TestTranscodeToCFR:
         assert result.parent == source.parent
 
     @patch("workshop_video_brain.edit_mcp.pipelines.vfr_check.subprocess")
-    def test_ffmpeg_command_includes_vsync_cfr(self, mock_subprocess, tmp_path: Path):
-        """FFmpeg command should include -vsync cfr -r {fps}."""
-        source = tmp_path / "clip.mp4"
-        source.write_text("fake")
-        mock_subprocess.run.return_value = MagicMock(returncode=0)
-
-        transcode_to_cfr(source, target_fps=30)
-
-        call_args = mock_subprocess.run.call_args[0][0]
-        assert "cfr" in call_args
-        assert "-r" in call_args
-        assert "30" in call_args
-
-    @patch("workshop_video_brain.edit_mcp.pipelines.vfr_check.subprocess")
     @patch("workshop_video_brain.edit_mcp.pipelines.vfr_check.probe_media")
     def test_auto_detect_fps_when_none(self, mock_probe, mock_subprocess, tmp_path: Path):
         """When target_fps is None, use avg_frame_rate from probe."""
@@ -194,3 +185,91 @@ class TestTranscodeToCFR:
 
         with pytest.raises(RuntimeError, match="FFmpeg transcode failed"):
             transcode_to_cfr(source, target_fps=30)
+
+
+# ---------------------------------------------------------------------------
+# transcode_to_cfr against the real ffmpeg on PATH
+# ---------------------------------------------------------------------------
+# The mocked tests above check the argv the code *builds*; only a real ffmpeg
+# can say whether it *accepts* it. A fully mocked argv test is how ``-vsync``
+# (removed in ffmpeg 8) survived here while the tool failed on every run.
+# Without a binary these skip -- visibly, with the reason below -- never pass.
+
+requires_real_ffmpeg = pytest.mark.skipif(
+    not (HAVE_FFMPEG and HAVE_FFPROBE),
+    reason=(
+        "ffmpeg/ffprobe not on PATH: transcode_to_cfr's argv cannot be checked "
+        "against a real ffmpeg, and a mocked run cannot see a removed flag"
+    ),
+)
+
+
+def _make_vfr_clip(path: Path) -> None:
+    """Write a 2 s clip that is genuinely VFR: 30 fps for 1 s, then 10 fps."""
+    subprocess.run(
+        [
+            "ffmpeg", "-hide_banner", "-y",
+            "-f", "lavfi", "-i", "testsrc=size=160x120:rate=30:duration=2",
+            "-vf", "setpts='if(lt(N,30),N/30,1+(N-30)/10)/TB'",
+            "-fps_mode", "passthrough",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            str(path),
+        ],
+        check=True, capture_output=True, timeout=60,
+    )
+
+
+@requires_real_ffmpeg
+class TestTranscodeToCFRRealFFmpeg:
+    def test_real_ffmpeg_accepts_the_argv_and_output_is_cfr(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ):
+        source = tmp_path / "clip.mp4"
+        _make_vfr_clip(source)
+        # Control: the fixture must really be VFR, or this proves nothing.
+        assert probe_media(source).is_vfr is True
+
+        # Spy, not mock: every call still reaches the real ffmpeg; we only
+        # keep the CompletedProcess so ffmpeg's own stderr can be inspected.
+        real_run = subprocess.run
+        ffmpeg_runs: list[subprocess.CompletedProcess] = []
+
+        def spy(cmd, *args, **kwargs):
+            result = real_run(cmd, *args, **kwargs)
+            if cmd and cmd[0] == "ffmpeg":
+                ffmpeg_runs.append(result)
+            return result
+
+        monkeypatch.setattr(vfr_check.subprocess, "run", spy)
+
+        output = transcode_to_cfr(source, target_fps=24)
+
+        assert output.exists() and output.stat().st_size > 0
+        converted = probe_media(output)
+        assert converted.is_vfr is False
+        assert converted.fps == pytest.approx(24.0)
+
+        # ffmpeg 5.1-7.x still accept -vsync but warn that it is deprecated;
+        # 8.x removed it. A deprecation warning about our own argv is the
+        # removal notice for the next ffmpeg, so it fails here while it is
+        # still a warning -- CI's ffmpeg is older than the one that errors.
+        assert len(ffmpeg_runs) == 1
+        deprecations = [
+            line for line in ffmpeg_runs[0].stderr.splitlines()
+            if "deprecated" in line.lower()
+        ]
+        assert deprecations == []
+
+    def test_failure_reports_ffmpegs_error_not_its_version_banner(self, tmp_path: Path):
+        source = tmp_path / "clip.mp4"
+        source.write_bytes(b"not a video")
+
+        with pytest.raises(RuntimeError, match="FFmpeg transcode failed") as excinfo:
+            transcode_to_cfr(source, target_fps=30)
+
+        message = str(excinfo.value)
+        # AVERROR_INVALIDDATA's text -- the actual reason, stable across ffmpeg
+        # releases. The banner is ~1.5 KB, so a head slice held only the banner.
+        assert "Invalid data found when processing input" in message
+        assert "ffmpeg version" not in message
+        assert "configuration:" not in message
