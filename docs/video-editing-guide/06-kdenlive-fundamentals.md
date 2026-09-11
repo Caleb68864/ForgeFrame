@@ -155,7 +155,7 @@ Proxy editing is a **first-class workflow skill**, not a hidden checkbox to find
 **Camera proxies**: Some cameras (especially cinema cameras) generate their own low-res proxy files alongside the full-resolution originals. Kdenlive can use these directly, saving you the proxy generation step.
 
 > [!warning] Variable frame rate (VFR) footage
-> Footage from smartphones and screen recorders often uses **variable frame rate** -- the time between frames is not constant. VFR footage causes sync drift, audio desync, and timeline glitches in *every* NLE, not just Kdenlive. **Always transcode VFR footage to constant frame rate (CFR) before importing.** Use FFmpeg: `ffmpeg -i input.mp4 -vsync cfr -r 30 output.mp4` (replace `30` with your target frame rate). This single step prevents hours of debugging sync issues.
+> Footage from smartphones and screen recorders often uses **variable frame rate** -- the time between frames is not constant. VFR footage causes sync drift, audio desync, and timeline glitches in *every* NLE, not just Kdenlive. **Always transcode VFR footage to constant frame rate (CFR) before importing.** Use FFmpeg: `ffmpeg -i input.mp4 -fps_mode cfr -r 30 output.mp4` (replace `30` with your target frame rate). This single step prevents hours of debugging sync issues.
 
 ---
 

@@ -55,7 +55,7 @@ is_vfr = divergence > 0.05  # 5% threshold
 
 ```bash
 ffmpeg -i input_vfr.mp4 \
-  -vsync cfr \
+  -fps_mode cfr \
   -r 30 \
   -c:a copy \
   output_cfr.mp4
@@ -65,7 +65,7 @@ ffmpeg -i input_vfr.mp4 \
 
 | Flag | Description |
 |------|-------------|
-| `-vsync cfr` | Force constant frame rate output |
+| `-fps_mode cfr` | Force constant frame rate output |
 | `-r 30` | Target frame rate (integer or fraction like `30000/1001`) |
 | `-c:a copy` | Copy audio stream without re-encoding |
 
@@ -86,12 +86,14 @@ clip.mov   ->  clip_cfr.mov
 
 ### Note on `-vsync` vs `-fps_mode`
 
-In FFmpeg 5.1+, `-vsync` is deprecated in favor of `-fps_mode`. Both accept `cfr` as a value. For maximum compatibility:
+`-fps_mode` is the current spelling. `-vsync` was deprecated in FFmpeg 5.1 and
+**removed in 8.0**, where it now fails outright with
+`Unrecognized option 'vsync'`. Always write `-fps_mode`:
 ```bash
 ffmpeg -i input.mp4 -fps_mode cfr -r 30 output.mp4
-# or for older FFmpeg:
-ffmpeg -i input.mp4 -vsync cfr -r 30 output.mp4
 ```
+`-fps_mode` needs FFmpeg ≥ 5.1. Only on an older build (`ffmpeg -version` reports
+5.0 or earlier) substitute the legacy `-vsync cfr`.
 
 ---
 

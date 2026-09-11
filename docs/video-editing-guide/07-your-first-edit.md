@@ -94,7 +94,7 @@ Copy all media from cards, recorders, and screen capture folders into your proje
 - Import everything into the Kdenlive Project Bin (see Ch.06 -- Kdenlive Fundamentals)
 - Rename clips to match your shot list labels (A1, A2, B1, B2, etc.)
 - Verify frame rates and resolutions match your plan -- flag any mismatches now
-- Transcode any VFR footage to CFR before importing: `ffmpeg -i input.mp4 -vsync cfr -r 30 output.mp4`
+- Transcode any VFR footage to CFR before importing: `ffmpeg -i input.mp4 -fps_mode cfr -r 30 output.mp4`
 
 > **ForgeFrame:** Run `/ff-new-project` to create a structured workspace for this video. Then use the `media_ingest` tool to copy files into the workspace, auto-detect VFR issues, and generate clip labels from file names. The tool will flag any mismatched frame rates before you touch the timeline.
 >
