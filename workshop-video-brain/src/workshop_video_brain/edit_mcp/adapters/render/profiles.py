@@ -1,6 +1,10 @@
 """Render profile loading and validation.
 
-Profiles are defined in templates/render/*.yaml relative to the package root.
+Profiles are defined in ``<repo>/templates/render/*.yaml`` -- the repository
+root's ``templates/``, the same tree the Obsidian and title-card loaders read.
+That is the only render-profile directory: a YAML placed anywhere else is
+invisible to every tool (``tests/unit/test_render_profiles_expanded.py``
+guards this).
 """
 from __future__ import annotations
 
