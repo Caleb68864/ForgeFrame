@@ -69,3 +69,10 @@
 - Watch: the `unit` job's contract is "no system binaries". Any new unit test that shells out needs a `requires_*` mark, or it fails the gate and silently takes `full` down with it. `full` has never run on the hosted runner, so whatever it surfaces first is new information, not a regression.
 - Commit: this entry's commit on `main`.
 
+## 2026-09-11 — `-vsync` removed by ffmpeg 8; the test that should have noticed mocked ffmpeg
+- Symptom: `pipelines/vfr_check.transcode_to_cfr` (the README's "VFR Detection → auto-transcode to CFR", tool `media_transcode_cfr`) and `pipelines/thumbnail_sheet` (`media_thumbnail_sheet`) passed `-vsync`, which ffmpeg deprecated in 5.1 and removed in 8.0. On this machine's ffmpeg n9.0.1 both fail every call: `Unrecognized option 'vsync'`, exit 8. The failure was also invisible from the transcode tool: it reported `result.stderr[:500]`, and ffmpeg's version banner is ~1.5 KB, so the error a user saw was the first 500 bytes of the banner and never the reason. `tests/unit/test_vfr_check.py::test_ffmpeg_command_includes_vsync_cfr` patched the whole `subprocess` module and asserted `"cfr" in argv` — it checked the argv the code built, never that ffmpeg accepts it, so it stayed green.
+- Fix: in progress on this branch — the real-binary tests land first, red.
+- Surfaces: TBD with the fix.
+- Watch: TBD with the fix.
+- Commit: this entry's commit on `main`.
+
