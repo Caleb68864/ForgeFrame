@@ -26,7 +26,9 @@ jobs:
           python-version: "3.12"
       # dev+test groups sync by default ([tool.uv] default-groups in pyproject).
       - run: uv sync
-      - run: uv run pytest tests/unit -q
+      # -rfEs: list failures, errors AND skip reasons, so a test that needs a
+      # binary this job does not install shows up as a named skip, not a count.
+      - run: uv run pytest tests/unit -q -rfEs
 
   # (b) Full suite, including the external melt/ffprobe oracle tier. System deps
   # are installed so those guarded tests RUN instead of self-skipping.
@@ -60,4 +62,4 @@ jobs:
       # silently skips -- the whole point of the external tier in CI.
       - name: Install ai-mask extra (rembg)
         run: uv pip install rembg onnxruntime
-      - run: uv run pytest tests/ -q
+      - run: uv run pytest tests/ -q -rfEs

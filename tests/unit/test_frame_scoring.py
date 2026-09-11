@@ -7,6 +7,8 @@ from uuid import uuid4
 
 import pytest
 
+from tests._testkit import requires_ffmpeg
+
 from workshop_video_brain.core.models.visual_research import (
     FrameCandidate,
     FrameVisualMetrics,
@@ -71,6 +73,7 @@ def test_frame_scorer_has_score_and_rank():
     assert hasattr(scorer, "rank")
 
 
+@requires_ffmpeg
 def test_score_returns_frame_visual_metrics(black_frame: Path):
     scorer = FrameScorer()
     config = ResearchConfig()
@@ -81,6 +84,7 @@ def test_score_returns_frame_visual_metrics(black_frame: Path):
     assert isinstance(metrics, FrameVisualMetrics)
 
 
+@requires_ffmpeg
 def test_rank_honors_mode_profiles_and_weights(sharp_frame: Path, blurred_frame: Path):
     scorer = FrameScorer()
     config = ResearchConfig()
@@ -111,6 +115,7 @@ def test_mode_profiles_cover_required_modes():
 # --- [BEHAVIORAL] ------------------------------------------------------------
 
 
+@requires_ffmpeg
 def test_near_black_image_scores_low_brightness_and_is_rejected(black_frame: Path):
     scorer = FrameScorer()
     config = ResearchConfig()
@@ -127,6 +132,7 @@ def test_near_black_image_scores_low_brightness_and_is_rejected(black_frame: Pat
     assert candidate not in ranked
 
 
+@requires_ffmpeg
 def test_sharp_image_scores_higher_sharpness_than_blurred_copy(
     sharp_frame: Path, blurred_frame: Path
 ):
@@ -149,6 +155,7 @@ def test_sharp_image_scores_higher_sharpness_than_blurred_copy(
 # --- guarded numpy/Pillow capability check -----------------------------------
 
 
+@requires_ffmpeg
 def test_pixel_metrics_absent_leaves_fields_none_and_does_not_raise(
     monkeypatch: pytest.MonkeyPatch, sharp_frame: Path
 ):
@@ -164,6 +171,7 @@ def test_pixel_metrics_absent_leaves_fields_none_and_does_not_raise(
     assert "text_density" not in candidate.metadata
 
 
+@requires_ffmpeg
 def test_pixel_metrics_present_populates_sharpness_and_entropy(
     monkeypatch: pytest.MonkeyPatch, sharp_frame: Path
 ):
