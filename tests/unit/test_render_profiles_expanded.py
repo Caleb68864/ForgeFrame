@@ -1,9 +1,12 @@
 """Tests for expanded render profiles and codec availability check."""
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
+
+from tests._testkit import call_tool
 
 from workshop_video_brain.edit_mcp.adapters.render.profiles import (
     RenderProfile,
@@ -14,84 +17,68 @@ from workshop_video_brain.edit_mcp.adapters.render.executor import check_codec_a
 
 
 # ---------------------------------------------------------------------------
-# Profile directory fixture
+# Shipped profiles, loaded the way users load them
 # ---------------------------------------------------------------------------
+# Every test below calls load_profile(name) / list_profiles() with NO
+# profiles_dir, so it reads the YAML the repo actually ships through the
+# default path the render tools use. These tests used to re-create all five
+# profiles as inline dicts in tmp_path and pass that directory in -- so they
+# stayed green while none of the five could be loaded by any tool, because
+# the YAML sat in workshop-video-brain/templates/render and the loader reads
+# <repo>/templates/render.
 
-@pytest.fixture
-def profiles_dir(tmp_path):
-    """Create a temporary profiles directory with all expected profiles."""
-    profiles = {
-        "youtube-1080p": {
-            "name": "youtube-1080p",
-            "width": 1920,
-            "height": 1080,
-            "fps": 30,
-            "video_codec": "libx264",
-            "video_bitrate": "8M",
-            "audio_codec": "aac",
-            "audio_bitrate": "192k",
-            "extra_args": ["-profile:v", "high", "-pix_fmt", "yuv420p", "-movflags", "+faststart"],
-        },
-        "youtube-4k": {
-            "name": "youtube-4k",
-            "width": 3840,
-            "height": 2160,
-            "fps": 30,
-            "video_codec": "libx264",
-            "video_bitrate": "35M",
-            "audio_codec": "aac",
-            "audio_bitrate": "192k",
-            "extra_args": ["-profile:v", "high", "-pix_fmt", "yuv420p", "-movflags", "+faststart"],
-        },
-        "vimeo-hq": {
-            "name": "vimeo-hq",
-            "width": 1920,
-            "height": 1080,
-            "fps": 30,
-            "video_codec": "prores_ks",
-            "video_bitrate": "0",
-            "audio_codec": "aac",
-            "audio_bitrate": "320k",
-            "extra_args": ["-profile:v", "3", "-pix_fmt", "yuv422p10le"],
-        },
-        "master-prores": {
-            "name": "master-prores",
-            "width": 1920,
-            "height": 1080,
-            "fps": 30,
-            "video_codec": "prores_ks",
-            "video_bitrate": "0",
-            "audio_codec": "pcm_s24le",
-            "audio_bitrate": "0",
-            "extra_args": ["-profile:v", "3", "-pix_fmt", "yuv422p10le"],
-        },
-        "master-dnxhr": {
-            "name": "master-dnxhr",
-            "width": 1920,
-            "height": 1080,
-            "fps": 30,
-            "video_codec": "dnxhd",
-            "video_bitrate": "0",
-            "audio_codec": "pcm_s24le",
-            "audio_bitrate": "0",
-            "extra_args": ["-profile:v", "dnxhr_hqx", "-pix_fmt", "yuv422p10le"],
-        },
-    }
-    import yaml
-    for name, data in profiles.items():
-        (tmp_path / f"{name}.yaml").write_text(
-            yaml.dump(data, default_flow_style=False), encoding="utf-8"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# The five profiles the README, the render_list_profiles docstring and the
+# handbook promise.
+DOCUMENTED_PROFILES = [
+    "youtube-1080p",
+    "youtube-4k",
+    "vimeo-hq",
+    "master-prores",
+    "master-dnxhr",
+]
+
+
+class TestDocumentedProfilesAreReachable:
+    @pytest.mark.parametrize("name", DOCUMENTED_PROFILES)
+    def test_loads_from_the_default_path(self, name):
+        profile = load_profile(name)
+        assert profile.name == name
+
+    def test_default_listing_includes_every_documented_profile(self):
+        missing = sorted(set(DOCUMENTED_PROFILES) - set(list_profiles()))
+        assert missing == []
+
+    def test_every_shipped_render_yaml_is_visible_to_the_loader(self):
+        """One render-profile directory: a YAML shipped anywhere else is dead.
+
+        Scans ``templates/render`` at the repo root and one level down (where
+        the plugin directory's copy used to live).
+        """
+        shipped = sorted(
+            {p.stem for p in REPO_ROOT.glob("templates/render/*.yaml")}
+            | {p.stem for p in REPO_ROOT.glob("*/templates/render/*.yaml")}
         )
-    return tmp_path
+        assert shipped, f"no render profiles found under {REPO_ROOT}"
+        unreachable = sorted(set(shipped) - set(list_profiles()))
+        assert unreachable == []
 
+    def test_render_list_profiles_tool_reports_them_with_real_codecs(self):
+        from workshop_video_brain.edit_mcp.server.tools.render import render_list_profiles
 
-# ---------------------------------------------------------------------------
-# Profile loading tests
-# ---------------------------------------------------------------------------
+        result = call_tool(render_list_profiles)
+        assert result["status"] == "success", result
+        by_name = {p["name"]: p for p in result["data"]["profiles"]}
+        for name in DOCUMENTED_PROFILES:
+            assert name in by_name, sorted(by_name)
+            # "unknown" is what the tool reports when a listed file fails to load.
+            assert by_name[name]["codec"] != "unknown", by_name[name]
+
 
 class TestYouTube1080pProfile:
-    def test_loads_successfully(self, profiles_dir):
-        profile = load_profile("youtube-1080p", profiles_dir=profiles_dir)
+    def test_loads_successfully(self):
+        profile = load_profile("youtube-1080p")
 
         assert profile.name == "youtube-1080p"
         assert profile.width == 1920
@@ -104,44 +91,44 @@ class TestYouTube1080pProfile:
         assert "-movflags" in profile.extra_args
         assert "+faststart" in profile.extra_args
 
-    def test_has_h264_high_profile(self, profiles_dir):
-        profile = load_profile("youtube-1080p", profiles_dir=profiles_dir)
+    def test_has_h264_high_profile(self):
+        profile = load_profile("youtube-1080p")
         assert "-profile:v" in profile.extra_args
         idx = profile.extra_args.index("-profile:v")
         assert profile.extra_args[idx + 1] == "high"
 
 
 class TestYouTube4kProfile:
-    def test_loads_successfully(self, profiles_dir):
-        profile = load_profile("youtube-4k", profiles_dir=profiles_dir)
+    def test_loads_successfully(self):
+        profile = load_profile("youtube-4k")
 
         assert profile.name == "youtube-4k"
         assert profile.width == 3840
         assert profile.height == 2160
         assert profile.video_bitrate == "35M"
 
-    def test_has_faststart(self, profiles_dir):
-        profile = load_profile("youtube-4k", profiles_dir=profiles_dir)
+    def test_has_faststart(self):
+        profile = load_profile("youtube-4k")
         assert "+faststart" in profile.extra_args
 
 
 class TestVimeoHQProfile:
-    def test_loads_successfully(self, profiles_dir):
-        profile = load_profile("vimeo-hq", profiles_dir=profiles_dir)
+    def test_loads_successfully(self):
+        profile = load_profile("vimeo-hq")
 
         assert profile.name == "vimeo-hq"
         assert profile.video_codec == "prores_ks"
         assert profile.audio_bitrate == "320k"
 
-    def test_uses_prores_profile_3(self, profiles_dir):
-        profile = load_profile("vimeo-hq", profiles_dir=profiles_dir)
+    def test_uses_prores_profile_3(self):
+        profile = load_profile("vimeo-hq")
         idx = profile.extra_args.index("-profile:v")
         assert profile.extra_args[idx + 1] == "3"
 
 
 class TestMasterProResProfile:
-    def test_loads_successfully(self, profiles_dir):
-        profile = load_profile("master-prores", profiles_dir=profiles_dir)
+    def test_loads_successfully(self):
+        profile = load_profile("master-prores")
 
         assert profile.name == "master-prores"
         assert profile.video_codec == "prores_ks"
@@ -149,34 +136,23 @@ class TestMasterProResProfile:
         assert profile.video_bitrate == "0"
         assert profile.audio_bitrate == "0"
 
-    def test_uses_10bit_pixel_format(self, profiles_dir):
-        profile = load_profile("master-prores", profiles_dir=profiles_dir)
+    def test_uses_10bit_pixel_format(self):
+        profile = load_profile("master-prores")
         assert "yuv422p10le" in profile.extra_args
 
 
 class TestMasterDNxHRProfile:
-    def test_loads_successfully(self, profiles_dir):
-        profile = load_profile("master-dnxhr", profiles_dir=profiles_dir)
+    def test_loads_successfully(self):
+        profile = load_profile("master-dnxhr")
 
         assert profile.name == "master-dnxhr"
         assert profile.video_codec == "dnxhd"
         assert profile.audio_codec == "pcm_s24le"
 
-    def test_uses_dnxhr_hqx_profile(self, profiles_dir):
-        profile = load_profile("master-dnxhr", profiles_dir=profiles_dir)
+    def test_uses_dnxhr_hqx_profile(self):
+        profile = load_profile("master-dnxhr")
         idx = profile.extra_args.index("-profile:v")
         assert profile.extra_args[idx + 1] == "dnxhr_hqx"
-
-
-class TestListProfiles:
-    def test_lists_all_new_profiles(self, profiles_dir):
-        names = list_profiles(profiles_dir)
-
-        assert "youtube-1080p" in names
-        assert "youtube-4k" in names
-        assert "vimeo-hq" in names
-        assert "master-prores" in names
-        assert "master-dnxhr" in names
 
 
 # ---------------------------------------------------------------------------
