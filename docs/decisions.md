@@ -76,3 +76,10 @@
 - Watch: the handbook still tells *users* to type `-vsync cfr` in four places (`docs/video-editing-guide/07-your-first-edit.md:97`, `14-quality-control.md:109`, `17-troubleshooting.md:71`, `references/vfr-cfr-transcode.md:58`). Those commands fail on ffmpeg ≥ 8 too. They are prose, out of this change's scope, and not fixed here. `media_transcode_cfr` classifies any ffmpeg failure, a bad input file included, as `operation_failed` ("unexpected error, please report it"). The message is accurate now, but the category is still wrong.
 - Commit: this entry's commit on `main`.
 
+## 2026-09-11 — the five documented render profiles could not be loaded by anything
+- Symptom: the README ("Render Profiles: YouTube 1080p/4K, Vimeo HQ, Master ProRes/DNxHR"), the `render_list_profiles` docstring the agent reads, and `render_final`'s own docstring all name `youtube-1080p`, `youtube-4k`, `vimeo-hq`, `master-prores`, `master-dnxhr`. None of them loads: `render_final(ws, "youtube-1080p")` raises `FileNotFoundError … templates/render/youtube-1080p.yaml`, and `render_list_profiles` lists only the other seven. `adapters/render/profiles.py` reads `<repo>/templates/render/`, and so does every other runtime template loader (`templates/obsidian` from `notes/writer.py`, `templates/titles` from `titles.py` / `review_loop.py`). The Phase 3 sub-spec (2026-04-09) said to create the five under `edit_mcp/templates/render/`, and they were written to a third place, `workshop-video-brain/templates/render/`, where no code looks. `tests/unit/test_render_profiles_expanded.py` rebuilt all five as inline dicts in `tmp_path` and passed that directory as `profiles_dir`, so it tested the loader against its own copy and never touched a shipped file or the default path. It stayed green for five months.
+- Fix: in progress on this branch. The guard tests land first, red.
+- Surfaces: TBD with the fix.
+- Watch: TBD with the fix.
+- Commit: this entry's commit on `main`.
+
