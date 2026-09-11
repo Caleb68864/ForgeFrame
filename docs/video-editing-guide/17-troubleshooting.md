@@ -68,7 +68,7 @@ This page follows a consistent format: **symptom**, **likely cause**, **test**, 
 **Fix:**
 1. **Transcode to CFR before editing** -- Use FFmpeg to convert VFR sources to a constant frame rate intermediate:
    ```bash
-   ffmpeg -i input_vfr.mp4 -vsync cfr -r 30 -c:v prores_ks -profile:v 1 output_cfr.mov
+   ffmpeg -i input_vfr.mp4 -fps_mode cfr -r 30 -c:v prores_ks -profile:v 1 output_cfr.mov
    ```
 2. Make this a standard step in your ingest workflow for any phone or screen-capture footage.
 

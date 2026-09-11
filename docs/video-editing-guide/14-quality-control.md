@@ -106,7 +106,7 @@ See Chapter 05 (Filming Your Tutorial) for how to prevent VFR at capture time. I
 > Use 30fps for screen recordings and talking-head footage. Use 60fps only if the source was captured at 60fps. You can also do this manually:
 >
 > ```bash
-> ffmpeg -i screen-recording.mp4 -vf fps=30 -vsync cfr screen-recording-cfr.mp4
+> ffmpeg -i screen-recording.mp4 -vf fps=30 -fps_mode cfr screen-recording-cfr.mp4
 > ```
 
 > [!warning]
