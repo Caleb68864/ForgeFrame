@@ -110,7 +110,8 @@ def generate_thumbnail_sheet(
         "ffmpeg", "-y", "-i", str(source),
         "-vf", build_frames_filter(batch, width),
         "-frames:v", str(frames),
-        "-vsync", "vfr",
+        # -fps_mode, not -vsync (deprecated in ffmpeg 5.1, removed in 8.0).
+        "-fps_mode", "vfr",
         str(frame_pattern),
     ]
 
