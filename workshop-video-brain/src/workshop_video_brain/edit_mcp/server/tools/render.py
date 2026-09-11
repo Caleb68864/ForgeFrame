@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from workshop_video_brain.core.models.enums import JobStatus
 from workshop_video_brain.server import mcp
 from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
     tool_guard,
@@ -76,6 +77,36 @@ def render_preview(workspace_path: str) -> dict:
             project_path=latest,
             profile_name="preview",
         )
+        # A render that did not succeed is a tool ERROR, not a success payload
+        # carrying status="failed" -- the latter reads as a completed render to
+        # anything that only checks the envelope. When the executor said why
+        # (e.g. the timeline's media is gone), pass its words and category
+        # straight through so the caller is told which files to restore.
+        if job.status != JobStatus.succeeded.value:
+            if job.error_message:
+                return err(
+                    job.error_message,
+                    error_type=job.error_type or "operation_failed",
+                    suggestion=(
+                        "Restore or relink the files named above, then run "
+                        "render_preview again. The full render log is at "
+                        f"{job.log_path}."
+                    ),
+                    job_id=str(job.id),
+                    project_path=job.project_path,
+                    log_path=job.log_path,
+                )
+            return err(
+                f"Preview render did not succeed (status: {job.status}).",
+                error_type="operation_failed",
+                suggestion=(
+                    f"Read the render log at {job.log_path} for the renderer's "
+                    "own error, confirm melt and ffmpeg are installed, then retry."
+                ),
+                job_id=str(job.id),
+                project_path=job.project_path,
+                log_path=job.log_path,
+            )
         return _ok({
             "job_id": str(job.id),
             "status": job.status,
@@ -118,6 +149,9 @@ def render_status(workspace_path: str) -> dict:
                     "output_path": j.output_path,
                     "started_at": j.started_at.isoformat() if j.started_at else None,
                     "completed_at": j.completed_at.isoformat() if j.completed_at else None,
+                    # Present only on failures the executor could explain --
+                    # notably the media a project references that is gone.
+                    **({"error_message": j.error_message} if j.error_message else {}),
                 }
                 for j in jobs
             ],

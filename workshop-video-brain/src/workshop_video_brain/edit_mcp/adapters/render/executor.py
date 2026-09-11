@@ -13,6 +13,10 @@ from workshop_video_brain.core.models.enums import JobStatus
 from workshop_video_brain.core.models.project import RenderJob
 from workshop_video_brain.edit_mcp.adapters.render.profiles import RenderProfile
 from workshop_video_brain.edit_mcp.adapters.render.jobs import update_job_status
+from workshop_video_brain.edit_mcp.adapters.render.media_check import (
+    missing_media,
+    missing_media_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,9 +104,33 @@ def execute_render(
     out_path = Path(running_job.output_path) if running_job.output_path else None
     output_preexisted = bool(out_path and out_path.exists())
 
-    def _fail() -> RenderJob:
+    def _fail(message: str = "", error_type: str = "") -> RenderJob:
         _discard_partial_output(out_path, output_preexisted)
-        return update_job_status(running_job, JobStatus.failed)
+        failed = update_job_status(running_job, JobStatus.failed)
+        if message:
+            failed = failed.model_copy(
+                update={"error_message": message, "error_type": error_type}
+            )
+        return failed
+
+    # Precondition: every file-backed producer the project references must be on
+    # disk. melt renders missing footage as blank frames and still exits 0, and
+    # exit 0 is the only thing the branch below looks at -- so without this the
+    # job reports "succeeded" against footage that no longer exists. Skipped when
+    # the caller supplied _command_override: that hook replaces the render
+    # command outright, so the project is not what gets executed.
+    if _command_override is None:
+        absent = missing_media(running_job.project_path)
+        if absent:
+            message = missing_media_message(running_job.project_path, absent)
+            logger.error("Render aborted, media missing: %s", ", ".join(absent))
+            if log_path:
+                log_path.write_text(
+                    f"Command: (not run -- pre-render media check failed)\n"
+                    f"ERROR: {message}\n",
+                    encoding="utf-8",
+                )
+            return _fail(message, "missing_file")
 
     cmd = _command_override or _build_command(running_job, profile)
 

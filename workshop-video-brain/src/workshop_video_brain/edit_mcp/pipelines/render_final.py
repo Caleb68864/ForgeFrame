@@ -12,6 +12,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from workshop_video_brain.edit_mcp.adapters.render.media_check import (
+    missing_media,
+    missing_media_message,
+)
 from workshop_video_brain.edit_mcp.adapters.render.profiles import (
     RenderProfile,
     load_profile,
@@ -110,6 +114,14 @@ def render_final(
             raise FileNotFoundError(f"Specified project file not found: {project_file}")
     else:
         project_path = _find_latest_project(workspace_root)
+
+    # 3b. Same precondition the render executor enforces: melt renders footage
+    # it cannot open as blank frames and still exits 0, so a project whose media
+    # has moved or been deleted would otherwise produce a "successful" render
+    # with shots silently missing. See adapters/render/media_check.
+    absent = missing_media(project_path)
+    if absent:
+        raise FileNotFoundError(missing_media_message(project_path, absent))
 
     # 4. Build output path
     renders_dir = workspace_root / "renders"
