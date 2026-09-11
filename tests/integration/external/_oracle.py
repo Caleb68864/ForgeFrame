@@ -99,7 +99,14 @@ def melt_accepts(
     """
     project_path = Path(project_path)
     out = max(0, frames - 1)
-    cmd = [melt_bin, str(project_path), f"out={out}", "-consumer", "null:"]
+    # terminate_on_pause=1: without it melt (7.22, Ubuntu 24.04 / CI) pauses on
+    # the last frame and waits forever, so every acceptance check ran into its
+    # timeout. Measured on the runner: `melt color:red out=24 -consumer null:`
+    # hangs; adding terminate_on_pause=1 exits 0 immediately.
+    cmd = [
+        melt_bin, str(project_path), f"out={out}",
+        "-consumer", "null:", "terminate_on_pause=1",
+    ]
     try:
         proc = subprocess.run(
             cmd, capture_output=True, text=True, timeout=timeout

@@ -115,8 +115,10 @@ envelope); real logic lives in `edit_mcp/pipelines/` and `edit_mcp/adapters/`.
 ### CI
 - `.github/workflows/tests.yml` runs on push to `main` and every pull_request.
   Two jobs: `unit` (`uv run pytest tests/unit -q -rfEs`, no system deps, fast
-  gate) then `full` (`uv run pytest tests/ -q -rfEs`) which `apt-get install`s
-  `melt ffmpeg frei0r-plugins` so the `tests/integration/external/` melt/ffprobe
+  gate) then `full` (`xvfb-run -a uv run pytest tests/ -q -rfEs`) which
+  `apt-get install`s `melt ffmpeg frei0r-plugins xvfb` (melt's Qt module --
+  `qtblend` -- will not load without an X display) so the
+  `tests/integration/external/` melt/ffprobe
   oracle tier runs instead of self-skipping. Missing optional MLT modules (e.g.
   `opencv.tracker`) degrade gracefully via `melt_has_service`. `full` only runs
   if `unit` passes.
@@ -126,6 +128,9 @@ envelope); real logic lives in `edit_mcp/pipelines/` and `edit_mcp/adapters/`.
   in `full`. Two files missing that mark (plus one self-recursive
   `builtins.__import__` patch) failed `unit` on all of the workflow's first
   five runs, so `full` never ran once. See `docs/decisions.md` 2026-09-11.
+- Any test that runs `melt ... -consumer null:` must add
+  `terminate_on_pause=1`; CI's melt 7.22 otherwise waits on the last frame
+  until the subprocess timeout.
 - ai-mask decision: CI does `uv pip install rembg onnxruntime` in the `full` job
   so the rembg-gated case executes rather than skips (CPU-only, ~200 MB). Note:
   those cases are `skipif`-gated, so they SKIP (not fail) when rembg is absent --
