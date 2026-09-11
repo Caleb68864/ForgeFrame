@@ -113,24 +113,8 @@ def execute_render(
             )
         return failed
 
-    # Precondition: every file-backed producer the project references must be on
-    # disk. melt renders missing footage as blank frames and still exits 0, and
-    # exit 0 is the only thing the branch below looks at -- so without this the
-    # job reports "succeeded" against footage that no longer exists. Skipped when
-    # the caller supplied _command_override: that hook replaces the render
-    # command outright, so the project is not what gets executed.
-    if _command_override is None:
-        absent = missing_media(running_job.project_path)
-        if absent:
-            message = missing_media_message(running_job.project_path, absent)
-            logger.error("Render aborted, media missing: %s", ", ".join(absent))
-            if log_path:
-                log_path.write_text(
-                    f"Command: (not run -- pre-render media check failed)\n"
-                    f"ERROR: {message}\n",
-                    encoding="utf-8",
-                )
-            return _fail(message, "missing_file")
+    # MUTATION EXPERIMENT: the pre-render media check is removed here on purpose,
+    # to confirm the integration test it fixes goes red without it. Do not merge.
 
     cmd = _command_override or _build_command(running_job, profile)
 
