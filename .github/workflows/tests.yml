@@ -46,10 +46,15 @@ jobs:
       # The opencv.tracker filter is not separately packaged on ubuntu-latest --
       # test_subject_zoom_render self-skips via melt_has_service when it is
       # absent, so its omission degrades gracefully.
-      - name: Install melt / ffmpeg / frei0r
+      # xvfb: melt 7.22's Qt module refuses to load without an X11 display
+      # ("The MLT Qt module requires a X11 environment" -> "failed to load
+      # transition qtblend", the transition Kdenlive projects composite with).
+      # QT_QPA_PLATFORM=offscreen does not satisfy that check (measured on
+      # this runner), so the suite runs under xvfb-run below.
+      - name: Install melt / ffmpeg / frei0r / xvfb
         run: |
           sudo apt-get update
-          sudo apt-get install -y melt ffmpeg frei0r-plugins
+          sudo apt-get install -y melt ffmpeg frei0r-plugins xvfb
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
@@ -62,4 +67,4 @@ jobs:
       # silently skips -- the whole point of the external tier in CI.
       - name: Install ai-mask extra (rembg)
         run: uv pip install rembg onnxruntime
-      - run: uv run pytest tests/ -q -rfEs
+      - run: xvfb-run -a uv run pytest tests/ -q -rfEs

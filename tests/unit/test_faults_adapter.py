@@ -464,7 +464,9 @@ def test_legacy_upgrade_melt_accepts(fixture: Path, tmp_path: Path):
     out = tmp_path / f"melt_{fixture.name}"
     serialize_project(project, out)
     result = subprocess.run(
-        ["melt", str(out), "out=5", "-consumer", "null:"],
+        # terminate_on_pause=1: otherwise melt 7.22 waits on the last frame
+        # forever (see tests/integration/external/_oracle.melt_accepts).
+        ["melt", str(out), "out=5", "-consumer", "null:", "terminate_on_pause=1"],
         capture_output=True, text=True, timeout=60,
     )
     fatal = [

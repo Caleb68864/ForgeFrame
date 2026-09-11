@@ -216,7 +216,9 @@ def test_real_proxy_generate_status_attach(tmp_path):
 
     if _HAS_MELT:
         proc = subprocess.run(
-            ["melt", str(proj), "-consumer", "null", "out=5"],
+            # terminate_on_pause=1: otherwise melt 7.22 waits on the last
+            # frame forever (see tests/integration/external/_oracle.py).
+            ["melt", str(proj), "-consumer", "null", "terminate_on_pause=1", "out=5"],
             capture_output=True, text=True, timeout=120,
         )
         assert proc.returncode == 0, proc.stderr[-500:]
