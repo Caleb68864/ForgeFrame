@@ -15,6 +15,7 @@ from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import (
 )
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
     DEFAULT_TIMEOUT_SECONDS as _RENDER_TIMEOUT_SECONDS,
+    _stderr_tail,
 )
 
 logger = logging.getLogger(__name__)
@@ -107,11 +108,15 @@ def transcode_to_cfr(
     # Build output path with _cfr suffix
     output = source.parent / f"{source.stem}_cfr{source.suffix}"
 
+    # -fps_mode, not -vsync: -vsync was deprecated in ffmpeg 5.1 and removed
+    # in 8.0 ("Unrecognized option 'vsync'"). -hide_banner keeps the ~1.5 KB
+    # version banner out of stderr so a failure reports ffmpeg's actual error.
     cmd = [
         "ffmpeg",
+        "-hide_banner",
         "-y",
         "-i", str(source),
-        "-vsync", "cfr",
+        "-fps_mode", "cfr",
         "-r", str(target_fps),
         "-c:a", "copy",
         str(output),
@@ -125,9 +130,10 @@ def transcode_to_cfr(
     )
 
     if result.returncode != 0:
+        # The tail, not the head: ffmpeg writes the reason for a failure last.
         raise RuntimeError(
             f"FFmpeg transcode failed (exit {result.returncode}): "
-            f"{result.stderr[:500]}"
+            f"{_stderr_tail(result.stderr or '')}"
         )
 
     return output
