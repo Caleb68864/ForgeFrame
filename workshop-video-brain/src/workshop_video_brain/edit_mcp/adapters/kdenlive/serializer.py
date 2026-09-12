@@ -433,9 +433,27 @@ def serialize_project(
     root = ET.Element("mlt")
     root.set("LC_NUMERIC", "C")
     # Sub-spec 2 / E-shape: root resolves to the project (main_bin) producer and
-    # carries the workspace ``root`` path so relative resources resolve.
+    # carries the ``root`` path relative resources resolve against.
+    #
+    # A save PRESERVES the root the project was imported with; it does not
+    # re-base it on wherever the file is being written. ``root`` is what every
+    # relative ``resource`` in the document means, so rewriting it on a
+    # save-elsewhere silently re-points the project's media at files that are
+    # not there. The alternative -- keep the output directory as the root and
+    # rewrite each resource to stay valid against it -- was rejected: MLT
+    # ``resource`` values are not all filesystem paths (``color``/``black``,
+    # built-in luma names, ``%``-prefixed ``MLT_DATA`` names, ``%04d``/``glob:``
+    # image sequences; see ``adapters/render/media_check``), and a rewriter that
+    # misidentifies one corrupts the project quietly. Preserving the root leaves
+    # every resource string untouched and every one of them pointing at the file
+    # it pointed at before.
+    #
+    # ``project.root`` is empty only for a project built in memory rather than
+    # parsed -- there is no imported root to preserve, so the output directory
+    # is still the right answer. Clearing it is also the deliberate escape hatch
+    # for a caller that really is relocating a project.
     root.set("producer", "main_bin")
-    root.set("root", str(output_path.parent))
+    root.set("root", project.root or str(output_path.parent))
     root.set("version", project.version)
     if project.title:
         root.set("title", project.title)

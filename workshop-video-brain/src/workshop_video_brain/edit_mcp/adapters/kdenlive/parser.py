@@ -21,6 +21,7 @@ from workshop_video_brain.core.models.kdenlive import (
     SubtitleTrack,
     Track,
 )
+from workshop_video_brain.edit_mcp.adapters.render.media_check import effective_root
 
 logger = logging.getLogger(__name__)
 
@@ -620,7 +621,14 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
     return KdenliveProject(
         version=version,
         title=title,
-        root=root.get("root", ""),
+        # The EFFECTIVE root -- the directory this document's relative resources
+        # resolve against -- not the raw attribute. A document that omits
+        # ``root`` (or leaves it empty) resolves against its own directory, so
+        # that is what gets stored; ``serialize_project`` puts it back verbatim
+        # on a save, and the validator resolves media against it. Computing it
+        # here is what lets a save to a different directory keep meaning the
+        # same files. See ``media_check.effective_root``.
+        root=str(effective_root(root.get("root"), path)),
         profile=profile,
         producers=producers,
         tracks=tracks,

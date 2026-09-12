@@ -458,6 +458,31 @@ def resolve_missing_all(
     return [found[key] for key in sorted(found)]
 
 
+def effective_root(root_attr: str | None, document_path: Path | str) -> Path:
+    """The directory a project's **relative** resources resolve against.
+
+    melt reads the ``<mlt root="...">`` attribute; when it is absent or empty it
+    falls back to the directory of the document it just loaded. That one rule
+    decides what every relative ``resource`` in the file actually names, so it
+    is stated here once and called from both front doors:
+
+    * :func:`missing_media` -- the XML door, reading the file about to be handed
+      to melt.
+    * ``adapters/kdenlive/parser.parse_project`` -- the model door, which stores
+      the answer as :attr:`KdenliveProject.root` so a save can put back the root
+      the project was imported with instead of re-basing it on the output
+      directory.
+
+    Args:
+        root_attr: The document's ``root`` attribute, or ``None`` when absent.
+        document_path: Path to the document the attribute was read from.
+
+    Returns:
+        The base directory. Never empty.
+    """
+    return Path(root_attr or Path(document_path).parent)
+
+
 def missing_media(project_path: Path | str) -> list[str]:
     """Return the file-backed media a project references that is not on disk.
 
@@ -482,7 +507,7 @@ def missing_media(project_path: Path | str) -> list[str]:
         logger.debug("Pre-render media check skipped for %s: %s", path, exc)
         return []
 
-    base = Path(root.get("root") or path.parent)
+    base = effective_root(root.get("root"), path)
     missing = resolve_missing_all(
         _xml_producers(root), _xml_references(root), base
     )
