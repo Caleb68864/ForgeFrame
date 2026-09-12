@@ -512,14 +512,36 @@ def run_melt_tracker(
     """Run headless MLT ``opencv.tracker`` analysis and return tracked rects.
 
     Writes a temp analysis MLT, runs melt, then reads back the ``results``
-    property. Raises ``TrackerUnavailable`` if ``melt`` is not on PATH and
-    ``RuntimeError`` if analysis produced no persisted results.
+    property. Raises ``FileNotFoundError`` if *source* is not on disk,
+    ``TrackerUnavailable`` if ``melt`` is not on PATH, and ``RuntimeError`` if
+    analysis produced no persisted results.
+
+    The source check is deliberately **not** the project-wide
+    ``adapters/render/media_check`` precondition the render and thumbnail paths
+    share: those are handed a timeline whose producers have to be classified
+    (which of them name a file? where does a relative one resolve?), and this is
+    handed one media file. There is nothing to classify, so reusing that code
+    would mean parsing an MLT document that does not exist. What the two share
+    is the reason, not the implementation -- melt does not check its inputs, so
+    the caller must. Without this, a moved file reached melt, produced no
+    tracker results, and was reported as "the opencv module may be missing, or
+    the content lacks trackable texture": a diagnosis that sends the user to
+    install an MLT module over a file they only had to relink.
+    ``run_opencv_tracker`` has always named this correctly ("OpenCV could not
+    open source"); the melt engine was the one that did not.
     """
+    source = Path(source)
+    if not source.exists():
+        raise FileNotFoundError(
+            f"Cannot track: source file does not exist: {source}\n"
+            "melt does not fail on a missing input -- it would run the analysis "
+            "over nothing and report no trackable content -- so this is checked "
+            "before the tracker starts. Restore or relink the file."
+        )
     if shutil.which(melt) is None:
         raise TrackerUnavailable(
             f"'{melt}' not on PATH. {_pip_hint('melt')}"
         )
-    source = Path(source)
     with tempfile.TemporaryDirectory(prefix="motion_track_") as tmp:
         out_mlt = Path(tmp) / "analysis.mlt"
         cmd = build_melt_track_cmd(

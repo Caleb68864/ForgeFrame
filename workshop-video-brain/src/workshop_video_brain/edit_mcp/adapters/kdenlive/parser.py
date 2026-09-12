@@ -620,6 +620,7 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
     return KdenliveProject(
         version=version,
         title=title,
+        root=root.get("root", ""),
         profile=profile,
         producers=producers,
         tracks=tracks,

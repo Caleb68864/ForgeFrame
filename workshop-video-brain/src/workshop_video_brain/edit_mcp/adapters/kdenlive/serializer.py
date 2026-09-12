@@ -81,7 +81,7 @@ def _project_uuid(title: str) -> str:
     return "{" + str(u) + "}"
 
 
-def _looks_like_media(resource: str) -> bool:
+def looks_like_media_resource(resource: str) -> bool:
     """Heuristic: does *resource* point at an on-disk media file?
 
     A media/AV bin producer needs an ``mlt_service`` so Kdenlive's bin model
@@ -90,6 +90,11 @@ def _looks_like_media(resource: str) -> bool:
     to ``avformat-novalidate`` when the resource is a real path.  Builtin
     producers (``black``, colour hex, ``color:``) and title/qml producers are
     excluded (they already carry their own service).
+
+    Public because ``adapters/kdenlive/validator`` must answer "what service will
+    this in-memory producer be written with?" before it can ask the shared media
+    check whether that file exists. The default is decided here, so the validator
+    asks rather than growing a second copy of the rule.
     """
     if not resource:
         return False
@@ -523,7 +528,7 @@ def serialize_project(
         # producers lack it, so novalidate renders black for lavfi-generated
         # clips.  ``avformat`` is fully GUI-loadable.)
         service = producer.properties.get("mlt_service", "")
-        if not service and _looks_like_media(producer.resource):
+        if not service and looks_like_media_resource(producer.resource):
             service = "avformat"
             _set_prop(p_elem, "mlt_service", service)
             _set_prop(p_elem, "eof", "pause")

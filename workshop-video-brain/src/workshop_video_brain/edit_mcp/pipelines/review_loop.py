@@ -35,6 +35,10 @@ from workshop_video_brain.core.models.project import RenderJob
 from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
 from workshop_video_brain.edit_mcp.adapters.render.executor import execute_render
+from workshop_video_brain.edit_mcp.adapters.render.media_check import (
+    missing_media,
+    missing_media_message,
+)
 from workshop_video_brain.edit_mcp.adapters.render.profiles import load_profile
 from workshop_video_brain.edit_mcp.pipelines.qc_check import run_qc as _run_qc_pipeline
 from workshop_video_brain.edit_mcp.pipelines.thumbnail_sheet import grid_dimensions
@@ -382,7 +386,23 @@ def _render_kdenlive_frame(project_path: Path, at_seconds: float, out_png: Path)
     Uses the composite-over-track path proven by ``test_title_renders``: render
     frames ``0..N`` and keep the last, so a title composited on a top track shows
     correctly rather than being flattened onto black.
+
+    Raises ``FileNotFoundError`` naming every media file the project references
+    that is not on disk. This is the same precondition the render path enforces,
+    reached through the same implementation (``adapters/render/media_check``) --
+    melt renders footage it cannot open as blank frames and exits 0, and the
+    only thing checked below is whether a PNG appeared, so without this a
+    project whose footage had been deleted produced a **black thumbnail** and
+    reported success. There is no sensible degraded mode: a thumbnail is a
+    publish artifact, the caller cannot tell a deliberately dark frame from a
+    failed one, and a blank thumbnail is exactly what gets uploaded. Naming the
+    files instead lets the user relink them (or pass a media file directly,
+    which does not come through here).
     """
+    absent = missing_media(project_path)
+    if absent:
+        raise FileNotFoundError(missing_media_message(project_path, absent))
+
     fps = 25.0
     try:
         from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
@@ -538,6 +558,10 @@ def thumbnail_generate(
     tmp_frame = out_dir / f".raw_{src.stem}_{int(round(float(at_seconds) * 1000))}.png"
     try:
         ok = _extract_base_frame(src, float(at_seconds), tmp_frame)
+    except FileNotFoundError as exc:
+        # The project's media is gone. Named files the user can relink, not
+        # "media_unreadable" -- and never a black thumbnail reported as done.
+        return {"success": False, "error": str(exc), "error_type": "missing_file"}
     except Exception as exc:  # noqa: BLE001
         return {"success": False, "error": f"frame extraction error: {exc}",
                 "error_type": "media_unreadable"}

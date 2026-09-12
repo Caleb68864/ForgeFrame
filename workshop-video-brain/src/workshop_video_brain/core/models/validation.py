@@ -14,6 +14,12 @@ class ValidationItem(SerializableMixin):
     category: str = ""
     message: str = ""
     location: str = ""
+    #: The filesystem path this item is about, resolved the way the renderer
+    #: would resolve it, when the item is about a file at all (today: the media
+    #: check).  ``message`` is prose for a human; this is the same fact as data,
+    #: so a caller -- or a test comparing this report against the renderer's own
+    #: media check -- does not have to parse English out of it.
+    path: str = ""
 
 
 class ValidationReport(SerializableMixin):
