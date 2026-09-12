@@ -78,7 +78,16 @@ def test_place_insert_grows_timeline(tmp_path):
     )
     v1 = next(pl for pl in patched.playlists if pl.id == "v1")
     assert cp.playlist_length(v1.entries) == 125
-    assert patched.tractor["out"] == "124"
+
+    # Asserted over the written document, not over a model field. This used to
+    # read ``patched.tractor["out"]`` -- a value the serializer never consumed,
+    # so the assertion held whatever the file said.
+    out = tmp_path / "grown.kdenlive"
+    serialize_project(patched, out)
+    import xml.etree.ElementTree as ET
+
+    outs = {t.get("out") for t in ET.parse(out).getroot().findall("tractor")}
+    assert outs == {"124"}, outs
 
 
 def test_ripple_all_tracks_shifts_guides_and_tracks():

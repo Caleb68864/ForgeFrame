@@ -198,7 +198,6 @@ def build_review_timeline(
         project.guides.append(guide)
 
     project.playlists = [video_playlist, audio_playlist]
-    project.tractor = {"id": "tractor0", "in": "0", "out": "99999"}
 
     # Derive a slug from the project title
     title_slug = slugify("review_timeline") or "review_timeline"

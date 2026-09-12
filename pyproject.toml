@@ -37,15 +37,19 @@ default-groups = ["dev", "test"]
 [tool.hatch.build.targets.wheel]
 packages = ["workshop-video-brain/src/workshop_video_brain"]
 
-# The render profiles are edited at <repo>/templates/render (one source of
-# truth, shared with the Obsidian and title-card template trees) but they live
-# OUTSIDE the package directory, so a wheel shipped without this carried none of
-# them: an installed `wvb` found zero render profiles and every one of the five
-# documented names raised FileNotFoundError. Copy them inside the package;
-# `adapters/render/profiles.profiles_dir()` prefers that copy and falls back to
-# the repository path for a source checkout.
+# All three template trees are edited at <repo>/templates/<tree> (one source of
+# truth) but they live OUTSIDE the package directory, so a wheel shipped without
+# this carries none of them: an installed `wvb` found zero render profiles (every
+# documented name raised FileNotFoundError), zero Obsidian note templates
+# (TemplateNotFound) and zero title-card styles ("Available: (none)"). Copy each
+# inside the package; `core.template_paths.template_dir()` states the precedence
+# once -- packaged copy first, repository copy second for a source checkout --
+# and every loader reads it. Keep this block, the plugin directory's identical
+# one, and `TREES` in tests/unit/test_template_trees_packaging.py in step.
 [tool.hatch.build.targets.wheel.force-include]
+"templates/obsidian" = "workshop_video_brain/templates/obsidian"
 "templates/render" = "workshop_video_brain/templates/render"
+"templates/titles" = "workshop_video_brain/templates/titles"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

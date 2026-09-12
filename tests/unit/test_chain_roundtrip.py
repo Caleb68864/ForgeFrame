@@ -46,7 +46,6 @@ def _chain_project() -> KdenliveProject:
     p.playlists = [
         Playlist(id="pv", entries=[PlaylistEntry(producer_id="chain0", in_point=0, out_point=124)])
     ]
-    p.tractor = {"id": "tractor0", "in": "0", "out": "124"}
     return p
 
 
@@ -84,7 +83,6 @@ def test_plain_producer_still_serializes_as_producer(tmp_path: Path):
     p.producers = [Producer(id="producer_0", resource="0xff0000ff", properties={"mlt_service": "color"})]
     p.tracks = [Track(id="pv", track_type="video")]
     p.playlists = [Playlist(id="pv", entries=[PlaylistEntry(producer_id="producer_0", in_point=0, out_point=49)])]
-    p.tractor = {"id": "tractor0", "in": "0", "out": "49"}
     path = tmp_path / "plain.kdenlive"
     serialize_project(p, path)
     xml = path.read_text()

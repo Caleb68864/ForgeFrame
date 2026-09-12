@@ -727,7 +727,6 @@ def project_create_copy(workspace_path: str) -> None:
             Track(id="playlist_audio", track_type="audio"),
         ]
         proj.playlists = [Playlist(id="playlist_video"), Playlist(id="playlist_audio")]
-        proj.tractor = {"id": "tractor0", "in": "0", "out": "99999"}
         slug = manifest.slug or slugify(manifest.project_title) or "project"
         out = serialize_versioned(proj, Path(workspace_path), slug)
         click.echo(f"Created: {out}")

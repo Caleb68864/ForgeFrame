@@ -91,7 +91,6 @@ def _two_track_base() -> KdenliveProject:
         Playlist(id="vtop", entries=[]),
         Playlist(id="a1", entries=[]),
     ]
-    p.tractor = {"id": "tractor0", "in": "0", "out": "159"}
     return p
 
 
@@ -131,7 +130,6 @@ def _sequence_single_track() -> KdenliveProject:
         ]),
         Playlist(id="a1", entries=[]),
     ]
-    p.tractor = {"id": "tractor0", "in": "0", "out": "99"}
     return p
 
 
@@ -185,7 +183,6 @@ def _move_base() -> KdenliveProject:
         Playlist(id="vtop", entries=[]),
         Playlist(id="a1", entries=[]),
     ]
-    p.tractor = {"id": "tractor0", "in": "0", "out": "99"}
     return p
 
 
@@ -241,7 +238,6 @@ def test_match_length_places_exact_reference_span(melt_bin, render_dir: Path):
         Playlist(id="vtop", entries=[]),
         Playlist(id="a1", entries=[]),
     ]
-    p.tractor = {"id": "tractor0", "in": "0", "out": "119"}
 
     from workshop_video_brain.edit_mcp.pipelines import clip_place as cp
     ref_len = cp.reference_length(p.playlists[1].entries, 0)

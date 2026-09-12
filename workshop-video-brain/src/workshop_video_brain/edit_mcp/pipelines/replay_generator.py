@@ -334,7 +334,6 @@ def generate_replay(
             )
 
     project.playlists = [video_playlist, audio_playlist]
-    project.tractor = {"id": "tractor0", "in": "0", "out": str(max(timeline_frame - 1, 0))}
 
     # Serialize to versioned path
     title_slug = slugify("replay") or "replay"

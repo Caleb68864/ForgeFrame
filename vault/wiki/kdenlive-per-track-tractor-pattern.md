@@ -37,6 +37,32 @@ The `<track hide="...">` attribute on the per-track tractor's sub-tracks encodes
 
 The parser uses `hide` to recover `Track.track_type` on read-back.
 
+## Track name
+
+`kdenlive:track_name` is the label Kdenlive shows in the timeline head. It is
+optional in the format, and it is the **only** place a track name lives — there
+is no name attribute anywhere else in the document.
+
+In this repo it is `Track.name`, written by `serializer` from the model and read
+back by `parser` (one statement of the property name,
+`serializer.TRACK_NAME_PROPERTY`, imported by the parser so the two cannot
+drift). `CreateTrack(name=...)` and the `"Crossfade"` overlay track set it.
+
+Two details that are behaviour, not style:
+
+- A `None` name emits **no** property. An empty `kdenlive:track_name` is a track
+  *named* `""` in Kdenlive, which is not the same thing as an unnamed one.
+- The property is regenerated from the model, so the parser must list it in
+  `_REGENERATED_SEQUENCE_PROPS`. Without that it is *also* kept as an
+  `OpaqueElement` hinted `"tractor"` and re-emitted on the **sequence** tractor,
+  so a re-written native document carries each label twice — once correctly on
+  its per-track tractor and once on the element that labels no track at all.
+
+Until 2026-09-12 the serializer emitted no track name at all, so a named track
+round-tripped to an unnamed one and nothing failed.
+`tests/unit/test_kdenlive_roundtrip_is_lossless.py` is the rule that now
+catches that shape for every field of the model.
+
 ## Audio tracks: required internal filters
 
 Every audio per-track tractor must carry three filters with `internal_added=237`:

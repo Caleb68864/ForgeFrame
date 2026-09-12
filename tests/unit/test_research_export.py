@@ -191,24 +191,18 @@ def test_export_package_obsidian_routes_through_note_writer(tmp_path, monkeypatc
     output_dir = tmp_path / "package"
 
     vault_path = tmp_path / "vault"
-    templates_dir = tmp_path / "templates" / "obsidian"
-    templates_dir.mkdir(parents=True)
-    (templates_dir / "visual-research-index.md").write_text(
-        "# {{ frontmatter.source }}\n\n{{ sections.captures }}\n", encoding="utf-8"
-    )
-
     monkeypatch.setenv("WVB_VAULT_PATH", str(vault_path))
 
     from workshop_video_brain.production_brain.notes import writer as writer_mod
 
+    # No templates_dir override: the export must find the SHIPPED
+    # ``visual-research-index.md`` through ``NoteWriter``'s own resolver. This
+    # test used to monkeypatch ``NoteWriter.__init__`` to point at an inline copy
+    # of the template in ``tmp_path``, which is why nobody noticed that the only
+    # real copy lived under the plugin directory, where no loader looks -- the
+    # export raised ``TemplateNotFound`` from a plain source checkout and this
+    # test was green.
     created_paths = []
-    original_init = writer_mod.NoteWriter.__init__
-
-    def _patched_init(self, templates_dir_arg=None):
-        original_init(self, templates_dir_arg or templates_dir)
-
-    monkeypatch.setattr(writer_mod.NoteWriter, "__init__", _patched_init)
-
     original_create = writer_mod.NoteWriter.create
 
     def _tracking_create(self, *args, **kwargs):

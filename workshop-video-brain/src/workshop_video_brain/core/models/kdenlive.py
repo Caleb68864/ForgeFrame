@@ -184,7 +184,16 @@ class KdenliveProject(SerializableMixin):
     producers: list[Producer] = Field(default_factory=list)
     tracks: list[Track] = Field(default_factory=list)
     playlists: list[Playlist] = Field(default_factory=list)
-    tractor: dict | None = None
+    # NOTE: the timeline ``<tractor>`` is NOT a field here.  The parser used to
+    # store its attributes and the serializer never read them back: every
+    # tractor attribute is regenerated (the sequence tractor's ``id`` *is* the
+    # sequence uuid that ``kdenlive:docproperties.uuid``/``opensequences``/
+    # ``activetimeline`` reference, and ``in``/``out`` come from
+    # ``serializer._content_out``), so honouring a stored value would have
+    # produced an invalid document rather than a faithful one.  Across every
+    # ``<tractor>`` in ``tests/fixtures`` the only attributes are ``id``, ``in``
+    # and ``out``, so nothing is lost.  Tractor *children* the model does not
+    # name still round-trip, as OpaqueElements with ``position_hint="tractor"``.
     guides: list[Guide] = Field(default_factory=list)
     subtitles: list[SubtitleTrack] = Field(default_factory=list)
     # Document-level ``kdenlive:docproperties.*`` settings keyed by suffix

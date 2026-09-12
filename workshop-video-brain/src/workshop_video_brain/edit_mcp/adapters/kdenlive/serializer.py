@@ -20,6 +20,12 @@ from workshop_video_brain.edit_mcp.adapters.render.media_check import (
 )
 from workshop_video_brain.workspace import snapshot as snapshot_manager
 
+#: The per-track-tractor property carrying ``Track.name``.  Named once, here,
+#: and imported by the parser, so the writer and the reader cannot drift onto
+#: two different property names -- which is the failure mode that leaves a value
+#: written and never read back.
+TRACK_NAME_PROPERTY = "kdenlive:track_name"
+
 logger = logging.getLogger(__name__)
 
 
@@ -595,6 +601,7 @@ def serialize_project(
     clip_filters, consumed_filter_ids = _extract_clip_filters(project)
     track_filters, consumed_track_filter_ids = _extract_track_filters(project)
     track_type_map: dict[str, str] = {t.id: t.track_type for t in project.tracks}
+    track_name_map: dict[str, str | None] = {t.id: t.name for t in project.tracks}
     hide_by_track, consumed_hide_ids = _hide_directives(project)
 
     # (track_tractor_id, track_type, clips_playlist_id, is_xfade)
@@ -636,6 +643,14 @@ def serialize_project(
         tt.set("out", str(content_out))
         _set_prop(tt, "kdenlive:trackheight", "62")
         _set_prop(tt, "kdenlive:timeline_active", "1")
+        # The track label Kdenlive shows in the timeline head.  Emitted only
+        # when the model carries one: an empty ``kdenlive:track_name`` is a
+        # track *named* "" in Kdenlive, not an unnamed one.  Ground truth for
+        # the placement (per-track tractor, after ``timeline_active``):
+        # tests/fixtures/kdenlive_references/clip_speed_400_native.kdenlive.
+        track_name = track_name_map.get(playlist.id)
+        if track_name:
+            _set_prop(tt, TRACK_NAME_PROPERTY, track_name)
         _set_prop(tt, "kdenlive:thumbs_format", "")
         _set_prop(tt, "kdenlive:audio_rec", "")
         for lane_id in (playlist.id, b_id):

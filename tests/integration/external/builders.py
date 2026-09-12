@@ -96,7 +96,6 @@ def two_video_track_project(
             entries=[PlaylistEntry(producer_id="producer_bottom", in_point=0, out_point=frames - 1)],
         ),
     ]
-    p.tractor = {"id": "tractor0", "in": "0", "out": str(frames - 1)}
     return p
 
 

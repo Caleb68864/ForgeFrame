@@ -210,7 +210,6 @@ def project_create_working_copy(workspace_path: str) -> dict:
             Playlist(id="playlist_video"),
             Playlist(id="playlist_audio"),
         ]
-        project.tractor = {"id": "tractor0", "in": "0", "out": "99999"}
 
         slug = manifest.slug or slugify(manifest.project_title) or "project"
         out_path = serialize_versioned(project, ws_path, slug)

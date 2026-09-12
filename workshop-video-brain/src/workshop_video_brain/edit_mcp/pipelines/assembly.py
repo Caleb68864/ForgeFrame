@@ -594,7 +594,6 @@ def assemble_timeline(
             ))
 
     project.playlists = [playlist_v2, playlist_v1, playlist_a1, playlist_a2]
-    project.tractor = {"id": "tractor0", "in": "0", "out": str(max(current_frame - 1, 0))}
 
     # --- Serialize ---
     title_slug = slugify(plan.project_title) if plan.project_title else "assembled"
