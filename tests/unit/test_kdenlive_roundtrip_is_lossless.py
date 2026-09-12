@@ -345,6 +345,40 @@ def test_an_unnamed_track_emits_no_track_name_property(tmp_path: Path) -> None:
     assert "kdenlive:track_name" not in out.read_text(encoding="utf-8")
 
 
+def test_the_track_name_is_not_also_kept_as_an_opaque_property(tmp_path: Path) -> None:
+    """Re-writing a native document must not duplicate the label.
+
+    The property is now regenerated from ``Track.name``, so the parser has to
+    list it in ``_REGENERATED_SEQUENCE_PROPS``.  Drop it from that set and the
+    parser *also* keeps it as an OpaqueElement hinted ``"tractor"``, which the
+    serializer appends to the **sequence** tractor -- measured: the sequence
+    tractor comes back carrying ``kdenlive:track_name`` twice, ``V1`` and ``A1``,
+    on the one element that labels no track at all.  Nothing else notices,
+    because the per-track copies are still correct.
+    """
+    import xml.etree.ElementTree as ET
+
+    reference = (
+        Path(__file__).resolve().parents[2]
+        / "tests"
+        / "fixtures"
+        / "kdenlive_references"
+        / "clip_speed_400_native.kdenlive"
+    )
+    out = tmp_path / "rewritten.kdenlive"
+    S.serialize_project(parse_project(reference), out)
+
+    stray = [
+        tractor.get("id")
+        for tractor in ET.parse(out).getroot().findall("tractor")
+        if not (tractor.get("id") or "").startswith("tractor_")
+        and any(
+            p.get("name") == S.TRACK_NAME_PROPERTY for p in tractor.findall("property")
+        )
+    ]
+    assert stray == [], f"{S.TRACK_NAME_PROPERTY} on non per-track tractors: {stray}"
+
+
 def test_a_real_kdenlive_document_gives_up_its_track_names() -> None:
     """The parser reads the property from a document this project did not write."""
     reference = (
