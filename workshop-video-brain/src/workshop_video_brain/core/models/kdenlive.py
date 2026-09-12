@@ -284,6 +284,14 @@ class TrackMixTransition(SerializableMixin):
 class KdenliveProject(SerializableMixin):
     version: str = "7"
     title: str = ""
+    # The ``root`` attribute of the ``<mlt>`` element as read from disk.  melt
+    # resolves every relative ``resource`` against it, so anything asking "does
+    # this project's media exist?" must resolve the same way (see
+    # ``adapters/render/media_check``).  The parser fills it in; the serializer
+    # does NOT read it back -- it always writes the output file's own directory,
+    # so a round-trip still re-bases relative resources.  Empty when the project
+    # was built in memory rather than parsed.
+    root: str = ""
     profile: ProjectProfile = Field(default_factory=ProjectProfile)
     producers: list[Producer] = Field(default_factory=list)
     tracks: list[Track] = Field(default_factory=list)

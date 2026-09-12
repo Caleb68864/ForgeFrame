@@ -259,3 +259,42 @@ class TestResolution:
         with pytest.raises(mt.TrackerUnavailable) as exc:
             mt.resolve_engine("opencv")
         assert "opencv-contrib" in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# run_melt_tracker -- the source it is asked to track must exist
+# ---------------------------------------------------------------------------
+
+class TestMeltTrackerSourcePrecondition:
+    """melt is not a precondition checker, so the tracker has to be.
+
+    ``run_opencv_tracker`` already says ``OpenCV could not open source: ...``
+    when the file is gone. The melt engine did not stat its source at all: it
+    built an analysis MLT around a path that was not there, ran melt, and
+    reported the *wrong* cause -- "the opencv module may be missing, or the
+    content lacks trackable texture" -- for a file that had simply been moved.
+    """
+
+    _SEED = (0, 0, 10, 10)
+
+    def test_absent_source_is_named_not_blamed_on_the_opencv_module(self, tmp_path):
+        gone = tmp_path / "gone.mp4"
+        with pytest.raises(FileNotFoundError) as exc:
+            mt.run_melt_tracker(gone, self._SEED)
+        message = str(exc.value)
+        assert str(gone) in message, message
+        # The old message sent the user off to install an MLT module.
+        assert "opencv module" not in message, message
+
+    def test_present_source_is_not_refused(self, tmp_path, monkeypatch):
+        """The accept control: a source that exists gets past the precondition.
+
+        With melt absent the call then fails on the *next* check -- which is
+        exactly what proves the precondition let it through rather than
+        refusing everything.
+        """
+        here = tmp_path / "clip.mp4"
+        here.write_bytes(b"\x00\x11\x22\x33" * 64)
+        monkeypatch.setattr(mt.shutil, "which", lambda name: None)
+        with pytest.raises(mt.TrackerUnavailable):
+            mt.run_melt_tracker(here, self._SEED)
