@@ -18,6 +18,7 @@ table of those cases, now answered identically by both.
 from __future__ import annotations
 
 import logging
+import xml.etree.ElementTree as ET
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
@@ -26,10 +27,10 @@ from workshop_video_brain.core.models.validation import ValidationItem, Validati
 from workshop_video_brain.core.models.enums import ValidationSeverity
 from workshop_video_brain.edit_mcp.adapters.render.media_check import (
     FILE_BACKED_SERVICES,
-    resolve_missing,
+    element_references,
+    resolve_missing_all,
+    xml_properties,
 )
-
-from .serializer import looks_like_media_resource
 
 logger = logging.getLogger(__name__)
 
@@ -38,24 +39,61 @@ _MAX_GUIDE_FRAMES = 9_000_000
 
 
 def _producer_services(project: KdenliveProject) -> Iterator[tuple[str, str, str]]:
-    """Yield ``(producer_id, mlt_service, resource)`` as the file will be written.
+    """Yield ``(producer_id, mlt_service, resource)`` for every producer.
 
-    An in-memory producer may carry only a ``resource``: the serializer defaults
-    such a producer to ``mlt_service=avformat`` when the resource looks like a
-    path (``serializer.looks_like_media_resource``). Applying that default here is
-    what keeps this check honest about the project that will actually be
-    rendered -- without it the allowlist would silently skip every producer this
-    repo builds and hands straight to ``serialize_project``.
+    The service is passed through exactly as the model holds it -- including
+    empty. A producer that carries only a ``resource`` is defaulted by
+    ``media_check.effective_service``, which is the one place that decision is
+    made, so this cannot drift from what the renderer sees.
     """
     for producer in project.producers:
         service = (producer.properties.get("mlt_service") or "").strip()
-        if not service and looks_like_media_resource(producer.resource):
-            service = "avformat"
         yield producer.id, service, producer.resource
 
 
+def _model_references(
+    project: KdenliveProject,
+) -> Iterator[tuple[str, str, str, str, str]]:
+    """Yield the non-producer file references an in-memory project will emit.
+
+    The renderer's front door reads ``<filter>`` and ``<transition>`` elements
+    out of the XML. The same references reach the serializer through two
+    carriers, and this yields both so the two call sites see the same project:
+
+    * ``opaque_elements`` -- every clip effect, track filter and composition is
+      held as a verbatim ``<filter>``/``<transition>`` XML string (see
+      ``serializer._extract_clip_filters`` / ``_extract_track_filters`` and
+      ``patcher_intents._apply_add_composition``). Parsed here with the same
+      reader the XML front door uses, so a luma matte or a ``shape`` mask is
+      classified identically whichever side asks.
+    * ``subtitles`` -- serialized as the ``avfilter.subtitles`` filter on the
+      timeline tractor, whose ``av.filename`` is the sidecar melt burns in.
+    """
+    for opaque in project.opaque_elements:
+        if opaque.tag not in ("filter", "transition"):
+            continue
+        try:
+            element = ET.fromstring(opaque.xml_string)
+        except ET.ParseError:
+            # Verbatim round-trip storage: an unparseable one is a different
+            # problem, and the serializer already skips it too.
+            continue
+        yield from element_references(
+            element.tag, element.get("id", ""), xml_properties(element)
+        )
+
+    for subtitle in project.subtitles:
+        yield from element_references(
+            "filter",
+            str(subtitle.id),
+            {"mlt_service": "avfilter.subtitles", "av.filename": subtitle.file},
+        )
+
+
 def _media_items(
-    triples: Iterable[tuple[str, str, str]], base: Path
+    triples: Iterable[tuple[str, str, str]],
+    references: Iterable[tuple[str, str, str, str, str]],
+    base: Path,
 ) -> list[ValidationItem]:
     """The media section of the report, entirely from the shared rule."""
     triples = list(triples)
@@ -80,8 +118,8 @@ def _media_items(
                 )
             )
 
-    for miss in resolve_missing(triples, base):
-        # Both the resource as written and where it resolved to: for a relative
+    for miss in resolve_missing_all(triples, references, base):
+        # Both the value as written and where it resolved to: for a relative
         # or speed-prefixed resource they differ, and the user needs the second.
         detail = (
             miss.resource
@@ -93,7 +131,7 @@ def _media_items(
                 severity=ValidationSeverity.error,
                 category="media",
                 message=f"Media file not found: {detail}",
-                location=f"producer:{miss.producer_id}",
+                location=miss.location,
                 path=miss.path,
             )
         )
@@ -159,7 +197,11 @@ def validate_project(
     # base to resolve against and the check does not run at all.
     base = Path(project.root) if project.root else workspace_root
     if base is not None:
-        items.extend(_media_items(_producer_services(project), base))
+        items.extend(
+            _media_items(
+                _producer_services(project), _model_references(project), base
+            )
+        )
 
     # --- 4. Playlist entries reference valid producers ---
     producer_ids = {p.id for p in project.producers}
