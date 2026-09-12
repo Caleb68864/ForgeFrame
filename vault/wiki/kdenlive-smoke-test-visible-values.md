@@ -1,5 +1,18 @@
 # Smoke tests must use parameter values that are obviously visible
 
+
+> **Correction (2026-09-12).** `EntryFilter` / `PlaylistEntry.filters`,
+> `SequenceTransition` / `KdenliveProject.sequence_transitions` and
+> `TrackMixTransition` / `KdenliveProject.track_mix_transitions` were removed
+> from the model: a serializer rewrite dropped their emission, nothing
+> populated them either, and setting one had no effect on the file written to
+> disk. **The XML contracts on this page are unchanged and still correct** --
+> only the Python entry point moved. Clip and track filters, user transitions
+> and compositions all travel as `OpaqueElement` verbatim XML that the
+> serializer places structurally; reach them through the `AddEffect` /
+> `AddTrackFilter` / `AddTransition` / `AddComposition` timeline intents. See
+> `tests/unit/test_kdenlive_model_has_no_dead_declarations.py`.
+
 A smoke test's job is to verify "this filter applies and renders".
 That verification depends on the **user being able to see the
 effect** when they open the file in Kdenlive.  Default / "natural"

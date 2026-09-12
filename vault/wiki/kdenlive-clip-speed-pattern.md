@@ -67,9 +67,9 @@ To play a clip at non-default speed in Kdenlive 25.x, the timeline references a 
 
 ## Implementation in this repo
 
-- `core/models/kdenlive.py::PlaylistEntry.speed` — defaults to `1.0`. Setting it triggers the timewarp variant.
+- Model: none. `PlaylistEntry.speed` was removed (2026-09-12): it said the serializer emitted the timewarp producer, and this serializer has no timewarp code. The speed lives in the producer the entry names.
 - `adapters/kdenlive/serializer.py` — walks all entries, collects unique `(producer_id, speed)` pairs with `speed != 1.0`, emits one `<producer mlt_service="timewarp">` per pair, and rewrites the entry's `producer` reference at emit time.
-- `adapters/kdenlive/patcher.py::_apply_set_clip_speed` — sets `entry.speed` and rescales `entry.out_point` based on the new frame count. The previous opaque-XML implementation was rejected by Kdenlive 25.x.
+- `adapters/kdenlive/patcher_intents.py::_apply_set_clip_speed` — creates the `<producer mlt_service="timewarp">` variant, repoints `entry.producer_id` at it, and rescales `entry.in_point`/`out_point` for the new frame count. The previous opaque-XML implementation was rejected by Kdenlive 25.x.
 
 ## Sources
 

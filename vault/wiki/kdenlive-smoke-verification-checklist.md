@@ -1,5 +1,18 @@
 # Kdenlive smoke verification checklist
 
+
+> **Correction (2026-09-12).** `EntryFilter` / `PlaylistEntry.filters`,
+> `SequenceTransition` / `KdenliveProject.sequence_transitions` and
+> `TrackMixTransition` / `KdenliveProject.track_mix_transitions` were removed
+> from the model: a serializer rewrite dropped their emission, nothing
+> populated them either, and setting one had no effect on the file written to
+> disk. **The XML contracts on this page are unchanged and still correct** --
+> only the Python entry point moved. Clip and track filters, user transitions
+> and compositions all travel as `OpaqueElement` verbatim XML that the
+> serializer places structurally; reach them through the `AddEffect` /
+> `AddTrackFilter` / `AddTransition` / `AddComposition` timeline intents. See
+> `tests/unit/test_kdenlive_model_has_no_dead_declarations.py`.
+
 What to look for when opening each `.kdenlive` smoke output in
 Kdenlive 25.08.3.  Files live at
 `C:/Users/CalebBennett/Videos/Video Production/tests/mcp_output/`.

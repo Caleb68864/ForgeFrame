@@ -1,4 +1,16 @@
-# Generic `avfilter` EntryFilter pattern + effect zones
+# Generic `avfilter` clip-filter pattern + effect zones
+
+> **Correction (2026-09-12).** This page was written against a model API that no
+> longer exists. `EntryFilter` and `PlaylistEntry.filters` were removed: a
+> serializer rewrite dropped their emission, nothing populated them either, and
+> appending to `entry.filters` had no effect on the file written to disk. **The
+> XML contract below is unchanged and still correct** — only the Python entry
+> point moved. A clip filter is now an `OpaqueElement` with `tag="filter"`
+> carrying `track=`/`clip_index=` attributes; `serializer._extract_clip_filters`
+> nests it inside the matching `<entry>`. Reach it through the `AddEffect`
+> timeline intent (`patcher_intents._apply_add_effect`), or through
+> `tools_helpers.apply_simple_effect` from an MCP tool shell. See
+> `tests/unit/test_kdenlive_model_has_no_dead_declarations.py`.
 
 The single biggest leverage point identified by the test-suite coverage audit. ~30 of the 59 KDE-test-suite `.kdenlive` files use a structurally identical shape: one `mlt_service=avfilter.<name>` filter on a single clip, varying only by parameter set. One serializer branch unblocks all of them.
 
@@ -22,30 +34,40 @@ The parameters use the `av.<param>` naming convention. Scalar params are bare va
 
 ## What we already implement
 
-`PlaylistEntry.filters: list[EntryFilter]` -- our existing model already serializes the right shape. No model changes needed for `avfilter.*`. Just construct an `EntryFilter` with the right properties dict and append it.
+The serializer already emits this exact shape. No model changes are needed for
+`avfilter.*`; only the parameter dict differs per effect.
 
 The audit's 30 untested files are unblocked by:
 
 ```python
-from workshop_video_brain.core.models.kdenlive import EntryFilter
+from workshop_video_brain.core.models.timeline import AddEffect
+from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
-entry.filters.append(EntryFilter(
-    id="my_filter",
-    properties={
-        "mlt_service": "avfilter.gblur",
-        "kdenlive_id": "avfilter.gblur",
-        "av.sigma": "00:00:00.000=0;00:00:05.000=20",
-        "kdenlive:collapsed": "0",
-    },
-))
+project = patch_project(project, [
+    AddEffect(
+        track_index=0,
+        clip_index=0,
+        effect_name="avfilter.gblur",
+        params={
+            "kdenlive_id": "avfilter.gblur",
+            "av.sigma": "00:00:00.000=0;00:00:05.000=20",
+            "kdenlive:collapsed": "0",
+        },
+    ),
+])
 ```
+
+From an MCP tool shell, `tools_helpers.apply_simple_effect(...,
+mlt_service="avfilter.gblur", kdenlive_id="avfilter.gblur", params={...})` is
+the shared body every generated per-effect wrapper uses.
 
 What's NOT yet implemented as a high-level MCP wrapper:
 
-- A generic `effect_avfilter` MCP tool that takes a service name + params dict and constructs the EntryFilter.
+- A generic `effect_avfilter` MCP tool taking a service name + params dict.
 - Per-effect convenience tools (`effect_blur(sigma=...)`, `effect_eq(brightness=..., contrast=...)`).
 
-These are mechanical wrappers around the EntryFilter primitive; the underlying serializer/parser path is already correct.
+These are mechanical wrappers around `AddEffect`; the underlying
+serializer/parser path is already correct.
 
 ## Effect zones (`kdenlive:zone_in` / `kdenlive:zone_out`)
 
@@ -61,11 +83,11 @@ A filter can be scoped to a sub-range of its clip via `<property name="kdenlive:
 </filter>
 ```
 
-`EntryFilter.zone_in_frame` / `zone_out_frame` (added with this pattern) map directly to those properties.
+Pass `kdenlive:zone_in` / `kdenlive:zone_out` in the effect's `params` dict; they are ordinary `<property>` children.
 
 ## Native video fades — `brightness` filter, four critical contract bits
 
-Video fade-from-black / fade-to-black uses an EntryFilter with `mlt_service=brightness`. Verified against the user's hand-saved `tests/fixtures/kdenlive_references/video_fade_black_native.kdenlive`. Four contract details that aren't obvious from the audio-fade pattern:
+Video fade-from-black / fade-to-black uses a clip filter with `mlt_service=brightness`. Verified against the user's hand-saved `tests/fixtures/kdenlive_references/video_fade_black_native.kdenlive`. Four contract details that aren't obvious from the audio-fade pattern:
 
 ```xml
 <filter id="fade_from_black" out="00:00:02.970">
@@ -96,8 +118,9 @@ Video fade-from-black / fade-to-black uses an EntryFilter with `mlt_service=brig
 
 ## Implementation in this repo
 
-- `core/models/kdenlive.py::EntryFilter.zone_in_frame` / `zone_out_frame` -- new fields.
-- `adapters/kdenlive/serializer.py` -- writes `kdenlive:zone_in` / `kdenlive:zone_out` properties when the fields are non-None.
+- Effect zones are `kdenlive:zone_in` / `kdenlive:zone_out` properties on the filter element -- no model fields.
+- `adapters/kdenlive/patcher_intents.py::_apply_add_effect` -- builds the `<filter>` element; every `params` key becomes a `<property>`, so `kdenlive:zone_in` / `kdenlive:zone_out` need no special handling.
+- `adapters/kdenlive/serializer.py::_extract_clip_filters` -- nests the stored filter back inside its `<entry>` on the way out.
 - Smoke outputs (drop into ``Video Production/tests/mcp_output/``):
   * `027-avfilter-gblur.kdenlive` -- animated gaussian blur via the generic avfilter shape.
   * `028-video-fade-from-to-black.kdenlive` -- fade-from-black at head, fade-to-black at tail (the brightness mirror of the audio-fade pattern).
@@ -111,6 +134,6 @@ Video fade-from-black / fade-to-black uses an EntryFilter with `mlt_service=brig
 
 ## Related
 
-- [[kdenlive-image-and-qtblend-pattern]] -- qtblend uses the same EntryFilter shape with keyframe-string params.
+- [[kdenlive-image-and-qtblend-pattern]] -- qtblend uses the same clip-filter shape with keyframe-string params.
 - [[kdenlive-audio-fade-pattern]] -- audio fades use the same shape with `volume` instead of `brightness`.
 - [[kdenlive-test-suite-coverage-audit]] -- the broader gap inventory.

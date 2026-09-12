@@ -1,5 +1,18 @@
 # Kdenlive Test-Suite Coverage Audit
 
+
+> **Correction (2026-09-12).** `EntryFilter` / `PlaylistEntry.filters`,
+> `SequenceTransition` / `KdenliveProject.sequence_transitions` and
+> `TrackMixTransition` / `KdenliveProject.track_mix_transitions` were removed
+> from the model: a serializer rewrite dropped their emission, nothing
+> populated them either, and setting one had no effect on the file written to
+> disk. **The XML contracts on this page are unchanged and still correct** --
+> only the Python entry point moved. Clip and track filters, user transitions
+> and compositions all travel as `OpaqueElement` verbatim XML that the
+> serializer places structurally; reach them through the `AddEffect` /
+> `AddTrackFilter` / `AddTransition` / `AddComposition` timeline intents. See
+> `tests/unit/test_kdenlive_model_has_no_dead_declarations.py`.
+
 Source: [KDE/kdenlive-test-suite/projects](https://github.com/KDE/kdenlive-test-suite/tree/master/projects) (59 `.kdenlive` files).
 
 This audit groups Kdenlive features by **family** (effect class, transition class, producer class) rather than per-file. The matrix was populated by sampling 24 representative files spanning every distinct shape in the suite (a single `avfilter-X.kdenlive` is structurally identical to every other `avfilter-Y.kdenlive` — one `avfilter.<name>` filter on one `avformat-novalidate` clip — so once the shape is verified, the rest extend by parameter only).

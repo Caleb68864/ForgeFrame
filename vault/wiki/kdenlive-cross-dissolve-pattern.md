@@ -1,5 +1,18 @@
 # Kdenlive cross-dissolve pattern (stacked clips, no same-track support)
 
+
+> **Correction (2026-09-12).** `EntryFilter` / `PlaylistEntry.filters`,
+> `SequenceTransition` / `KdenliveProject.sequence_transitions` and
+> `TrackMixTransition` / `KdenliveProject.track_mix_transitions` were removed
+> from the model: a serializer rewrite dropped their emission, nothing
+> populated them either, and setting one had no effect on the file written to
+> disk. **The XML contracts on this page are unchanged and still correct** --
+> only the Python entry point moved. Clip and track filters, user transitions
+> and compositions all travel as `OpaqueElement` verbatim XML that the
+> serializer places structurally; reach them through the `AddEffect` /
+> `AddTrackFilter` / `AddTransition` / `AddComposition` timeline intents. See
+> `tests/unit/test_kdenlive_model_has_no_dead_declarations.py`.
+
 A cross-dissolve in Kdenlive 25.x is **always** the stacked-clips pattern: clip A on a lower video track, clip B on a higher one starting `overlap` frames before A ends, plus a `<transition mlt_service="luma" kdenlive_id="dissolve">` inside the main sequence tractor whose `in`/`out` span the overlap and whose `a_track`/`b_track` are the 1-based ordinals of the two tracks. Same-track dissolves are **not** supported at the XML level even though the UI suggests otherwise.
 
 ## The XML pattern
@@ -77,8 +90,8 @@ For audio tracks the same shape applies but with `mlt_service="mix"` (not `luma`
 
 ## Implementation in this repo
 
-- Model: `core/models/kdenlive.py::SequenceTransition`. `KdenliveProject.sequence_transitions: list[SequenceTransition]`.
-- Serializer: emits each `SequenceTransition` into the main sequence tractor right after the auto-internal per-track transitions, before the audio filters.
+- Model: none. The transition is an `OpaqueElement` with `tag="transition"`, written by `patcher_intents._apply_add_transition` / `_apply_add_composition`.
+- Serializer: re-inserts the stored `<transition>` element and normalises its `kdenlive_id` (`_normalize_transition_id`); the auto-internal per-track compositors are regenerated from the track list and are not stored at all.
 - Smoke test: `tests/integration/test_v25_kdenlive_smoke_3.py` (single dissolve) and `test_v25_kdenlive_smoke_4.py::test_010_three_clip_dissolves` (multiple).
 
 ## Sources
