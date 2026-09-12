@@ -22,7 +22,18 @@ def _base_project() -> KdenliveProject:
         title="Valid Project",
         profile=ProjectProfile(width=1920, height=1080, fps=25.0),
         producers=[
-            Producer(id="prod0", resource="/media/clip.mp4", properties={"resource": "/media/clip.mp4"})
+            Producer(
+                id="prod0",
+                resource="/media/clip.mp4",
+                # A real media producer declares its service -- and the media
+                # check is an allowlist of file-backed services, so a producer
+                # that declares nothing is only checked because the serializer
+                # would default it to avformat. Say it outright.
+                properties={
+                    "mlt_service": "avformat",
+                    "resource": "/media/clip.mp4",
+                },
+            )
         ],
         playlists=[
             Playlist(id="pl0", entries=[PlaylistEntry(producer_id="prod0", in_point=0, out_point=99)])
@@ -98,13 +109,25 @@ class TestValidatorMediaChecks:
         media_errors = [i for i in report.items if i.category == "media"]
         assert media_errors == []
 
-    def test_empty_resource_is_warning(self, tmp_path):
+    def test_empty_resource_on_a_file_backed_producer_is_warning(self, tmp_path):
+        # An avformat producer naming no file is broken in a way the
+        # missing-file check cannot see, so it is still reported.
         project = _base_project()
         project.producers[0].resource = ""
         project.producers[0].properties["resource"] = ""
         report = validate_project(project, workspace_root=tmp_path)
         warnings = [i for i in report.items if i.category == "media" and i.severity == ValidationSeverity.warning.value]
         assert len(warnings) >= 1
+
+    def test_empty_resource_on_a_title_is_not_warned_about(self, tmp_path):
+        # ... but a title card has no resource by design. The old
+        # unconditional warning fired on every one of them. See
+        # tests/unit/test_media_check_reconciled.py for the full contract.
+        project = _base_project()
+        project.producers[0].resource = ""
+        project.producers[0].properties = {"mlt_service": "kdenlivetitle"}
+        report = validate_project(project, workspace_root=tmp_path)
+        assert [i for i in report.items if i.category == "media"] == []
 
 
 class TestValidatorPlaylistChecks:

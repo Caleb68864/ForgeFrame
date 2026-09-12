@@ -44,12 +44,31 @@ footage path that matters.
 Remote resources (``http://``, ``smb://``, ...) and image **sequences**
 (``%04d``, ``.all.``, ``glob:``) are skipped: neither can be settled by a cheap
 ``Path.exists()``, and guessing wrong would refuse a valid render.
+
+The one implementation, and its callers
+---------------------------------------
+This rule is not allowed to exist twice. Everything that needs it reaches
+:func:`resolve_missing`, which takes ``(producer_id, mlt_service, resource)``
+triples plus the base directory relative resources resolve against:
+
+* :func:`missing_media` -- the XML front door, used by ``execute_render``,
+  ``pipelines/render_final``, ``bundles/subtitle_track`` and
+  ``pipelines/review_loop`` (project thumbnails). It reads the file about to be
+  handed to melt, so it sees exactly what melt will open.
+* ``adapters/kdenlive/validator.validate_project`` -- the same rule over an
+  in-memory :class:`KdenliveProject`, for the advisory report. It used to carry
+  a naive copy that flagged the ``color``/``black`` producer, never stripped a
+  ``timewarp`` speed, and resolved relative paths against the workspace root;
+  ``tests/unit/test_media_check_reconciled.py`` is the table of cases the two
+  disagreed about, now answered identically by this module.
 """
 from __future__ import annotations
 
 import logging
 import re
 import xml.etree.ElementTree as ET
+from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -89,11 +108,27 @@ _SYNTHETIC_PREFIXES = ("#", "0x", "color:", "colour:")
 _SYNTHETIC_LITERALS = frozenset({"black", "blank", "white", "transparent", ""})
 
 
-def _resource_to_path(service: str, resource: str) -> str | None:
+@dataclass(frozen=True)
+class MissingMedia:
+    """One file a project references that is not on disk.
+
+    ``producer_id`` is the element/producer that referenced it (empty when the
+    caller does not track ids), ``resource`` is the ``resource`` value exactly
+    as written -- which may carry a ``timewarp`` speed prefix or be relative --
+    and ``path`` is that resource resolved the way melt resolves it.
+    """
+
+    producer_id: str
+    resource: str
+    path: str
+
+
+def resource_to_path(service: str, resource: str) -> str | None:
     """Return the filesystem path a producer's ``resource`` names, else None.
 
     None means "this resource is not a plain local file" -- a synthetic
     producer, a remote URL, or an image sequence -- and must not be checked.
+    This is the whole classification rule; every caller goes through it.
     """
     resource = (resource or "").strip()
     if not resource:
@@ -117,6 +152,39 @@ def _resource_to_path(service: str, resource: str) -> str | None:
     if _PRINTF_FRAME.search(resource):
         return None
     return resource
+
+
+def resolve_missing(
+    producers: Iterable[tuple[str, str, str]],
+    base: Path | str,
+) -> list[MissingMedia]:
+    """Return the file-backed resources among *producers* that are not on disk.
+
+    This is the shared core. *producers* yields ``(producer_id, mlt_service,
+    resource)``; *base* is the directory a relative ``resource`` resolves
+    against -- the ``<mlt root>`` attribute where there is one, because that is
+    what melt uses.
+
+    Results are de-duplicated by resolved path (one message per file, however
+    many producers reference it) and ordered by it, so two callers holding the
+    same project always produce the same list in the same order.
+    """
+    base_path = Path(base)
+    found: dict[str, MissingMedia] = {}
+    for producer_id, service, resource in producers:
+        candidate = resource_to_path((service or "").strip(), resource or "")
+        if candidate is None:
+            continue
+        resolved = Path(candidate)
+        if not resolved.is_absolute():
+            resolved = base_path / resolved
+        key = str(resolved)
+        if resolved.exists() or key in found:
+            continue
+        found[key] = MissingMedia(
+            producer_id=producer_id, resource=(resource or "").strip(), path=key
+        )
+    return [found[key] for key in sorted(found)]
 
 
 def missing_media(project_path: Path | str) -> list[str]:
@@ -144,8 +212,15 @@ def missing_media(project_path: Path | str) -> list[str]:
         return []
 
     base = Path(root.get("root") or path.parent)
+    return [item.path for item in resolve_missing(_xml_producers(root), base)]
 
-    missing: set[str] = set()
+
+def _xml_producers(root: ET.Element) -> Iterable[tuple[str, str, str]]:
+    """Yield ``(id, mlt_service, resource)`` for every producer-ish element.
+
+    ``<chain>`` counts: speed-ramped and link-carrying clips serialize as a
+    chain rather than a plain ``<producer>``, and they name footage the same way.
+    """
     for element in root.iter():
         if element.tag not in ("producer", "chain"):
             continue
@@ -154,18 +229,11 @@ def missing_media(project_path: Path | str) -> list[str]:
             for p in element.findall("property")
             if p.get("name")
         }
-        candidate = _resource_to_path(
-            props.get("mlt_service", "").strip(), props.get("resource", "")
+        yield (
+            element.get("id", ""),
+            props.get("mlt_service", ""),
+            props.get("resource", ""),
         )
-        if candidate is None:
-            continue
-        resolved = Path(candidate)
-        if not resolved.is_absolute():
-            resolved = base / resolved
-        if not resolved.exists():
-            missing.add(str(resolved))
-
-    return sorted(missing)
 
 
 def missing_media_message(project_path: Path | str, missing: list[str]) -> str:
