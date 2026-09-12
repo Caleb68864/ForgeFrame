@@ -109,7 +109,10 @@ def validate_project(
     Checks performed:
     1. Profile has valid (positive) dimensions.
     2. At least one track is defined.
-    3. Media paths exist on disk (when workspace_root is provided).
+    3. Media paths exist on disk -- the shared rule from
+       ``adapters/render/media_check``, resolved against the project's own
+       ``<mlt root>`` and falling back to *workspace_root*. Skipped when there
+       is neither.
     4. Playlist entries reference producers that exist in the project.
     5. Guide positions are within a reasonable range.
     """
