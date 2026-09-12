@@ -104,7 +104,6 @@ def _base_project(path: Path) -> None:
     )
     p.tracks = [Track(id="a1", track_type="audio", name="Audio")]
     p.playlists = [Playlist(id="a1", entries=[])]
-    p.tractor = {"id": "tractor0", "in": "0", "out": "0"}
     serialize_project(p, path)
 
 
@@ -191,7 +190,6 @@ def _stacked_project(path: Path, a: Path, b: Path) -> None:
         Playlist(id="angle1", entries=[PlaylistEntry(producer_id="angleB", in_point=0, out_point=LEN_FRAMES - 1)]),
         Playlist(id="a1", entries=[]),
     ]
-    p.tractor = {"id": "tractor0", "in": "0", "out": str(LEN_FRAMES - 1)}
     serialize_project(p, path)
 
 

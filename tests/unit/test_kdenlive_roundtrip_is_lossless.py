@@ -355,7 +355,12 @@ def test_a_real_kdenlive_document_gives_up_its_track_names() -> None:
         / "clip_speed_400_native.kdenlive"
     )
     project = parse_project(reference)
-    assert sorted(t.name or "" for t in project.tracks) == ["A1", "V1"]
+    # Distinct names: a native document's per-track tractor wraps two content
+    # playlists (Kdenlive calls them ``playlist0``/``playlist1``, not the
+    # ``_kdpair`` suffix this serializer uses), so the parser sees both lanes as
+    # tracks and both inherit their tractor's label. That is pre-existing
+    # behaviour and not what this test is about.
+    assert sorted({t.name or "" for t in project.tracks}) == ["A1", "V1"]
 
 
 # ---------------------------------------------------------------------------

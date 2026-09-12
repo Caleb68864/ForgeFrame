@@ -159,7 +159,6 @@ def test_kdenlive_project_defaults():
     assert kp.playlists == []
     assert kp.guides == []
     assert kp.opaque_elements == []
-    assert kp.tractor is None
 
 
 def test_kdenlive_project_full():
@@ -178,7 +177,6 @@ def test_kdenlive_project_full():
         playlists=[playlist],
         guides=[guide],
         opaque_elements=[opaque],
-        tractor={"foo": "bar"},
     )
     kp2 = KdenliveProject.from_json(kp.to_json())
     assert kp2.title == "My Project"
@@ -187,13 +185,6 @@ def test_kdenlive_project_full():
     assert len(kp2.playlists) == 1
     assert len(kp2.guides) == 1
     assert len(kp2.opaque_elements) == 1
-    assert kp2.tractor == {"foo": "bar"}
-
-
-def test_kdenlive_project_tractor_dict():
-    kp = KdenliveProject(tractor={"a_track": "0", "b_track": "1"})
-    kp2 = KdenliveProject.from_json(kp.to_json())
-    assert kp2.tractor == {"a_track": "0", "b_track": "1"}
 
 
 def test_kdenlive_project_yaml_round_trip():

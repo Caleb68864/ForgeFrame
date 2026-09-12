@@ -96,7 +96,6 @@ def _footage_project(src: Path) -> KdenliveProject:
             entries=[PlaylistEntry(producer_id="producer_0", in_point=0, out_point=SRC_FRAMES - 1)],
         )
     ]
-    p.tractor = {"id": "tractor0", "in": "0", "out": str(SRC_FRAMES - 1)}
     return p
 
 

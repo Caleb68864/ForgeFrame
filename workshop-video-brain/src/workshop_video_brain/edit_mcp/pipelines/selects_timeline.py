@@ -196,7 +196,6 @@ def build_selects_timeline(
         project.guides.append(guide)
 
     project.playlists = [video_playlist, audio_playlist]
-    project.tractor = {"id": "tractor0", "in": "0", "out": "99999"}
 
     title_slug = slugify("selects_timeline") or "selects_timeline"
     return serialize_versioned(project, workspace_root, title_slug)

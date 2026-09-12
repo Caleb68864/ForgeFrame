@@ -234,7 +234,6 @@ def solid_color_project(
         Playlist(id=VIDEO_TRACK, entries=[entry.model_copy(deep=True)]),
         Playlist(id=AUDIO_TRACK, entries=[entry.model_copy(deep=True)]),
     ]
-    p.tractor = {"id": "tractor0", "in": "0", "out": str(frames - 1)}
     return p
 
 
@@ -256,7 +255,6 @@ def sequence_project(
     )
 
     colors = colors or [RED, BLUE]
-    total = frames_each * len(colors)
     p = KdenliveProject(
         version="7",
         title=title,
@@ -277,7 +275,6 @@ def sequence_project(
         Playlist(id=VIDEO_TRACK, entries=video_entries),
         Playlist(id=AUDIO_TRACK, entries=audio_entries),
     ]
-    p.tractor = {"id": "tractor0", "in": "0", "out": str(total - 1)}
     return p
 
 
@@ -314,7 +311,6 @@ def two_track_project(
         Playlist(id="v2", entries=[]),
         Playlist(id="a1", entries=[]),
     ]
-    p.tractor = {"id": "tractor0", "in": "0", "out": str(frames - 1)}
     return p
 
 

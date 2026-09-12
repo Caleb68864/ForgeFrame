@@ -84,7 +84,6 @@ def _build(png_resource: str, rect_property: str | None, rect_value: str | None)
         ET.SubElement(root, "property", {"name": "kdenlive_id"}).text = "transform"
         ET.SubElement(root, "property", {"name": rect_property}).text = rect_value
         p.opaque_elements = [OpaqueElement(tag="filter", xml_string=ET.tostring(root, encoding="unicode"))]
-    p.tractor = {"id": "tractor0", "in": "0", "out": str(FR - 1)}
     return p
 
 

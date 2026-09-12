@@ -32,7 +32,6 @@ from .patcher_intents import (
     _apply_create_track,
     _apply_remove_clip,
     _apply_move_clip,
-    _sync_tractor_out,
     _remap_clip_filters,
     _apply_place_clip,
     _apply_move_clip_to_track,

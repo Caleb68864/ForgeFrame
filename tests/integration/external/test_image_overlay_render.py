@@ -104,7 +104,6 @@ def _build(png_resource: str, transform_rect: str | None) -> KdenliveProject:
     if transform_rect is not None:
         xml = io.build_transform_filter_xml(1, 0, transform_rect)
         p.opaque_elements = [OpaqueElement(tag="filter", xml_string=xml)]
-    p.tractor = {"id": "tractor0", "in": "0", "out": str(FR - 1)}
     return p
 
 

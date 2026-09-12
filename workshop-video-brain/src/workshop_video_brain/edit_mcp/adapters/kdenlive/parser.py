@@ -5,6 +5,7 @@ round-trip safety.
 """
 from __future__ import annotations
 
+import json
 import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -20,6 +21,9 @@ from workshop_video_brain.core.models.kdenlive import (
     ProjectProfile,
     SubtitleTrack,
     Track,
+)
+from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
+    TRACK_NAME_PROPERTY,
 )
 from workshop_video_brain.edit_mcp.adapters.render.media_check import effective_root
 
@@ -271,7 +275,37 @@ def _filter_props(elem: ET.Element) -> dict[str, str]:
     return props
 
 
-def _subtitle_from_filter(elem: ET.Element) -> SubtitleTrack | None:
+def _subtitle_names(subtitles_list_json: str) -> dict[int, str]:
+    """Map subtitle id -> display name from a ``subtitlesList`` JSON string.
+
+    The serializer writes the name there (``pipelines.subtitle_track.
+    subtitles_list_json``, matching Kdenlive's ``subtitlesFilesToJson``) but the
+    filter element carries only the file and the id, so a parser that reads the
+    filter alone cannot recover it.  This used to hard-code ``"Subtitle"``, so a
+    renamed subtitle track round-tripped back to the default name.
+    """
+    if not subtitles_list_json:
+        return {}
+    try:
+        items = json.loads(subtitles_list_json)
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(items, list):
+        return {}
+    names: dict[int, str] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        try:
+            names[int(item.get("id", 0))] = str(item.get("name", ""))
+        except (TypeError, ValueError):
+            continue
+    return {k: v for k, v in names.items() if v}
+
+
+def _subtitle_from_filter(
+    elem: ET.Element, names: dict[int, str] | None = None
+) -> SubtitleTrack | None:
     """Build a SubtitleTrack from an ``avfilter.subtitles`` tractor filter."""
     props = _filter_props(elem)
     if props.get("mlt_service") != "avfilter.subtitles":
@@ -283,7 +317,7 @@ def _subtitle_from_filter(elem: ET.Element) -> SubtitleTrack | None:
         sub_id = 0
     return SubtitleTrack(
         id=sub_id,
-        name="Subtitle",
+        name=(names or {}).get(sub_id, "Subtitle"),
         file=props.get("av.filename", ""),
         style=props.get("av.force_style") or None,
     )
@@ -311,6 +345,11 @@ _REGENERATED_SEQUENCE_PROPS = frozenset(
         "kdenlive:audio_rec",
         "kdenlive:collapsed",
         "kdenlive:audio_track",
+        # Regenerated from ``Track.name``.  Without this it would also be kept
+        # as an opaque property and re-emitted on the *sequence* tractor, so the
+        # document would carry the label twice, in one right place and one wrong
+        # one.
+        TRACK_NAME_PROPERTY,
     }
 )
 
@@ -336,14 +375,21 @@ def _tractor_role(elem: ET.Element, props: dict[str, str]) -> str:
 def _parse_tractor(
     elem: ET.Element,
     playlist_ids: set[str],
-) -> tuple[dict, list[Track], list[OpaqueElement], list[SubtitleTrack]]:
+) -> tuple[list[Track], list[OpaqueElement], list[SubtitleTrack]]:
     """Parse one ``<tractor>``.
 
     *playlist_ids* is the set of already-parsed content playlist ids so a
     track-tractor's lane references can be recognised as timeline tracks (and
     the sequence tractor's tractor references are NOT mistaken for tracks).
+
+    The element's own attributes are deliberately **not** returned.  Across
+    every ``<tractor>`` in ``tests/fixtures`` they are only ``id``, ``in`` and
+    ``out``, and the serializer regenerates all three: the sequence tractor's
+    ``id`` *is* the sequence uuid that ``kdenlive:docproperties.uuid`` /
+    ``opensequences`` / ``activetimeline`` point at, and ``in``/``out`` come
+    from ``serializer._content_out``.  They used to be stored on
+    ``KdenliveProject.tractor``, which nothing ever wrote back out.
     """
-    tractor_dict: dict = {k: v for k, v in elem.attrib.items()}
     tracks: list[Track] = []
     opaques: list[OpaqueElement] = []
     subtitles: list[SubtitleTrack] = []
@@ -357,7 +403,14 @@ def _parse_tractor(
 
     # The project (render-root) tractor is pure infrastructure -- regenerated.
     if role == "project":
-        return tractor_dict, tracks, opaques, subtitles
+        return tracks, opaques, subtitles
+
+    # A per-track tractor labels its lanes; the serializer writes the same
+    # property back from ``Track.name``.
+    track_name = props.get(TRACK_NAME_PROPERTY) or None
+    subtitle_names = _subtitle_names(
+        props.get("kdenlive:sequenceproperties.subtitlesList", "")
+    )
 
     for child in elem:
         if child.tag == "track":
@@ -371,12 +424,14 @@ def _parse_tractor(
                 continue
             hide = child.get("hide", "")
             track_type = "audio" if hide == "video" else "video"
-            tracks.append(Track(id=producer_ref, track_type=track_type))
+            tracks.append(
+                Track(id=producer_ref, track_type=track_type, name=track_name)
+            )
         elif child.tag == "filter":
             # Subtitle tracks are avfilter.subtitles filters; the internal
             # audio filters (volume/panner/audiolevel, internal_added=237) are
             # regenerated and dropped.
-            sub = _subtitle_from_filter(child)
+            sub = _subtitle_from_filter(child, subtitle_names)
             if sub is not None:
                 subtitles.append(sub)
                 continue
@@ -403,7 +458,7 @@ def _parse_tractor(
         else:
             opaques.append(_elem_to_opaque(child, position_hint="tractor"))
             logger.warning("Unsupported element <%s> inside tractor", child.tag)
-    return tractor_dict, tracks, opaques, subtitles
+    return tracks, opaques, subtitles
 
 
 def _parse_guide(elem: ET.Element) -> Guide | None:
@@ -514,7 +569,6 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
     producers: list[Producer] = []
     playlists: list[Playlist] = []
     tracks: list[Track] = []
-    tractor: dict | None = None
     guides: list[Guide] = []
     subtitles: list[SubtitleTrack] = []
     docproperties: dict[str, str] = {}
@@ -584,16 +638,9 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
 
         elif tag == "tractor":
             try:
-                tractor_dict, tractor_tracks, tractor_opaques, tractor_subs = (
-                    _parse_tractor(elem, content_playlist_ids)
+                tractor_tracks, tractor_opaques, tractor_subs = _parse_tractor(
+                    elem, content_playlist_ids
                 )
-                # Keep the most meaningful tractor dict: the project (render
-                # root) tractor is infrastructure, so never let it clobber a
-                # real timeline/sequence tractor.
-                if "kdenlive:projectTractor" not in {
-                    c.get("name", "") for c in elem if c.tag == "property"
-                }:
-                    tractor = tractor_dict
                 tracks.extend(tractor_tracks)
                 opaque_elements.extend(tractor_opaques)
                 subtitles.extend(tractor_subs)
@@ -633,7 +680,6 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
         producers=producers,
         tracks=tracks,
         playlists=playlists,
-        tractor=tractor,
         guides=guides,
         subtitles=subtitles,
         docproperties=docproperties,

@@ -577,16 +577,12 @@ def _apply_move_clip(project: KdenliveProject, intent: MoveClip) -> None:
     )
 
 
-def _sync_tractor_out(project: KdenliveProject) -> None:
-    """Keep the tractor ``out`` in step with the longest content playlist."""
-    if project.tractor is None:
-        return
-    max_len = 0
-    for pl in project.playlists:
-        total = sum((e.out_point - e.in_point + 1) for e in pl.entries)
-        max_len = max(max_len, total)
-    if max_len > 0:
-        project.tractor["out"] = str(max_len - 1)
+# NOTE: there is no ``_sync_tractor_out`` here any more.  It computed the
+# longest content playlist and stored the result on ``project.tractor``, a model
+# field the serializer never read -- so it was a second, stale statement of
+# ``serializer._content_out``, which computes the same number from the same
+# playlists at write time and is the one that reaches the file.  Timeline length
+# needs no maintenance from the intents.
 
 
 def _remap_clip_filters(
@@ -680,7 +676,6 @@ def _apply_place_clip(project: KdenliveProject, intent: PlaceClip) -> None:
             if guide.position >= intent.at_frame:
                 guide.position += length
 
-    _sync_tractor_out(project)
     logger.info(
         "PlaceClip: %s producer '%s' at frame %d on '%s' (new index %d)",
         mode, intent.producer_id, intent.at_frame, intent.track_ref, result.placed_index,
@@ -755,7 +750,6 @@ def _apply_move_clip_to_track(project: KdenliveProject, intent: MoveClipToTrack)
     dst.entries = result.entries
     _remap_clip_filters(project, dst_index, result.index_map)
 
-    _sync_tractor_out(project)
     logger.info(
         "MoveClipToTrack: clip %d '%s' -> track '%s' at frame %d (%s, close_gap=%s)",
         intent.clip_index, intent.from_track_ref, intent.to_track_ref,
@@ -931,17 +925,6 @@ def _apply_set_clip_speed(project: KdenliveProject, intent: SetClipSpeed) -> Non
             if candidate.producer_id == orig_producer:
                 _rescale(candidate)
 
-    # Keep the tractor length in sync with the (now shorter) content.
-    if project.tractor is not None:
-        max_len = 0
-        for pl in project.playlists:
-            total = sum(
-                (e.out_point - e.in_point + 1) for e in pl.entries
-            )
-            max_len = max(max_len, total)
-        if max_len > 0:
-            project.tractor["out"] = str(max_len - 1)
-
     logger.info(
         "SetClipSpeed: timewarp %.2fx for clip %d in playlist '%s' (producer %s)",
         intent.speed, intent.clip_index, intent.track_ref, tw_id,
@@ -1075,15 +1058,6 @@ def _apply_speed_ramp(project: KdenliveProject, intent: SpeedRamp) -> None:
             candidate = other_real[intent.clip_index]
             if candidate.producer_id == orig_producer:
                 _apply_to(other, candidate)
-
-    # Keep the tractor length in sync with the (re-timed) content.
-    if project.tractor is not None:
-        max_len = 0
-        for pl in project.playlists:
-            total = sum((e.out_point - e.in_point + 1) for e in pl.entries)
-            max_len = max(max_len, total)
-        if max_len > 0:
-            project.tractor["out"] = str(max_len - 1)
 
     logger.info(
         "SpeedRamp: %d segments for clip %d in playlist '%s' (producer %s)",

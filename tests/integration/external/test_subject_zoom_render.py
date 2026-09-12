@@ -108,7 +108,6 @@ def _build_workspace(tmp_path: Path, clip: Path) -> tuple[Path, str, KdenlivePro
         Playlist(id="playlist_video", entries=[entry.model_copy(deep=True)]),
         Playlist(id="playlist_audio", entries=[entry.model_copy(deep=True)]),
     ]
-    proj.tractor = {"id": "tractor0", "in": "0", "out": str(FRAMES - 1)}
     from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
         serialize_project,
     )
