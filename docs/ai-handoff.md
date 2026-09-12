@@ -125,7 +125,7 @@ Ingest skips assets that already have a transcript JSON. This means:
 
 3. **No cloud STT.** Transcription requires a local Whisper installation. There is no integration with cloud speech-to-text services (AWS Transcribe, Google STT, etc.).
 
-4. **No advanced video effects.** Transitions are applied as opaque XML elements. Complex effects (color grades, filters, compositing) must be applied manually in Kdenlive.
+4. **Effect coverage is per-service, not general.** Effects, colour grades, compositing, masks and transitions *are* applied programmatically (the `bundles/` and `tools/` packages carry ~74 effect/mask/composite/clip tools). What is not general is the *service vocabulary*: Kdenlive's effect registry recognises most `avfilter.X` services but not all — `avfilter.crop`, `avfilter.curves` and `avfilter.boxblur` are silently dropped at load, and several services have silent gates (`avfilter.huesaturation`'s `av.strength`, `frei0r.curves`' numbered props 1-15). A new effect service must be verified against a real Kdenlive load, not assumed from an adjacent one. See CLAUDE.md "Hard rules" 11-13 and `vault/wiki/kdenlive-not-all-avfilter-shapes-registered.md`.
 
 5. **Proxy policy is conservative.** The default proxy policy only generates proxies for files above 4K resolution. Very high-framerate files (120fps+) are not specifically handled.
 
@@ -136,3 +136,13 @@ Ingest skips assets that already have a transcript JSON. This means:
 8. **No render queue.** Render jobs are executed synchronously. Long renders block the process. A proper render queue with background workers is a future enhancement.
 
 9. **No auth or sandboxing.** The MCP server has no authentication. It should only be run locally and trusted with local file access.
+
+10. **melt exits 0 on footage it cannot open**, and the guard against that is a precondition with a deliberately narrow guarantee. melt does not fail when a producer's file is gone: it logs a warning, renders that clip as blank frames, and returns 0. Nothing downstream can tell that from a good render. `adapters/render/media_check` is the one implementation that closes it — it parses the XML about to be rendered and refuses, naming each absent file — and it is reached by every path that hands melt a *project*: `execute_render` (so every render and preview), `pipelines/render_final`, `bundles/subtitle_track`'s burn-in, and `pipelines/review_loop`'s project thumbnails. `adapters/kdenlive/validator.validate_project` answers the same question through the same code, so the advisory report and the hard refusal cannot disagree (`tests/unit/test_media_check_reconciled.py` is the case table that pins it).
+
+    What it does **not** cover, by design or by omission:
+    - Only producers whose `mlt_service` is a known file-backed service (`avformat`, `avformat-novalidate`, `qimage`, `pixbuf`, `timewarp`, `xml`) are checked. It is an allowlist, never a deny-list, because a timeline legitimately contains producers with no file at all (every Kdenlive project carries `producer_black`). A file-backed producer that somehow carries no `mlt_service` is therefore *not* checked — the price of never refusing a render that would have worked.
+    - Remote resources (`http://`, `smb://`, …) and image sequences (`%04d`, `.all.`, `glob:`) are skipped: `Path.exists()` cannot settle either.
+    - **File references that are not producer resources are not checked at all**: luma mattes (`pipelines/masked_wipes`, `pipelines/compositing`), the `shape` alpha mask, and the `av.filename` subtitle sidecar. Those still fail silently the way missing footage used to.
+    - `pipelines/motion_track.run_melt_tracker` is handed one media file rather than a timeline, so it stats that file itself rather than using this module. Same reason, different check.
+
+11. **A round-trip re-bases relative resources.** `parse_project` now keeps the `<mlt root>` attribute (`KdenliveProject.root`), and everything resolving media resolves against it — but `serialize_project` still writes the *output file's own directory* as `root` on every save. Importing a project whose resources are relative and saving it elsewhere therefore silently re-points them. Use absolute resources for anything this repo writes; treat a relative-resource import as read-mostly.
