@@ -15,6 +15,9 @@ from pathlib import Path
 
 from workshop_video_brain.core.models.kdenlive import KdenliveProject
 from workshop_video_brain.core.utils.paths import assert_not_protected
+from workshop_video_brain.edit_mcp.adapters.render.media_check import (
+    looks_like_media_resource,
+)
 from workshop_video_brain.workspace import snapshot as snapshot_manager
 
 logger = logging.getLogger(__name__)
@@ -81,26 +84,13 @@ def _project_uuid(title: str) -> str:
     return "{" + str(u) + "}"
 
 
-def looks_like_media_resource(resource: str) -> bool:
-    """Heuristic: does *resource* point at an on-disk media file?
-
-    A media/AV bin producer needs an ``mlt_service`` so Kdenlive's bin model
-    classifies it.  Our upstream producers sometimes carry only ``resource`` +
-    ``length`` (see the smoke fixtures), so the serializer defaults the service
-    to ``avformat-novalidate`` when the resource is a real path.  Builtin
-    producers (``black``, colour hex, ``color:``) and title/qml producers are
-    excluded (they already carry their own service).
-
-    Public because ``adapters/kdenlive/validator`` must answer "what service will
-    this in-memory producer be written with?" before it can ask the shared media
-    check whether that file exists. The default is decided here, so the validator
-    asks rather than growing a second copy of the rule.
-    """
-    if not resource:
-        return False
-    if resource == "black" or resource.startswith(("#", "0x", "color:")):
-        return False
-    return ("/" in resource) or ("." in resource)
+#: ``looks_like_media_resource`` is re-exported here (imported above) because
+#: this module used to own it and callers import it from either place. It now
+#: lives in ``adapters/render/media_check`` alongside the rest of the resource
+#: classification: the serializer's "default a bare resource to ``avformat``"
+#: decision and the media check's "does that file have to exist?" decision are
+#: the same question, and the media check is where that question is answered
+#: once. See ``media_check.effective_service``.
 
 
 def _frames_to_timecode(frames: int, fps: float) -> str:
