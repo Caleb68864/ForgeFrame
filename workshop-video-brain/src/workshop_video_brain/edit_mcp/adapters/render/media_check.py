@@ -362,12 +362,17 @@ def element_references(
     The non-producer analogue of the ``(producer_id, mlt_service, resource)``
     triple, and one entry point for both front doors: the XML reader hands it a
     parsed element's properties, the validator hands it a filter/transition
-    built from the in-memory model. Whatever the source, the same allowlist
-    decides.
+    built from the in-memory model.
+
+    Deliberately a dumb walk over *every* property, not a lookup of the
+    allowlisted ones. :func:`property_to_path` is the single place the
+    allowlist is enforced, so it must be the thing every candidate passes
+    through -- pre-filtering here would make that check a second copy of the
+    rule that nothing ever reaches, and a mutation removing it would go
+    unnoticed. (It did: that is how this shape was arrived at.)
     """
     service = (properties.get("mlt_service") or "").strip()
-    for name in FILE_BACKED_PROPERTIES.get((tag, service), ()):
-        value = properties.get(name)
+    for name, value in properties.items():
         if value:
             yield element_id, tag, service, name, value
 
