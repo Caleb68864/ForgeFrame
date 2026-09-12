@@ -14,6 +14,13 @@ missing files, and resolved relative resources against the workspace root rather
 than the ``<mlt root>`` melt itself uses. So a project the renderer accepted this
 rejected, and the reverse. ``tests/unit/test_media_check_reconciled.py`` is the
 table of those cases, now answered identically by both.
+
+The question is no longer only about producers. A render also opens the luma
+matte of a wipe, a ``shape`` alpha mask, a subtitle sidecar and a LUT, and melt
+exits 0 when any of them is gone. :func:`_model_references` collects those from
+the in-memory project so this report and the renderer's hard refusal still
+cannot disagree; the classification for them lives in ``media_check`` too,
+in ``FILE_BACKED_PROPERTIES``.
 """
 from __future__ import annotations
 
