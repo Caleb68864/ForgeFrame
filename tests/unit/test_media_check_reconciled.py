@@ -43,6 +43,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 import pytest
 
@@ -216,6 +217,28 @@ CASES: list[Case] = [
         why="same, for the hex colour form the color producer needs",
     ),
     Case(
+        id="bare_id_with_no_mlt_service_is_accepted",
+        service="",
+        resource="345d126aae3e4f918d4a69e64705e053",
+        why="tests/fixtures/projects/legacy/selects-timeline_v3.kdenlive and "
+            "review-timeline_v3.kdenlive carry exactly these: the "
+            "`resource = asset.path if asset else clip_ref` fallback in "
+            "selects_timeline / review_timeline / replay_generator / assembly "
+            "leaves a bare clip id. Defaulting a service-less producer must "
+            "not turn those existing generated timelines into refusals -- a "
+            "bare token with no separator and no extension is not a path",
+    ),
+    Case(
+        id="blipflash_literal_producer_resource_is_accepted",
+        service="blipflash",
+        resource="<producer>",
+        why="tests/fixtures/projects/real/corpus_av_legacy_2604.kdenlive "
+            "carries six of these, whose resource is the literal string "
+            "'<producer>'. blipflash is a *producer* service outside the "
+            "allowlist; anything that classified by 'is it a known non-AV "
+            "service?' instead would try to stat a file called <producer>",
+    ),
+    Case(
         id="mlt_data_relative_resource_is_accepted",
         service="avformat",
         resource="%lumas/HD/luma01.pgm",
@@ -269,7 +292,7 @@ def _as_xml(case: Case, tmp_path: Path, tokens: dict[str, str]) -> Path:
         f'<mlt version="7" root="{root}">\n'
         '  <producer id="prod0">\n'
         f"{service_prop}"
-        f'    <property name="resource">{resource}</property>\n'
+        f'    <property name="resource">{escape(resource)}</property>\n'
         "  </producer>\n"
         "</mlt>\n",
         encoding="utf-8",
@@ -536,7 +559,7 @@ def _ref_tokens(tmp_path: Path) -> dict[str, str]:
 def _ref_element_xml(case: RefCase, tokens: dict[str, str]) -> str:
     """The case's element, as the string both representations are built from."""
     props = "".join(
-        f'<property name="{name}">{_fill(value, tokens)}</property>'
+        f'<property name="{name}">{escape(_fill(value, tokens))}</property>'
         for name, value in case.props.items()
     )
     return f"<{case.tag}>{props}</{case.tag}>"

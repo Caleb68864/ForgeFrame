@@ -63,8 +63,13 @@ no separator is one of MLT's built-in lumas rather than a file.
 The one implementation, and its callers
 ---------------------------------------
 This rule is not allowed to exist twice. Everything that needs it reaches
-:func:`resolve_missing`, which takes ``(producer_id, mlt_service, resource)``
-triples plus the base directory relative resources resolve against:
+:func:`resolve_missing_all`, which takes ``(producer_id, mlt_service,
+resource)`` triples, ``(element_id, tag, mlt_service, property, value)``
+reference quintuples from :func:`element_references`, and the base directory
+relative values resolve against. (:func:`resolve_missing` is the
+producers-only spelling of the same call, kept for a caller that holds nothing
+else.) Both kinds are de-duplicated and ordered together, so a file named by a
+producer *and* a filter is one message:
 
 * :func:`missing_media` -- the XML front door, used by ``execute_render``,
   ``pipelines/render_final``, ``bundles/subtitle_track`` and
