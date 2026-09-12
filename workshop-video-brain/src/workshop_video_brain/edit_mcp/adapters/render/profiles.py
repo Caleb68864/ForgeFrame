@@ -1,13 +1,32 @@
 """Render profile loading and validation.
 
-Profiles are defined in ``<repo>/templates/render/*.yaml`` -- the repository
-root's ``templates/``, the same tree the Obsidian and title-card loaders read.
-That is the only render-profile directory: a YAML placed anywhere else is
-invisible to every tool (``tests/unit/test_render_profiles_expanded.py``
-guards this).
+Profiles are YAML files, edited in the repository at ``<repo>/templates/render/``
+-- the same tree the Obsidian and title-card loaders read. That is the only
+render-profile source directory: a YAML placed anywhere else is invisible to
+every tool (``tests/unit/test_render_profiles_expanded.py`` guards this).
+
+Where they are *found at runtime* is a different question, and it has two
+answers, because there are two ways this package gets onto a machine:
+
+* **Installed from a wheel.** There is no repository. The YAML is shipped inside
+  the package, at ``workshop_video_brain/templates/render/`` -- the wheel build
+  copies ``templates/render`` there (``[tool.hatch.build.targets.wheel.
+  force-include]`` in both ``pyproject.toml`` files, so a wheel built from
+  either the repository root or the plugin directory carries them).
+* **Run from a source checkout.** The package directory has no ``templates/``;
+  the repository root, seven levels up from this file, does. That is the copy a
+  developer edits, and it must keep winning in a checkout so an edit takes
+  effect without a rebuild.
+
+:func:`profiles_dir` states that precedence once -- packaged first, repository
+second -- and every default-path lookup in this module goes through it. Before
+this, only the repository path existed, so a wheel install found **no** profiles
+at all: ``list_profiles()`` returned ``[]`` and every one of the five documented
+profiles raised ``FileNotFoundError``.
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 
 import yaml
@@ -15,12 +34,47 @@ from pydantic import Field
 
 from workshop_video_brain.core.models._base import SerializableMixin
 
-# Default profiles directory
-_DEFAULT_PROFILES_DIR = (
-    Path(__file__).parent.parent.parent.parent.parent.parent.parent
-    / "templates"
-    / "render"
-)
+# Shipped inside the installed package: .../workshop_video_brain/templates/render
+# (this file is .../workshop_video_brain/edit_mcp/adapters/render/profiles.py, so
+# the package root is four levels up).
+_PACKAGED_PROFILES_DIR = Path(__file__).resolve().parents[3] / "templates" / "render"
+
+# The repository's editable copy: <repo>/templates/render. Seven levels up,
+# because the package lives at <repo>/workshop-video-brain/src/workshop_video_brain.
+_REPO_PROFILES_DIR = Path(__file__).resolve().parents[6] / "templates" / "render"
+
+
+def _first_existing(candidates: Iterable[Path], fallback: Path) -> Path:
+    """The first candidate that is a directory, else *fallback*.
+
+    The fallback is returned rather than ``None`` so a lookup that finds nothing
+    still has a concrete path to name in its error message.
+    """
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return fallback
+
+
+def profiles_dir() -> Path:
+    """The directory the render profiles are read from.
+
+    Packaged copy first (a wheel install has no repository), repository copy
+    second (a checkout must see edits without a rebuild). Resolved on every call
+    rather than at import, so a test or a build step that creates one of them
+    afterwards is still seen.
+    """
+    return _first_existing(
+        (_PACKAGED_PROFILES_DIR, _REPO_PROFILES_DIR), _REPO_PROFILES_DIR
+    )
+
+
+def _resolve_dir(profiles_dir_override: Path | str | None) -> Path:
+    """One statement of "which directory does this call read?" for both
+    :func:`load_profile` and :func:`list_profiles`."""
+    if profiles_dir_override:
+        return Path(profiles_dir_override)
+    return profiles_dir()
 
 
 class RenderProfile(SerializableMixin):
@@ -75,7 +129,7 @@ def load_profile(
         FileNotFoundError: If the profile YAML does not exist.
         ValueError: If the YAML is malformed or missing required fields.
     """
-    dir_path = Path(profiles_dir) if profiles_dir else _DEFAULT_PROFILES_DIR
+    dir_path = _resolve_dir(profiles_dir)
     profile_path = dir_path / f"{name}.yaml"
 
     if not profile_path.exists():
@@ -103,7 +157,7 @@ def list_profiles(profiles_dir: Path | str | None = None) -> list[str]:
     Returns:
         List of profile name strings (without .yaml extension).
     """
-    dir_path = Path(profiles_dir) if profiles_dir else _DEFAULT_PROFILES_DIR
+    dir_path = _resolve_dir(profiles_dir)
 
     if not dir_path.exists():
         return []
