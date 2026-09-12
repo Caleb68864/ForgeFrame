@@ -287,12 +287,20 @@ def _extract_track_filters(
     return by_track, consumed
 
 
+# The element name of the internal track mute/visibility directive, shared with
+# ``patcher_intents._set_hide_directive`` which writes it.  Deliberately
+# UNPREFIXED: the fragment is parsed as a standalone document here, so a
+# ``kdenlive:`` prefix it never declares raises ``unbound prefix`` -- which is
+# exactly what used to happen, silently, making every mute a no-op.
+HIDE_DIRECTIVE_TAG = "kdenlive-hide"
+
+
 def _hide_directives(
     project: KdenliveProject,
 ) -> tuple[dict[str, str], set[int]]:
     """Collect track hide/mute directives keyed by track id.
 
-    Mute/visibility are represented as ``<kdenlive:hide>`` OpaqueElements
+    Mute/visibility are represented as ``<kdenlive-hide>`` OpaqueElements
     (produced by the patcher).  The serializer applies them as the ``hide``
     attribute on the track's tractor entry -- the only place MLT honours track
     muting/visibility (§1.1 fix).  Returns ``(hide_by_track, consumed_ids)``.
@@ -300,11 +308,19 @@ def _hide_directives(
     hide_by_track: dict[str, str] = {}
     consumed: set[int] = set()
     for opaque in project.opaque_elements:
-        if opaque.tag != "kdenlive:hide":
+        if opaque.tag != HIDE_DIRECTIVE_TAG:
             continue
         try:
             helem = ET.fromstring(opaque.xml_string)
         except ET.ParseError:
+            # A directive this reader cannot parse is a bug in whatever wrote
+            # it, not a document variant to tolerate. Skipping silently is how
+            # the unbound-prefix spelling survived; say so.
+            logger.warning(
+                "Unparseable %s directive dropped: %s",
+                HIDE_DIRECTIVE_TAG,
+                opaque.xml_string,
+            )
             continue
         track = helem.get("track")
         if track is None:

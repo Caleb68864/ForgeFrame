@@ -596,7 +596,7 @@ class TestSetTrackMute:
         assert len(patched.opaque_elements) == 1
         elem = patched.opaque_elements[0]
         # Mute is a hide directive the serializer applies to the tractor entry.
-        assert elem.tag == "kdenlive:hide"
+        assert elem.tag == "kdenlive-hide"
         assert 'track="pl_video"' in elem.xml_string
         assert 'hide="audio"' in elem.xml_string  # video track: mute hides audio
 
@@ -610,7 +610,7 @@ class TestSetTrackMute:
 
         assert len(patched.opaque_elements) == 1
         elem = patched.opaque_elements[0]
-        assert elem.tag == "kdenlive:hide"
+        assert elem.tag == "kdenlive-hide"
         assert 'track="pl_video"' in elem.xml_string
         assert 'hide=""' in elem.xml_string  # video track: unmute clears audio hide
 
