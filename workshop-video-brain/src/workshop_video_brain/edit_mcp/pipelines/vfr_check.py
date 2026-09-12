@@ -6,7 +6,7 @@ provides a transcode function to convert to constant frame rate (CFR).
 from __future__ import annotations
 
 import logging
-import subprocess
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -15,7 +15,9 @@ from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import (
 )
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
     DEFAULT_TIMEOUT_SECONDS as _RENDER_TIMEOUT_SECONDS,
-    _stderr_tail,
+    FFmpegCommandError,
+    FFmpegResult,
+    run_ffmpeg,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,6 +87,30 @@ def check_vfr(workspace_root: Path) -> VFRReport:
     )
 
 
+class TranscodeSourceUnreadable(RuntimeError):
+    """Determined: the source is not something ffprobe can read as media.
+
+    A file the user handed in that is not decodable video is not a defect in
+    this tool, and must never be reported with the "unexpected error, please
+    report it" voice.
+    """
+
+
+class TranscodeOutputUnwritable(RuntimeError):
+    """Determined: the destination cannot be written (missing or read-only
+    directory, read-only existing output). Also the user's to fix."""
+
+
+class TranscodeFailed(RuntimeError):
+    """**Undetermined**: ffmpeg exited non-zero and this code could not work out
+    why. The source probes as readable and the destination is writable, so the
+    only lead is ffmpeg's own last output, which the message carries.
+
+    This is the honest end of the classification, and it is deliberately the
+    only place a "this might be a bug" suggestion is allowed.
+    """
+
+
 def transcode_to_cfr(
     source: Path,
     target_fps: int | None = None,
@@ -99,44 +125,126 @@ def transcode_to_cfr(
         Path to the output CFR file (alongside source with _cfr suffix).
 
     Raises:
-        RuntimeError: If FFmpeg transcode fails.
+        TranscodeSourceUnreadable: the source is not decodable media.
+        TranscodeOutputUnwritable: the destination cannot be written.
+        TranscodeFailed: ffmpeg failed for a reason this code could not
+            determine; the message carries ffmpeg's own last output.
+        FFmpegNotFound / FFmpegTimeout: raised through ``run_ffmpeg`` -- an
+            absent binary and a wall-clock kill are already classified by the
+            error contract and must not be re-labelled here.
     """
+    source = Path(source)
     if target_fps is None:
-        asset = probe_media(source)
+        try:
+            asset = probe_media(source)
+        except FFmpegCommandError as exc:
+            # ffprobe ran and refused the file. That is a determination, not a
+            # guess: the input is the problem and there is nothing to transcode.
+            raise TranscodeSourceUnreadable(
+                f"{source} could not be read as video. {_one_line(str(exc))}"
+            ) from exc
         target_fps = int(round(asset.fps)) or 30
 
     # Build output path with _cfr suffix
     output = source.parent / f"{source.stem}_cfr{source.suffix}"
 
-    # -fps_mode, not -vsync: -vsync was deprecated in ffmpeg 5.1 and removed
-    # in 8.0 ("Unrecognized option 'vsync'"). -hide_banner keeps the ~1.5 KB
+    # Through ``run_ffmpeg`` rather than a hand-rolled ``subprocess.run``: it is
+    # the one place that turns an absent binary into ``FFmpegNotFound`` and a
+    # wall-clock kill into ``FFmpegTimeout`` (both already classified by the
+    # error contract), and the one place that refuses to clobber an existing
+    # file under media/raw/ or projects/source/.
+    #
+    # -fps_mode, not -vsync: -vsync was deprecated in ffmpeg 5.1 and removed in
+    # 8.0 ("Unrecognized option 'vsync'"). -hide_banner keeps the ~1.5 KB
     # version banner out of stderr so a failure reports ffmpeg's actual error.
-    cmd = [
-        "ffmpeg",
-        "-hide_banner",
-        "-y",
-        "-i", str(source),
-        "-fps_mode", "cfr",
-        "-r", str(target_fps),
-        "-c:a", "copy",
-        str(output),
-    ]
-
-    logger.info("Transcoding VFR -> CFR: %s", " ".join(cmd))
-
-    result = subprocess.run(
-        cmd, capture_output=True, text=True, check=False,
+    result = run_ffmpeg(
+        args=["-fps_mode", "cfr", "-r", str(target_fps), "-c:a", "copy"],
+        input_path=source,
+        output_path=output,
+        overwrite=True,
+        pre_input_args=["-hide_banner"],
         timeout=_RENDER_TIMEOUT_SECONDS,
     )
+    if result.success:
+        return output
 
-    if result.returncode != 0:
-        # The tail, not the head: ffmpeg writes the reason for a failure last.
-        raise RuntimeError(
-            f"FFmpeg transcode failed (exit {result.returncode}): "
-            f"{_stderr_tail(result.stderr or '')}"
+    raise _diagnose_transcode_failure(source, output, result)
+
+
+def _diagnose_transcode_failure(
+    source: Path, output: Path, result: FFmpegResult
+) -> RuntimeError:
+    """Work out what a non-zero ffmpeg exit means -- or admit that it does not.
+
+    This is a **post-mortem**, never a precondition: it runs only after ffmpeg
+    has already failed, so it cannot refuse a transcode that would have worked.
+
+    It also never reads ffmpeg's stderr to decide *what kind* of failure this
+    was. ``adapters/render/media_check`` already made that argument against
+    melt and it holds here: the wording is not part of the tool's API, it
+    varies by version and build, and a match on it is a taxonomy invented from
+    guesses. Each verdict below is instead something this code establishes for
+    itself -- ffprobe either reads the source or it does not; the destination
+    either accepts a write or it does not. ffmpeg's own words are carried into
+    every message, because they are the best lead even when they cannot be
+    classified.
+    """
+    # Flattened to ONE line on purpose: the error contract renders an
+    # exception's first line as ``cause`` (``errors._one_line_cause``), so a
+    # multi-line tail would be silently truncated to "ffmpeg said:" and the
+    # actual reason -- the only thing that makes these errors actionable --
+    # would never reach the caller.
+    tail = _one_line(result.stderr_tail) or "(ffmpeg produced no output)"
+
+    if _source_is_readable(source) is False:
+        return TranscodeSourceUnreadable(
+            f"{source} is not readable as video, so there is nothing to "
+            f"transcode. ffmpeg said: {tail}"
         )
 
-    return output
+    destination = _destination_problem(output)
+    if destination is not None:
+        return TranscodeOutputUnwritable(f"{destination} ffmpeg said: {tail}")
+
+    return TranscodeFailed(
+        f"ffmpeg failed on {source.name} and the cause could not be "
+        f"determined. ffmpeg said: {tail}"
+    )
+
+
+def _one_line(text: str) -> str:
+    """Collapse a multi-line stderr tail into one ``|``-separated line."""
+    return " | ".join(ln.strip() for ln in (text or "").splitlines() if ln.strip())
+
+
+def _source_is_readable(path: Path) -> bool | None:
+    """``True`` / ``False`` / ``None`` when it cannot be established.
+
+    The third state matters: if ffprobe is itself missing or times out, we have
+    learned nothing about the file, and saying "your media is unreadable" would
+    be a guess dressed as a finding.
+    """
+    try:
+        probe_media(path)
+    except FileNotFoundError:
+        return False
+    except FFmpegCommandError:
+        return False
+    except Exception:  # FFmpegNotFound, FFmpegTimeout, bad JSON, ...
+        return None
+    return True
+
+
+def _destination_problem(output: Path) -> str | None:
+    """A one-line reason the output cannot be written, or ``None``."""
+    parent = output.parent
+    if not parent.is_dir():
+        return f"The output directory does not exist: {parent}."
+    if not os.access(parent, os.W_OK):
+        return f"The output directory is not writable: {parent}."
+    if output.exists() and not os.access(output, os.W_OK):
+        return f"The output file already exists and is not writable: {output}."
+    return None
 
 
 # ---------------------------------------------------------------------------
