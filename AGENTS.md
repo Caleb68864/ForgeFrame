@@ -34,7 +34,7 @@ Detailed notes (one concept per page) live in `vault/wiki/`:
 - `kdenlive-title-card-pattern.md` — editable titles (`kdenlivetitle` + `xmldata`)
 - `kdenlive-cross-dissolve-pattern.md` — stacked-track dissolves; `a_track < b_track` always; direction via `reverse`
 - `kdenlive-image-and-qtblend-pattern.md` — image producers + Ken Burns transform filter (entry-local keyframes)
-- `kdenlive-clip-speed-pattern.md` — clip speed via timewarp producer (`PlaylistEntry.speed`)
+- `kdenlive-clip-speed-pattern.md` — clip speed via timewarp producer (the `SetClipSpeed` intent repoints the entry at it)
 - `kdenlive-bin-loader-source-pointers.md` — exact Kdenlive C++ files/lines for load checks
 - `kdenlive-not-all-avfilter-shapes-registered.md` — `avfilter.crop`, `avfilter.curves`, `avfilter.boxblur` are NOT in Kdenlive's effect registry; substitute native MLT or frei0r equivalents
 - `kdenlive-frei0r-curves-all-numbered-props.md` — `frei0r.curves` reads numbered props 1-15 at render time; setting only the ones referenced by `kdenlive:curve` flatlines the curve to white

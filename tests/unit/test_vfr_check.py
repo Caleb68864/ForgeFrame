@@ -10,9 +10,12 @@ import pytest
 
 from tests._testkit import HAVE_FFMPEG, HAVE_FFPROBE
 
+from workshop_video_brain.edit_mcp.adapters.ffmpeg import runner as ffmpeg_runner
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import FFmpegResult
 from workshop_video_brain.edit_mcp.pipelines import vfr_check
 from workshop_video_brain.edit_mcp.pipelines.vfr_check import (
+    TranscodeFailed,
     VFRFile,
     VFRReport,
     check_vfr,
@@ -147,44 +150,61 @@ class TestCheckVFR:
 # transcode_to_cfr tests
 # ---------------------------------------------------------------------------
 
+def _ffmpeg_result(success: bool, stderr: str = "") -> FFmpegResult:
+    return FFmpegResult(
+        success=success,
+        input_path="in",
+        output_path="out",
+        command=["ffmpeg"],
+        stderr=stderr,
+    )
+
+
 class TestTranscodeToCFR:
-    @patch("workshop_video_brain.edit_mcp.pipelines.vfr_check.subprocess")
-    def test_output_path_has_cfr_suffix(self, mock_subprocess, tmp_path: Path):
+    @patch("workshop_video_brain.edit_mcp.pipelines.vfr_check.run_ffmpeg")
+    def test_output_path_has_cfr_suffix(self, mock_run, tmp_path: Path):
         """Output should be alongside source with _cfr suffix."""
         source = tmp_path / "clip.mp4"
         source.write_text("fake")
-        mock_subprocess.run.return_value = MagicMock(returncode=0)
+        mock_run.return_value = _ffmpeg_result(True)
 
         result = transcode_to_cfr(source, target_fps=30)
 
         assert result.name == "clip_cfr.mp4"
         assert result.parent == source.parent
 
-    @patch("workshop_video_brain.edit_mcp.pipelines.vfr_check.subprocess")
+    @patch("workshop_video_brain.edit_mcp.pipelines.vfr_check.run_ffmpeg")
     @patch("workshop_video_brain.edit_mcp.pipelines.vfr_check.probe_media")
-    def test_auto_detect_fps_when_none(self, mock_probe, mock_subprocess, tmp_path: Path):
+    def test_auto_detect_fps_when_none(self, mock_probe, mock_run, tmp_path: Path):
         """When target_fps is None, use avg_frame_rate from probe."""
         source = tmp_path / "clip.mp4"
         source.write_text("fake")
         mock_probe.return_value = _make_media_asset(str(source), is_vfr=True, fps=24.0)
-        mock_subprocess.run.return_value = MagicMock(returncode=0)
+        mock_run.return_value = _ffmpeg_result(True)
 
         transcode_to_cfr(source, target_fps=None)
 
-        call_args = mock_subprocess.run.call_args[0][0]
-        assert "24" in call_args
+        assert "24" in mock_run.call_args.kwargs["args"]
 
-    @patch("workshop_video_brain.edit_mcp.pipelines.vfr_check.subprocess")
-    def test_ffmpeg_failure_raises(self, mock_subprocess, tmp_path: Path):
-        """Non-zero FFmpeg exit should raise RuntimeError."""
+    @patch("workshop_video_brain.edit_mcp.pipelines.vfr_check.run_ffmpeg")
+    def test_ffmpeg_failure_raises(self, mock_run, tmp_path: Path):
+        """A non-zero FFmpeg exit whose cause cannot be determined raises
+        ``TranscodeFailed`` -- still a RuntimeError, but the classified kind.
+
+        See ``tests/unit/test_transcode_cfr_errors.py`` for the determined
+        cases (unreadable source, unwritable destination) and for what each
+        one is reported as.
+        """
         source = tmp_path / "clip.mp4"
         source.write_text("fake")
-        mock_subprocess.run.return_value = MagicMock(
-            returncode=1, stderr="Error encoding",
-        )
+        mock_run.return_value = _ffmpeg_result(False, stderr="Error encoding")
 
-        with pytest.raises(RuntimeError, match="FFmpeg transcode failed"):
-            transcode_to_cfr(source, target_fps=30)
+        with patch(
+            "workshop_video_brain.edit_mcp.pipelines.vfr_check._source_is_readable",
+            return_value=True,
+        ):
+            with pytest.raises(TranscodeFailed, match="could not be determined"):
+                transcode_to_cfr(source, target_fps=30)
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +260,9 @@ class TestTranscodeToCFRRealFFmpeg:
                 ffmpeg_runs.append(result)
             return result
 
-        monkeypatch.setattr(vfr_check.subprocess, "run", spy)
+        # The transcode goes through ``adapters/ffmpeg/runner.run_ffmpeg`` now,
+        # so the spy belongs on the runner's subprocess, not the pipeline's.
+        monkeypatch.setattr(ffmpeg_runner.subprocess, "run", spy)
 
         output = transcode_to_cfr(source, target_fps=24)
 
@@ -264,7 +286,13 @@ class TestTranscodeToCFRRealFFmpeg:
         source = tmp_path / "clip.mp4"
         source.write_bytes(b"not a video")
 
-        with pytest.raises(RuntimeError, match="FFmpeg transcode failed") as excinfo:
+        # This file is genuinely undecodable, so the post-mortem determines the
+        # source is at fault -- which is the point of the classification. What
+        # this test still guards is that ffmpeg's own reason survives into the
+        # message rather than being replaced by its version banner.
+        with pytest.raises(
+            vfr_check.TranscodeSourceUnreadable, match="not readable as video"
+        ) as excinfo:
             transcode_to_cfr(source, target_fps=30)
 
         message = str(excinfo.value)

@@ -50,3 +50,10 @@ wvb = "workshop_video_brain.app.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/workshop_video_brain"]
+
+# See the identical block in the repository-root pyproject.toml: the render
+# profiles live outside the package directory, so without this a wheel built
+# here ships none of them. Both build roots must carry the mapping, because
+# either one can produce the wheel a user installs.
+[tool.hatch.build.targets.wheel.force-include]
+"../templates/render" = "workshop_video_brain/templates/render"

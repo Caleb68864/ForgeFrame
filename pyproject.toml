@@ -37,6 +37,16 @@ default-groups = ["dev", "test"]
 [tool.hatch.build.targets.wheel]
 packages = ["workshop-video-brain/src/workshop_video_brain"]
 
+# The render profiles are edited at <repo>/templates/render (one source of
+# truth, shared with the Obsidian and title-card template trees) but they live
+# OUTSIDE the package directory, so a wheel shipped without this carried none of
+# them: an installed `wvb` found zero render profiles and every one of the five
+# documented names raised FileNotFoundError. Copy them inside the package;
+# `adapters/render/profiles.profiles_dir()` prefers that copy and falls back to
+# the repository path for a source checkout.
+[tool.hatch.build.targets.wheel.force-include]
+"templates/render" = "workshop_video_brain/templates/render"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["workshop-video-brain/src"]

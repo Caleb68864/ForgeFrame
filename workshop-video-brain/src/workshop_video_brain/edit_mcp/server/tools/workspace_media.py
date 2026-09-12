@@ -20,6 +20,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
     media_unreadable,
     not_found,
     invalid_input,
+    operation_failed,
     from_exception,
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import (
@@ -308,22 +309,60 @@ def media_transcode_cfr(
     Returns:
         Path to the new CFR file.
     """
+    from workshop_video_brain.edit_mcp.pipelines.vfr_check import (
+        TranscodeFailed,
+        TranscodeOutputUnwritable,
+        TranscodeSourceUnreadable,
+        transcode_to_cfr,
+    )
+
+    source = Path(file_path)
     try:
         ws_root = _validate_workspace_path(workspace_path)
-        source = Path(file_path)
         if not source.is_absolute():
             source = ws_root / source
         if not source.exists():
-            return err(f"Source file not found: {source}",
-                       suggestion="Check the file_path; it resolves under the workspace root unless absolute.")
+            return missing_file(str(source), "source video")
 
-        from workshop_video_brain.edit_mcp.pipelines.vfr_check import transcode_to_cfr
         fps = target_fps if target_fps > 0 else None
         output = transcode_to_cfr(source, target_fps=fps)
         return _ok({"output_path": str(output), "target_fps": target_fps or "auto"})
+
+    # An ffmpeg exit is not automatically a defect in this tool. The three
+    # clauses below are the failures the pipeline could actually *determine*;
+    # each names what the user can do about it, and none of them says "please
+    # report it". They must precede the generic RuntimeError clause, since all
+    # three subclass it.
+    except TranscodeSourceUnreadable as exc:
+        return media_unreadable(str(source), exc)
+    except TranscodeOutputUnwritable as exc:
+        return invalid_input(
+            str(exc),
+            "Write to a directory you can create files in -- the CFR copy is "
+            "written beside the source. Move or copy the source into "
+            "media/processed/ and retry, or fix the directory's permissions.",
+            path=str(source.parent),
+        )
+    except TranscodeFailed as exc:
+        # Honestly unknown. ffmpeg's own last output is in the message above and
+        # is the only lead; this is the one branch allowed to suggest a report.
+        return operation_failed(
+            str(exc),
+            cause=exc,
+            suggestion=(
+                "The cause could not be determined here: the source probes as "
+                "readable and the output directory is writable, so ffmpeg's own "
+                "message above is the best lead. If it names something fixable "
+                "(an unsupported codec, a full disk, an unusual pixel format), "
+                "fix that and retry. Otherwise this is worth reporting -- the "
+                "full command and output are in the server log."
+            ),
+        )
     except (ValueError, FileNotFoundError) as exc:
         return from_exception(exc)
     except RuntimeError as exc:
+        # FFmpegNotFound / FFmpegTimeout / ProtectedPathError land here and are
+        # already classified by the error contract.
         return from_exception(exc)
     except Exception as exc:
         return err(f"Transcode failed: {exc}",

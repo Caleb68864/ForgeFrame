@@ -1,5 +1,18 @@
 # Kdenlive audio fade pattern (`volume` filter inside the entry)
 
+
+> **Correction (2026-09-12).** `EntryFilter` / `PlaylistEntry.filters`,
+> `SequenceTransition` / `KdenliveProject.sequence_transitions` and
+> `TrackMixTransition` / `KdenliveProject.track_mix_transitions` were removed
+> from the model: a serializer rewrite dropped their emission, nothing
+> populated them either, and setting one had no effect on the file written to
+> disk. **The XML contracts on this page are unchanged and still correct** --
+> only the Python entry point moved. Clip and track filters, user transitions
+> and compositions all travel as `OpaqueElement` verbatim XML that the
+> serializer places structurally; reach them through the `AddEffect` /
+> `AddTrackFilter` / `AddTransition` / `AddComposition` timeline intents. See
+> `tests/unit/test_kdenlive_model_has_no_dead_declarations.py`.
+
 Audio fade-in / fade-out in Kdenlive 25.x is a `<filter mlt_service="volume">` child of the playlist `<entry>` element. Verified against `audio-mix.kdenlive` from the KDE Kdenlive test suite. The legacy opaque-XML form our patcher used to emit (with `level="0=0;duration=1"` keyframe-style ramps at document root) is rejected by Kdenlive's bin loader and silently dropped.
 
 ## Producer-level vs entry-level — entry wins
@@ -53,15 +66,15 @@ The fade lives on the playlist `<entry>` (the clip use), not on the `<chain>` (t
 ## Critical contract details
 
 1. **NOT a keyframe string**. The `gain`/`end` are scalar floats, NOT `"frame=value;frame=value"` keyframe ramps like `qtblend` `rect`. MLT's `volume` service interpolates internally.
-2. **Filter `in`/`out` are XML element attributes**, not `<property>` children. The serializer's `EntryFilter.in_frame` / `out_frame` fields map to these attributes.
+2. **Filter `in`/`out` are XML element attributes**, not `<property>` children. They are set on the `<filter>` element itself, not among its properties.
 3. **Frame indices are entry-local**, not absolute sequence frames. Fade-in starts at frame 0 of the entry; fade-out ends at the entry's final frame.
 4. **`kdenlive_id` is the discriminator**: `fadein` or `fadeout`. The semantically-correct `gain`/`end` pair (`0`→`1` for in, `1`→`0` for out) must agree with the `kdenlive_id` -- mismatching them works in MLT but the Kdenlive UI shows the wrong fade direction.
 5. **`window=75`, `max_gain=20dB`** are the standard volume-filter parameters. Kdenlive writes them on every audio fade; omitting them probably still works but matching is safer.
 
 ## Implementation in this repo
 
-- Model: `EntryFilter.in_frame` / `EntryFilter.out_frame` (added with this pattern). The serializer writes them as element attributes.
-- Patcher: `_apply_audio_fade()` constructs an `EntryFilter` with the right shape and appends it to the entry's `filters` list. No more opaque-XML emission.
+- Model: none. `in`/`out` are attributes on the stored `<filter>` element.
+- Patcher: `_apply_audio_fade()` builds the `<filter>` element and stores it as an `OpaqueElement` keyed to its clip.
 - Smoke output: `tests/integration/test_v25_kdenlive_smoke_8.py` writes 025-audio-fade-in-out and 026-audio-fade-in-music-bed.
 
 ## Sources

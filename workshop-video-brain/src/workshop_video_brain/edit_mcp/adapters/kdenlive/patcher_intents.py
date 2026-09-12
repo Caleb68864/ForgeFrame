@@ -16,6 +16,9 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
+    HIDE_DIRECTIVE_TAG,
+)
 from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
 from workshop_video_brain.core.models.kdenlive import (
     Guide,
@@ -1153,19 +1156,30 @@ def _apply_audio_fade(project: KdenliveProject, intent: AudioFade) -> None:
 def _set_hide_directive(project: KdenliveProject, track_ref: str, hide: str) -> None:
     """Record a ``hide`` value for a track's tractor entry.
 
-    Represented as a ``<kdenlive:hide>`` OpaqueElement that the serializer
+    Represented as a ``<kdenlive-hide>`` OpaqueElement that the serializer
     consumes to set the ``hide`` attribute on the track (the only place MLT
     honours mute/visibility).  A later directive for the same track supersedes
     an earlier one.
+
+    The element name has **no namespace prefix**, and must not grow one: this
+    fragment is a standalone document to every reader of it, so a ``kdenlive:``
+    prefix it does not declare makes ``ET.fromstring`` raise ``unbound prefix``.
+    It was spelled ``<kdenlive:hide>`` and both readers swallowed that failure --
+    ``serializer._hide_directives`` skipped the directive and the opaque
+    re-insertion loop dropped it -- so muting a track silently changed nothing
+    in the written document.  ``tests/unit/test_track_hide_directive.py`` holds
+    the fragment to well-formed XML and checks the written file, not the model.
+    It is an internal marker: the serializer consumes it, so it never reaches
+    disk under either spelling.
     """
     project.opaque_elements = [
         el
         for el in project.opaque_elements
-        if not (el.tag == "kdenlive:hide" and f'track="{track_ref}"' in el.xml_string)
+        if not (el.tag == HIDE_DIRECTIVE_TAG and f'track="{track_ref}"' in el.xml_string)
     ]
-    xml = f'<kdenlive:hide track="{track_ref}" hide="{hide}" />'
+    xml = f'<{HIDE_DIRECTIVE_TAG} track="{track_ref}" hide="{hide}" />'
     project.opaque_elements.append(
-        OpaqueElement(tag="kdenlive:hide", xml_string=xml, position_hint="tractor")
+        OpaqueElement(tag=HIDE_DIRECTIVE_TAG, xml_string=xml, position_hint="tractor")
     )
 
 

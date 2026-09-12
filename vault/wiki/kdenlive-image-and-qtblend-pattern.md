@@ -1,5 +1,18 @@
 # Kdenlive image producers + `qtblend` transform filter
 
+
+> **Correction (2026-09-12).** `EntryFilter` / `PlaylistEntry.filters`,
+> `SequenceTransition` / `KdenliveProject.sequence_transitions` and
+> `TrackMixTransition` / `KdenliveProject.track_mix_transitions` were removed
+> from the model: a serializer rewrite dropped their emission, nothing
+> populated them either, and setting one had no effect on the file written to
+> disk. **The XML contracts on this page are unchanged and still correct** --
+> only the Python entry point moved. Clip and track filters, user transitions
+> and compositions all travel as `OpaqueElement` verbatim XML that the
+> serializer places structurally; reach them through the `AddEffect` /
+> `AddTrackFilter` / `AddTransition` / `AddComposition` timeline intents. See
+> `tests/unit/test_kdenlive_model_has_no_dead_declarations.py`.
+
 Editable Ken Burns / parallax effects on still-image clips need two pieces in the right shape: an `mlt_service=qimage` producer carrying Kdenlive's expected metadata, and a `qtblend` transform filter living *inside* the playlist `<entry>` with rect keyframes in entry-local time.
 
 ## Image producer
@@ -68,7 +81,7 @@ Reference: `image_transform_native.kdenlive` lines 111-126.
 
 ### Key facts
 
-1. **The filter lives inside the `<entry>` element**, not at the document root and not on the playlist or tractor. The model represents this with `PlaylistEntry.filters: list[EntryFilter]`.
+1. **The filter lives inside the `<entry>` element**, not at the document root and not on the playlist or tractor. The filter is stored as an `OpaqueElement` carrying `track=`/`clip_index=` and nested back into its `<entry>` by `serializer._extract_clip_filters`.
 2. **`mlt_service=qtblend`, NOT `affine`.** Kdenlive's UI exposes the effect as "Transform" but writes it as `qtblend`. `affine` is a different effect (used for shear and 3D-style transforms).
 3. **`kdenlive_id=qtblend`** matches the service name.
 4. **Keyframes are in entry-local time.** Timestamps run from `00:00:00.000` (entry start) to the entry's local duration timecode — NOT the absolute sequence-frame position. Putting absolute sequence positions here causes keyframes past the first clip to fall beyond their entry's local duration, which Kdenlive clamps to one effective keyframe → animation appears broken on every clip but the first.
@@ -97,8 +110,8 @@ end   = rect(end_scale,   x_drift, y_drift)
 
 - Producer emit: `serializer.py` -- `_clip_type()` returns `2` for `qimage`; `_emit_media_element` adds `kdenlive:monitorPosition=0` and `kdenlive:kextractor=1` for image producers.
 - Filter emit: `serializer.py` -- the playlist-entry block iterates `entry.filters` and writes each as a `<filter>` child of the `<entry>` element.
-- Model: `core/models/kdenlive.py` -- `EntryFilter` class + `PlaylistEntry.filters: list[EntryFilter]`.
-- Helpers: `tests/integration/test_v25_kdenlive_smoke_6.py` -- `_qtblend_filter()` builds an `EntryFilter` from `(frame, "x y w h opacity")` keyframe tuples; `_kenburns_rect()` computes start/end rects for zoom + drift.
+- Model: none. Use the `AddEffect` timeline intent with `effect_name="qtblend"` and the rect/rotation keyframe strings in `params`.
+- Helpers: `tests/integration/test_v25_kdenlive_smoke_6.py` -- `_qtblend_filter()` builds the filter properties from `(frame, "x y w h opacity")` keyframe tuples; `_kenburns_rect()` computes start/end rects for zoom + drift.
 
 ## Sources
 

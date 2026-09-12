@@ -287,12 +287,20 @@ def _extract_track_filters(
     return by_track, consumed
 
 
+# The element name of the internal track mute/visibility directive, shared with
+# ``patcher_intents._set_hide_directive`` which writes it.  Deliberately
+# UNPREFIXED: the fragment is parsed as a standalone document here, so a
+# ``kdenlive:`` prefix it never declares raises ``unbound prefix`` -- which is
+# exactly what used to happen, silently, making every mute a no-op.
+HIDE_DIRECTIVE_TAG = "kdenlive-hide"
+
+
 def _hide_directives(
     project: KdenliveProject,
 ) -> tuple[dict[str, str], set[int]]:
     """Collect track hide/mute directives keyed by track id.
 
-    Mute/visibility are represented as ``<kdenlive:hide>`` OpaqueElements
+    Mute/visibility are represented as ``<kdenlive-hide>`` OpaqueElements
     (produced by the patcher).  The serializer applies them as the ``hide``
     attribute on the track's tractor entry -- the only place MLT honours track
     muting/visibility (§1.1 fix).  Returns ``(hide_by_track, consumed_ids)``.
@@ -300,11 +308,19 @@ def _hide_directives(
     hide_by_track: dict[str, str] = {}
     consumed: set[int] = set()
     for opaque in project.opaque_elements:
-        if opaque.tag != "kdenlive:hide":
+        if opaque.tag != HIDE_DIRECTIVE_TAG:
             continue
         try:
             helem = ET.fromstring(opaque.xml_string)
         except ET.ParseError:
+            # A directive this reader cannot parse is a bug in whatever wrote
+            # it, not a document variant to tolerate. Skipping silently is how
+            # the unbound-prefix spelling survived; say so.
+            logger.warning(
+                "Unparseable %s directive dropped: %s",
+                HIDE_DIRECTIVE_TAG,
+                opaque.xml_string,
+            )
             continue
         track = helem.get("track")
         if track is None:
@@ -433,9 +449,27 @@ def serialize_project(
     root = ET.Element("mlt")
     root.set("LC_NUMERIC", "C")
     # Sub-spec 2 / E-shape: root resolves to the project (main_bin) producer and
-    # carries the workspace ``root`` path so relative resources resolve.
+    # carries the ``root`` path relative resources resolve against.
+    #
+    # A save PRESERVES the root the project was imported with; it does not
+    # re-base it on wherever the file is being written. ``root`` is what every
+    # relative ``resource`` in the document means, so rewriting it on a
+    # save-elsewhere silently re-points the project's media at files that are
+    # not there. The alternative -- keep the output directory as the root and
+    # rewrite each resource to stay valid against it -- was rejected: MLT
+    # ``resource`` values are not all filesystem paths (``color``/``black``,
+    # built-in luma names, ``%``-prefixed ``MLT_DATA`` names, ``%04d``/``glob:``
+    # image sequences; see ``adapters/render/media_check``), and a rewriter that
+    # misidentifies one corrupts the project quietly. Preserving the root leaves
+    # every resource string untouched and every one of them pointing at the file
+    # it pointed at before.
+    #
+    # ``project.root`` is empty only for a project built in memory rather than
+    # parsed -- there is no imported root to preserve, so the output directory
+    # is still the right answer. Clearing it is also the deliberate escape hatch
+    # for a caller that really is relocating a project.
     root.set("producer", "main_bin")
-    root.set("root", str(output_path.parent))
+    root.set("root", project.root or str(output_path.parent))
     root.set("version", project.version)
     if project.title:
         root.set("title", project.title)
