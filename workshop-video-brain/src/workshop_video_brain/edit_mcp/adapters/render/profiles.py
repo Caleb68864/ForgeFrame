@@ -26,34 +26,26 @@ profiles raised ``FileNotFoundError``.
 """
 from __future__ import annotations
 
-from collections.abc import Iterable
 from pathlib import Path
 
 import yaml
 from pydantic import Field
 
 from workshop_video_brain.core.models._base import SerializableMixin
+from workshop_video_brain.core.template_paths import (
+    first_existing as _first_existing,
+    packaged_template_dir,
+    repo_template_dir,
+)
 
+# The two candidates, named here so a test can monkeypatch either one. They are
+# the shared rule's candidates (``core.template_paths``), which the Obsidian and
+# title-card trees resolve through as well -- one statement, three trees.
+#
 # Shipped inside the installed package: .../workshop_video_brain/templates/render
-# (this file is .../workshop_video_brain/edit_mcp/adapters/render/profiles.py, so
-# the package root is four levels up).
-_PACKAGED_PROFILES_DIR = Path(__file__).resolve().parents[3] / "templates" / "render"
-
-# The repository's editable copy: <repo>/templates/render. Seven levels up,
-# because the package lives at <repo>/workshop-video-brain/src/workshop_video_brain.
-_REPO_PROFILES_DIR = Path(__file__).resolve().parents[6] / "templates" / "render"
-
-
-def _first_existing(candidates: Iterable[Path], fallback: Path) -> Path:
-    """The first candidate that is a directory, else *fallback*.
-
-    The fallback is returned rather than ``None`` so a lookup that finds nothing
-    still has a concrete path to name in its error message.
-    """
-    for candidate in candidates:
-        if candidate.is_dir():
-            return candidate
-    return fallback
+_PACKAGED_PROFILES_DIR = packaged_template_dir("render")
+# The repository's editable copy: <repo>/templates/render.
+_REPO_PROFILES_DIR = repo_template_dir("render")
 
 
 def profiles_dir() -> Path:

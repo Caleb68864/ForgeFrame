@@ -18,6 +18,7 @@ from pathlib import Path
 
 import yaml
 
+from workshop_video_brain.core.template_paths import template_dir
 from workshop_video_brain.server import mcp
 from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     tool_guard,
@@ -33,14 +34,16 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import _ok
 
 
 def _titles_template_dir() -> Path:
-    """Locate the repo ``templates/titles`` directory from this module."""
-    here = Path(__file__).resolve()
-    for parent in here.parents:
-        candidate = parent / "templates" / "titles"
-        if candidate.is_dir():
-            return candidate
-    # Fall back to the conventional location even if it does not yet exist.
-    return here.parents[5] / "templates" / "titles"
+    """``templates/titles``: packaged copy first, repository copy second.
+
+    One statement of the rule, shared with ``pipelines/review_loop`` (the other
+    title-style loader) and with the render-profile loader -- see
+    ``core.template_paths``.  This used to be a parent-walk ending in
+    ``parents[5]``, duplicated in ``review_loop`` where ``parents[5]`` is a
+    *different* directory, so from a wheel install the two loaders looked in two
+    different places and neither existed.
+    """
+    return template_dir("titles")
 
 
 # TitleSpec styling fields a template YAML may set (timing/profile/text are

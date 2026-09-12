@@ -32,6 +32,7 @@ from uuid import uuid4
 
 from workshop_video_brain.core.models.enums import JobStatus
 from workshop_video_brain.core.models.project import RenderJob
+from workshop_video_brain.core.template_paths import template_dir
 from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
 from workshop_video_brain.edit_mcp.adapters.render.executor import execute_render
@@ -107,13 +108,14 @@ def review_output_dir(workspace_path: Path | str, timestamp: str | None = None) 
 
 
 def _titles_template_dir() -> Path:
-    """Locate the repo ``templates/titles`` directory from this module."""
-    here = Path(__file__).resolve()
-    for parent in here.parents:
-        candidate = parent / "templates" / "titles"
-        if candidate.is_dir():
-            return candidate
-    return here.parents[5] / "templates" / "titles"
+    """``templates/titles``: packaged copy first, repository copy second.
+
+    The same one statement ``bundles/titles`` reads -- see
+    ``core.template_paths``.  Both modules used to carry their own parent-walk
+    with a ``parents[5]`` fallback, and because they sit at different depths
+    those two fallbacks named different directories.
+    """
+    return template_dir("titles")
 
 
 # TitleSpec-style fields a thumbnail template YAML may set, restricted to the

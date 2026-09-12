@@ -6,21 +6,30 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from workshop_video_brain.core.template_paths import template_dir
+
 from .frontmatter import write_note
 
-# Default templates directory relative to the package root
-_DEFAULT_TEMPLATES_DIR = (
-    Path(__file__).parent.parent.parent.parent.parent.parent
-    / "templates"
-    / "obsidian"
-)
+
+def default_templates_dir() -> Path:
+    """``templates/obsidian``, packaged copy first, repository copy second.
+
+    Resolved on every call rather than at import (see
+    ``core.template_paths``): the module-level constant this replaced pointed
+    only at the repository, six ``.parent``s up, so from a wheel install -- which
+    has no repository -- ``NoteWriter()`` loaded an empty directory and every
+    documented note template raised ``TemplateNotFound``.
+    """
+    return template_dir("obsidian")
 
 
 class NoteWriter:
     """Create Obsidian notes from Jinja2 templates."""
 
     def __init__(self, templates_dir: Path | str | None = None) -> None:
-        templates_dir = Path(templates_dir) if templates_dir else _DEFAULT_TEMPLATES_DIR
+        templates_dir = (
+            Path(templates_dir) if templates_dir else default_templates_dir()
+        )
         self._env = Environment(
             loader=FileSystemLoader(str(templates_dir)),
             autoescape=select_autoescape([]),

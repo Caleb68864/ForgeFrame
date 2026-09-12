@@ -51,9 +51,11 @@ wvb = "workshop_video_brain.app.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/workshop_video_brain"]
 
-# See the identical block in the repository-root pyproject.toml: the render
-# profiles live outside the package directory, so without this a wheel built
-# here ships none of them. Both build roots must carry the mapping, because
-# either one can produce the wheel a user installs.
+# See the identical block in the repository-root pyproject.toml: all three
+# template trees live outside the package directory, so without this a wheel
+# built here ships none of them. Both build roots must carry every mapping,
+# because either one can produce the wheel a user installs.
 [tool.hatch.build.targets.wheel.force-include]
+"../templates/obsidian" = "workshop_video_brain/templates/obsidian"
 "../templates/render" = "workshop_video_brain/templates/render"
+"../templates/titles" = "workshop_video_brain/templates/titles"
