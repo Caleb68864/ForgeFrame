@@ -34,7 +34,7 @@ def clips_detect_scenes(
     source: str = "",
     threshold: float = 0.4,
 ) -> dict:
-    """Detect shot boundaries in a long recording via ``scdet``.
+    """Detect shot boundaries in a long recording via ffmpeg's ``scene`` score.
 
     Returns a list of ``{time, score}`` cut points (score normalised to 0..1)
     and writes a JSON report to ``reports/``. Feeds ``media_segment_at_silence``

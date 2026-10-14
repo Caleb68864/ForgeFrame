@@ -20,6 +20,7 @@ every OS -- so this file does real work on Linux CI too.
 """
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -167,28 +168,23 @@ def cut_clip(tmp_path_factory) -> Path:
 
 
 @pytest.mark.parametrize("dirname", AWKWARD_DIRS)
-def test_scene_detect_writes_its_metadata_stats_file(
-    ffmpeg_bin, cut_clip, tmp_path, dirname
-):
-    """``metadata=print:file=`` reaches its target through an awkward path.
+def test_scene_detect_finds_cuts_from_an_awkward_path(cut_clip, tmp_path, dirname):
+    """Scene scores reach the parser for a source under an awkward path.
 
-    This one degrades *silently*: the caller reads the stats file behind an
-    ``if stats_file.exists()`` guard, so an unescaped path yields an empty
-    scene list rather than an error.
+    ``scene_detect`` used to write its scores through ``metadata=print:file=``
+    (a path inside the filtergraph that degraded *silently* to an empty scene
+    list when unescaped). It now logs to stderr, so only the ``-i`` argument
+    carries a path; this guards that the cut is still found end to end.
     """
     from workshop_video_brain.edit_mcp.pipelines import scene_detect
 
     d = tmp_path / dirname
     d.mkdir(parents=True)
-    stats = d / "scenes.txt"
+    src = d / cut_clip.name
+    shutil.copy(cut_clip, src)
 
-    proc = subprocess.run(
-        [ffmpeg_bin, *scene_detect.build_scan_command(cut_clip, 0.3, stats)[1:]],
-        capture_output=True, text=True, timeout=180,
-    )
-    assert stats.exists() and stats.stat().st_size > 0, (
-        f"scene_detect wrote no stats to {stats}: {proc.stderr[-300:]}"
-    )
+    res = scene_detect.detect_scenes(src, threshold=0.3)
+    assert res["success"] and res["cut_count"] >= 1, res
 
 
 @pytest.mark.parametrize("dirname", AWKWARD_DIRS)

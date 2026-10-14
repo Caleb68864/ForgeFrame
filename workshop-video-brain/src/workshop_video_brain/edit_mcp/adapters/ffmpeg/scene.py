@@ -1,9 +1,20 @@
-"""FFmpeg scene-change detection adapter.
+"""FFmpeg scene-change detection adapter -- the one ffmpeg scene scorer.
 
-Detects scene changes within an optional time range using ffmpeg's
-``select='gt(scene,threshold)'`` filter, enforces a minimum gap between
-detections, and falls back to bounded uniform temporal sampling when no
-scene changes are found (e.g. a static source range).
+:func:`scan_scene_cuts` runs ffmpeg's ``select='gt(scene,threshold)'`` with
+``metadata=print`` (logged to stderr, so no stats-file path ever enters the
+filtergraph) and returns the real per-cut ``scene`` score on its 0..1 scale.
+Both consumers sit on top of it:
+
+* :func:`detect_scene_changes` (visual research) adds a minimum gap between
+  detections and falls back to bounded uniform temporal sampling when no
+  scene changes are found (e.g. a static source range).
+* ``pipelines/scene_detect.detect_scenes`` (``clips_detect_scenes``) reports
+  the raw ``{time, score}`` cut list.
+
+ffmpeg's ``metadata=print`` writes, per selected frame::
+
+    [Parsed_metadata_1 @ 0x...] frame:0    pts:20480   pts_time:2
+    [Parsed_metadata_1 @ 0x...] lavfi.scene_score=0.657581
 """
 from __future__ import annotations
 
@@ -14,14 +25,111 @@ from pathlib import Path
 
 from workshop_video_brain.core.models import SceneChange
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    ANALYSIS_TIMEOUT_SECONDS,
+    FFmpegNotFound,
+    FFmpegTimeout,
+    _FFMPEG_INSTALL_HINT,
+    _stderr_tail,
+)
 
 logger = logging.getLogger(__name__)
 
-_PTS_TIME_RE = re.compile(r"pts_time:([\d.]+)")
+_TIME_RE = re.compile(r"pts_time:(-?\d+\.?\d*)")
+_SCORE_RE = re.compile(r"lavfi\.scene_score=(-?\d+\.?\d*)")
 
 _UNIFORM_FALLBACK_MAX_SAMPLES = 8
 
-_SCENE_DETECTION_TIMEOUT_SECONDS = 300
+
+class SceneScanError(RuntimeError):
+    """ffmpeg exited nonzero without emitting any scores (undecodable source)."""
+
+    def __init__(self, returncode: int, stderr_tail: str) -> None:
+        super().__init__(
+            "scene detection failed to decode the source "
+            f"(ffmpeg rc={returncode}): {stderr_tail}"
+        )
+        self.returncode = returncode
+        self.stderr_tail = stderr_tail
+
+
+def build_select_filter(threshold: float) -> str:
+    """Build the ``select``/``metadata`` scene-scoring filter (threshold clamped to 0..1)."""
+    t = max(0.0, min(1.0, float(threshold)))
+    return f"select='gt(scene\\,{t:g})',metadata=print"
+
+
+def build_scan_command(
+    video_path: Path,
+    threshold: float,
+    start_seconds: float = 0.0,
+    duration_seconds: float | None = None,
+) -> list[str]:
+    """Build the analysis-only scene-scan command, optionally range-limited."""
+    cmd: list[str] = ["ffmpeg", "-hide_banner"]
+    if start_seconds > 0:
+        cmd += ["-ss", str(start_seconds)]
+    cmd += ["-i", str(video_path)]
+    if duration_seconds is not None and duration_seconds > 0:
+        cmd += ["-t", str(duration_seconds)]
+    cmd += ["-vf", build_select_filter(threshold), "-an", "-f", "null", "-"]
+    return cmd
+
+
+def parse_scene_scores(text: str) -> list[tuple[float, float]]:
+    """Parse ``metadata=print`` output into ``[(pts_time, score)]`` pairs."""
+    hits: list[tuple[float, float]] = []
+    current_time: float | None = None
+    for line in text.splitlines():
+        tm = _TIME_RE.search(line)
+        if tm:
+            current_time = float(tm.group(1))
+            continue
+        sm = _SCORE_RE.search(line)
+        if sm and current_time is not None:
+            hits.append((current_time, float(sm.group(1))))
+            current_time = None
+    return hits
+
+
+def scan_scene_cuts(
+    video_path: Path,
+    threshold: float,
+    start_seconds: float = 0.0,
+    end_seconds: float | None = None,
+) -> list[tuple[float, float]]:
+    """Return ``[(timestamp_seconds, score)]`` for every frame whose scene score clears *threshold*.
+
+    Timestamps are absolute (offset by *start_seconds*). Raises
+    :class:`FFmpegNotFound`, :class:`FFmpegTimeout` (``ANALYSIS_TIMEOUT_SECONDS``)
+    and :class:`SceneScanError` -- never a silent empty list on failure.
+    """
+    video_path = Path(video_path)
+    start = max(0.0, start_seconds or 0.0)
+    duration = (end_seconds - start) if end_seconds is not None else None
+    cmd = build_scan_command(video_path, threshold, start, duration)
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, check=False,
+            timeout=ANALYSIS_TIMEOUT_SECONDS,
+        )
+    except FileNotFoundError as exc:
+        raise FFmpegNotFound(
+            f"ffmpeg binary not found on PATH (input: {video_path}). "
+            f"{_FFMPEG_INSTALL_HINT}"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise FFmpegTimeout(
+            f"scene detection timed out after {ANALYSIS_TIMEOUT_SECONDS:.0f}s "
+            f"on {video_path.name}."
+        ) from exc
+
+    hits = parse_scene_scores(proc.stderr or "")
+    # ffmpeg can exit nonzero at a truncated EOF after emitting valid scores;
+    # only a nonzero exit with *no* scores means the source was undecodable.
+    if proc.returncode != 0 and not hits:
+        raise SceneScanError(proc.returncode, _stderr_tail(proc.stderr or "", 6))
+    return [(start + t, score) for t, score in hits]
 
 
 def detect_scene_changes(
@@ -91,43 +199,12 @@ def _run_scene_filter(
     range_end: float,
     threshold: float,
 ) -> list[tuple[float, float]]:
-    """Run ffmpeg's scene-change filter and return raw (timestamp, score) hits."""
-    cmd: list[str] = ["ffmpeg"]
-    if range_start > 0:
-        cmd += ["-ss", str(range_start)]
-    cmd += ["-i", str(video_path)]
-
-    duration = range_end - range_start
-    if duration > 0:
-        cmd += ["-t", str(duration)]
-
-    cmd += [
-        "-vf", f"select='gt(scene,{threshold})',showinfo",
-        "-f", "null",
-        "-",
-    ]
-
+    """Scene hits for the range; an undecodable range yields none (-> uniform fallback)."""
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=_SCENE_DETECTION_TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired:
-        logger.warning("Scene detection timed out for %s", video_path)
+        return scan_scene_cuts(video_path, threshold, range_start, range_end)
+    except SceneScanError as exc:
+        logger.warning("Scene detection could not decode %s: %s", video_path, exc)
         return []
-
-    hits: list[tuple[float, float]] = []
-    for line in result.stderr.splitlines():
-        match = _PTS_TIME_RE.search(line)
-        if not match:
-            continue
-        relative_time = float(match.group(1))
-        hits.append((range_start + relative_time, threshold))
-
-    return hits
 
 
 def _enforce_minimum_gap(
