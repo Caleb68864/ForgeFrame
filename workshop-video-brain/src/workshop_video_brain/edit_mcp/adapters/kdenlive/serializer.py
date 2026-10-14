@@ -705,15 +705,18 @@ def serialize_project(
         if clips_id in hide_by_track and hide_by_track[clips_id]:
             st.set("hide", hide_by_track[clips_id])
 
-    # Always-active compositing transitions (regenerated; internal_added=237).
-    # Crossfade overlay tracks (_xfade) deliberately get NO always_active
-    # compositor -- their compositing is driven by an explicit luma mix.
-    for b_index, (_tt_id, ttype, _clips_id, is_xfade) in enumerate(
+    # Always-active compositing transitions (regenerated; internal_added=237),
+    # one per track -- crossfade overlay tracks (_xfade) included, as in a
+    # Kdenlive-saved dissolve.  User transitions are planted before the first
+    # video compositor (opaque re-insertion below): a dissolve written after
+    # them is composited over and never reaches the output.
+    first_video_compositor: ET.Element | None = None
+    for b_index, (_tt_id, ttype, _clips_id, _xf) in enumerate(
         track_tractors, start=1
     ):
-        if is_xfade:
-            continue
         trans_elem = ET.SubElement(tractor_elem, "transition")
+        if ttype != "audio" and first_video_compositor is None:
+            first_video_compositor = trans_elem
         _set_prop(trans_elem, "a_track", "0")
         _set_prop(trans_elem, "b_track", str(b_index))
         if ttype == "audio":
@@ -869,7 +872,12 @@ def serialize_project(
         if elem.tag == "transition":
             _normalize_transition_id(elem)
         if opaque.position_hint == "tractor" and tractor_elem is not None:
-            tractor_elem.append(elem)
+            if elem.tag == "transition" and first_video_compositor is not None:
+                tractor_elem.insert(
+                    list(tractor_elem).index(first_video_compositor), elem
+                )
+            else:
+                tractor_elem.append(elem)
         else:
             root.append(elem)
 

@@ -1463,9 +1463,21 @@ def _apply_add_transition(project: KdenliveProject, intent: AddTransition) -> No
     The pseudo ``<transition type="crossfade">`` MLT rejected (§1.1) is replaced
     by a genuine ``luma`` transition in the tractor between two overlapping
     video tracks: the right clip is moved onto a new top video track, pulled
-    earlier so it overlaps the (extended) left clip, and a ``luma`` transition
-    dissolves the lower track into the upper one over the overlap.  The cut is
-    the visual midpoint of the transition.
+    earlier so it overlaps the left clip, and a ``luma`` transition
+    dissolves the lower track into the upper one over the overlap.
+
+    The overlap only uses footage that exists.  The left clip is extended into
+    its handle (unused source frames past its out-point) by up to half the
+    duration, keeping the cut at the visual midpoint; the rest of the overlap
+    comes from pulling the right clip (and everything after it) earlier, which
+    shortens the timeline.  When the producer ``length`` is unknown the handle
+    is taken as zero.  Extending past the media end renders black in melt and
+    is trimmed away by Kdenlive (2026-10-14 differential).
+
+    The composition targets the left clip's track (``a_track``), never the
+    black background -- Kdenlive layers each track's compositor over a
+    background-targeted dissolve and hides it.  Ground truth:
+    ``tests/fixtures/kdenlive_references/cross_dissolve_native.kdenlive``.
     """
     duration = max(1, intent.duration_frames)
     playlist = _find_playlist(project, intent.track_ref)
@@ -1489,36 +1501,33 @@ def _apply_add_transition(project: KdenliveProject, intent: AddTransition) -> No
     left_entry = real[left_idx]
     right_entry = real[right_idx]
 
-    # Timeline start frames (sum of entry lengths, including blanks, before the
-    # target entry in the source playlist).
-    left_start = 0
+    # Timeline frame where the right clip starts (sum of entry lengths,
+    # including blanks, before it in the source playlist).
     cut = 0
-    seen_left = False
     for e in playlist.entries:
-        if e is left_entry:
-            seen_left = True
         if e is right_entry:
             break
-        if not seen_left:
-            left_start += max(0, e.out_point - e.in_point + 1)
         cut += max(0, e.out_point - e.in_point + 1)
 
-    half1 = duration // 2
-    half2 = duration - half1
-
-    # Extend the left clip forward by half2 (clamped to the producer length).
+    # Unused source frames after the left clip's out-point (0 when unknown).
+    handle = 0
     src = next((p for p in project.producers if p.id == left_entry.producer_id), None)
-    max_out = left_entry.out_point + half2
     if src is not None and "length" in src.properties:
         try:
             plen = int(src.properties["length"])
-            max_out = min(max_out, left_entry.in_point + plen - 1)
+            handle = max(0, plen - 1 - left_entry.out_point)
         except ValueError:
             pass
-    left_entry.out_point = max_out
-    left_timeline_end = left_start + (left_entry.out_point - left_entry.in_point + 1) - 1
+    left_len = left_entry.out_point - left_entry.in_point + 1
+    right_len = right_entry.out_point - right_entry.in_point + 1
+    duration = max(1, min(duration, right_len, left_len + handle))
 
-    lead = max(0, cut - half1)
+    extend = min(duration - duration // 2, handle)
+    pull = min(duration - extend, left_len)
+    extend = duration - pull
+    left_entry.out_point += extend
+
+    lead = max(0, cut - pull)
 
     # Build the new top video track carrying the right clip (+ any clips that
     # followed it on the source track), preceded by a lead-in blank.
@@ -1538,36 +1547,30 @@ def _apply_add_transition(project: KdenliveProject, intent: AddTransition) -> No
 
     # Register a matching video track so the serializer builds a tractor slot.
     if project.tracks:
-        source_positions = {t.id: i for i, t in enumerate(project.tracks)}
-        src_pos = source_positions.get(intent.track_ref, vindex)
         project.tracks.append(Track(id=top_id, track_type="video", name="Crossfade"))
-        top_pos = len(project.tracks) - 1
-    else:
-        # Serializer falls back to playlists-as-tracks; positions are playlist
-        # indices.  The new playlist was appended last.
-        src_pos = vindex
-        top_pos = len(project.playlists) - 1
 
-    # In the E-shape sequence tractor every timeline track composites onto
-    # track 0 (the accumulator) via its always-active compositor, so the video
-    # track's clip is already on track 0 during the overlap.  The crossfade must
-    # dissolve the incoming (top/xfade) track INTO that accumulator, i.e.
-    # a_track=0 -- not the source track slot (which would write to a track that
-    # never reaches the output).  The xfade track carries no always-active
-    # compositor, so this luma is its only route to the output.
-    _ = _tractor_index(project, src_pos)  # (retained for logging/back-compat)
-    a_track = 0
-    b_track = _tractor_index(project, top_pos)
-    t_in = max(0, cut - half1)
-    t_out = left_timeline_end  # end of the (extended) left clip on the timeline
+    # The serializer emits one sequence slot per playlist, in playlist order,
+    # so slot indices come from playlist positions.  Kdenlive's layout: the
+    # dissolve mixes the incoming (top) track into the left clip's track and
+    # is planted before the per-track compositors (serializer), which then
+    # carry the mixed result to the output.
+    a_track = _tractor_index(project, vindex)
+    b_track = _tractor_index(project, len(project.playlists) - 1)
+    t_in = lead
+    t_out = cut + extend - 1  # end of the (extended) left clip on the timeline
 
     xml = (
         f'<transition id="transition_{len(project.opaque_elements)}">'
-        f'<property name="mlt_service">luma</property>'
         f'<property name="a_track">{a_track}</property>'
         f'<property name="b_track">{b_track}</property>'
         f'<property name="in">{t_in}</property>'
         f'<property name="out">{t_out}</property>'
+        f'<property name="mlt_service">luma</property>'
+        f'<property name="kdenlive_id">dissolve</property>'
+        f'<property name="softness">0</property>'
+        f'<property name="reverse">0</property>'
+        f'<property name="alpha_over">1</property>'
+        f'<property name="fix_background_alpha">1</property>'
         f'</transition>'
     )
     project.opaque_elements.append(

@@ -12,7 +12,7 @@ loader + `kdenlive_render`). Frames/audio are compared.
 | 01 single clip | match (PSNR 36) | ok |
 | 02 two clips | match (PSNR 38) | ok |
 | 03 speed 2x | match, 6.0 s | ok (timewarp honoured) |
-| 04 dissolve | **differs** (PSNR 28) | melt blends at 3.6 s, Kdenlive hard-cuts: **dissolve dropped by Kdenlive** |
+| 04 dissolve | **differs** (PSNR 28) | melt blends at 3.6 s, Kdenlive hard-cuts. Not dropped: hidden under the left clip (`a_track=0`, planted after the compositors) and the left clip ran past its media. **Fixed 2026-10-14** -- both now render the same full dissolve (PSNR 36.6). |
 | 05 audio fade | n/a | **no audio at all** in either render (see below) |
 | 06 gblur | **differs** (PSNR 25) | melt blurs, Kdenlive renders sharp: **entry filter dropped by Kdenlive** |
 | 07 title | match | title renders in Kdenlive |

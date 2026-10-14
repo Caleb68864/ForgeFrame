@@ -101,9 +101,11 @@ Do this first, before the media MCP expansion phases
    `<filter mlt_service="avfilter.gblur">` inside the entry; Kdenlive 26.08
    discards it. Emit the full Kdenlive effect identity (`kdenlive_id`, etc. --
    see `vault/wiki/kdenlive-avfilter-and-effect-zones.md`).
-4. **Dissolves dropped by Kdenlive.** `transitions_apply_between` output blends
-   in melt but hard-cuts in Kdenlive. Re-check against
-   `vault/wiki/kdenlive-cross-dissolve-pattern.md` and a 26.08 native save.
+4. ~~**Dissolves dropped by Kdenlive.**~~ **Done 2026-10-14.** Not dropped but
+   hidden: the luma targeted the background (`a_track=0`) and was planted after
+   the track compositors, and the left clip was stretched past its media. Now
+   matches Kdenlive's own layout; Kdenlive and melt render the same dissolve.
+   See `vault/wiki/kdenlive-cross-dissolve-pattern.md`.
 5. **Hard-rule violations in generated XML:** a media clip gets `kdenlive:id` 3
    (reserved for the main sequence); `main_bin` entries have `out="0"`
    (need `length-1`); timeline `<entry>` elements lack `kdenlive:id`; the
