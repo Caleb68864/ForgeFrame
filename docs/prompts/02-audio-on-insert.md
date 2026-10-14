@@ -1,6 +1,8 @@
-# Prompt: fix "audio is lost on insert" (roadmap step 2)
+# 02 -- Fix "audio is lost on insert" (roadmap step 2)
 
-Hand this whole file to the implementing model.
+Read `docs/prompts/00-README.md` first; its shared rules apply. Needs prompt 01
+(the Kdenlive differential test): its `xfail` for audio should flip to passing
+when this is done. Remove that `xfail` marker as part of this task.
 
 ---
 
@@ -124,6 +126,27 @@ edit the linked audio entry: same `producer_id`, same timeline start frame.
   playlist and nests the `volume` filter in the video entry, whose audio is
   hidden, so the fade is inaudible. Make it target the linked audio entry
   when one exists. Fall back to the old behaviour otherwise.
+- **`audio_fade` must also use Kdenlive's native fade identity.** Today's
+  `volume` filter has no `kdenlive_id`, so Kdenlive 26.08 drops it even once
+  it sits on the audio entry: it plays in melt but is silent in Kdenlive.
+  Kdenlive's own form, from
+  `tests/fixtures/kdenlive_references/audio_mix_upstream_kde.kdenlive`
+  lines 144-176 (ids from `/usr/share/kdenlive/effects/fadein.xml` and
+  `fadeout.xml`), is a filter nested in the audio `<entry>`. The filter's
+  `in`/`out` attributes span only the fade, in clip-local frames:
+  - fade in: `<filter out="{dur-1}">`;
+  - fade out: `<filter in="{clip_len-dur}" out="{clip_len-1}">`;
+  - properties `window=75`, `max_gain=20dB`, `mlt_service=volume`, and
+    `kdenlive_id` = `fadein`/`fadeout`;
+  - fade in uses `gain=0`, `end=1`; fade out uses `gain=1`, `end=0`;
+  - no `level` keyframe string.
+
+  Replace the keyframed `level` form in `_apply_audio_fade` with this form.
+  Check how the serializer passes filter `in`/`out` attributes through
+  (`_extract_clip_filters` in `serializer.py`); keep them if they are already
+  preserved, otherwise make them preserved. Prove it in melt: the first
+  0.5 s of a fade-in is quieter than seconds 2-3. Prove it in Kdenlive with
+  the step-5 measurement below.
 - `_apply_add_transition` (patcher_intents.py, the dissolve; fixed in commit
   `38fe0e1`; do not change its video logic). When it pulls the right clip
   earlier by `pull` frames, the audio of the right clip and of every later
