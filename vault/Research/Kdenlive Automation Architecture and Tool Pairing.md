@@ -39,6 +39,23 @@ Stock Kdenlive has no scripting engine, plugin API or usable external control su
 ### Kdenlive's own render path is melt/MLT (high confidence)
 - `kdenlive_render` is an internal helper ([man page](https://www.mankier.com/1/kdenlive_render): "not meant to be called directly by users"). Delivery mode runs melt on MLT XML; preview chunks use the MLT library in-process (verified against current `renderer/kdenlive_render.cpp`). ffmpeg alone cannot render a `.kdenlive` project.
 
+### Update 2026-10-13: Kdenlive 26.08 command-line options (tested locally)
+The "no CLI render entry point" finding above is **outdated for Kdenlive 26.x**:
+- `kdenlive --render [--render-preset P] [--render-async] project.kdenlive out.mp4`
+  exists in 26.08.2. `main.cpp` loads the project headlessly
+  (`Core::build(..., true)` + `pCore->initHeadless`), builds `RenderRequest` jobs
+  and runs `kdenlive_render`. Works under `xvfb-run -a` (rc 0, correct
+  frame count on ForgeFrame-generated projects).
+- It is **not a validator**: a ForgeFrame project with its `main_bin` entry
+  deliberately removed (the "clip not found in project bin" class of bug)
+  still rendered with rc 0 and identical logs.
+- Kdenlive `master` adds **`--verify-file`** ("Verify whether a Kdenlive project
+  file is valid, print details, and exit"): headless load, then
+  `KdenliveDoc::checkConsistency()`. It prints `SUCCESS: Project file is valid:`
+  or `Verification failed: ...` and exits 0/1. Not in 26.08.2. When it ships,
+  it is the ideal automated oracle for ForgeFrame's serializer (CI + a
+  `project_validate` backend). Source: `src/main.cpp` on invent.kde.org master.
+
 ### Alternatives
 - **OpenTimelineIO** (high confidence, 3-0): Kdenlive has **native C++ OTIO import/export since 25.04** ([release notes](https://kdenlive.org/news/releases/25.04.0/)); the old Python integration was removed and [`otio-kdenlive-adapter`](https://pypi.org/project/otio-kdenlive-adapter) is deprecated/unmaintained (0.0.3, Jan 2026). Kdenlive's OTIO export **drops effects, filters and transitions**, so OTIO can only be a secondary interchange layer (cut structure to/from Resolve), never the primary edit format. Transitions/mixes listed as WIP.
 - **[otio-mlt-adapter](https://pypi.org/project/otio-mlt-adapter)**: write-only (`.mlt` for melt), cannot parse `.mlt`/`.kdenlive`, unmaintained (OTIO 0.12/0.13 era).
