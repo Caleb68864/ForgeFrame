@@ -7,7 +7,6 @@ writing.
 from __future__ import annotations
 
 import logging
-import os
 import uuid
 import xml.etree.ElementTree as ET
 from math import gcd
@@ -18,7 +17,7 @@ from workshop_video_brain.core.utils.paths import assert_not_protected
 from workshop_video_brain.edit_mcp.adapters.render.media_check import (
     looks_like_media_resource,
 )
-from workshop_video_brain.workspace import snapshot as snapshot_manager
+from workshop_video_brain.workspace.safe_write import atomic_write_bytes, locked_path
 
 #: The per-track-tractor property carrying ``Track.name``.  Named once, here,
 #: and imported by the parser, so the writer and the reader cannot drift onto
@@ -430,24 +429,6 @@ def serialize_project(
     # Refuse structurally-inconsistent models *before* any file I/O so a bad
     # project never leaves a partial/broken document behind.
     _assert_serializable(project)
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Snapshot any existing file
-    if output_path.exists():
-        workspace_root = output_path.parent
-        for _ in range(10):
-            if (workspace_root / "projects" / "working_copies").exists():
-                break
-            workspace_root = workspace_root.parent
-        try:
-            snapshot_manager.create(
-                workspace_root=workspace_root,
-                file_to_snapshot=output_path,
-                description=f"Pre-write snapshot of {output_path.name}",
-            )
-        except Exception as exc:
-            logger.warning("Could not create snapshot for %s: %s", output_path, exc)
 
     # ------------------------------------------------------------------
     # Build XML tree
@@ -899,25 +880,37 @@ def serialize_project(
     except ET.ParseError as exc:
         raise ValueError(f"Serialized XML is not well-formed: {exc}") from exc
 
-    # Write file atomically: serialise to a sibling temp file, then os.replace()
-    # it into place.  A crash or I/O error mid-write therefore never truncates or
-    # corrupts an existing project at *output_path* -- combined with the
-    # well-formedness check above this guarantees the target is only ever
-    # replaced by a fully-written, valid document.
+    # Check the actual tree, including opaque elements reinserted above.
+    from .validator import validate_serialized_xml
+
+    report = validate_serialized_xml(root)
+    if report.items:
+        raise ProjectSerializeError("; ".join(
+            f"{item.location}: {item.message}" for item in report.items
+        ))
+
+    # The shared writer validates staged bytes, snapshots before replacement,
+    # and holds a process/thread lock throughout the commit.
     tree = ET.ElementTree(root)
     ET.indent(tree, space="  ")
-    tmp_path = output_path.with_name(output_path.name + ".tmp")
-    try:
-        with tmp_path.open("wb") as fh:
-            fh.write(b'<?xml version="1.0" encoding="utf-8"?>\n')
-            tree.write(fh, encoding="utf-8", xml_declaration=False)
-        os.replace(tmp_path, output_path)
-    except BaseException:
-        try:
-            tmp_path.unlink()
-        except OSError:
-            pass
-        raise
+    data = b'<?xml version="1.0" encoding="utf-8"?>\n' + ET.tostring(root, encoding="utf-8")
+    resolved_output = output_path.resolve()
+    workspace_root = next(
+        (parent for parent in resolved_output.parents
+         if (parent / "workspace.yaml").exists()
+         or (parent / "projects" / "working_copies").exists()),
+        resolved_output.parent,
+    )
+
+    def validate_staged(path: Path) -> None:
+        staged_report = validate_serialized_xml(ET.parse(path).getroot())
+        if staged_report.items:
+            raise ProjectSerializeError("; ".join(
+                f"{item.location}: {item.message}" for item in staged_report.items
+            ))
+
+    atomic_write_bytes(output_path, data, workspace_root=workspace_root,
+                       validator=validate_staged)
 
     logger.info("Wrote Kdenlive project to %s", output_path)
 
@@ -932,9 +925,13 @@ def serialize_versioned(
     Path: ``projects/working_copies/{title_slug}_v{N}.kdenlive``
     Returns the path that was written.
     """
-    working_copies = workspace_root / "projects" / "working_copies"
-    working_copies.mkdir(parents=True, exist_ok=True)
-    version = _next_version(working_copies, title_slug)
-    output_path = working_copies / f"{title_slug}_v{version}.kdenlive"
-    serialize_project(project, output_path)
-    return output_path
+    working_copies = Path(workspace_root) / "projects" / "working_copies"
+    if not title_slug or Path(title_slug).name != title_slug or title_slug in (".", ".."):
+        raise ValueError("title_slug must be a filename stem")
+    assert_not_protected(working_copies, "project directory")
+    with locked_path(working_copies):
+        working_copies.mkdir(parents=True, exist_ok=True)
+        version = _next_version(working_copies, title_slug)
+        output_path = working_copies / f"{title_slug}_v{version}.kdenlive"
+        serialize_project(project, output_path)
+        return output_path

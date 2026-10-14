@@ -105,6 +105,8 @@ def generate_proxy(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     output_path = proxy_path_for(asset, output_dir)
+    from workshop_video_brain.core.utils.paths import assert_not_protected
+    output_path = assert_not_protected(output_path, "proxy output")
     source_path = Path(asset.path)
 
     if not source_path.exists():

@@ -6,11 +6,16 @@ profile used, and final artifact location.
 from __future__ import annotations
 
 import logging
+import hashlib
 from pathlib import Path
+from typing import Callable
 
 import yaml
 
 from workshop_video_brain.core.models.project import RenderJob
+from workshop_video_brain.workspace.safe_write import atomic_write_text, locked_path
+from workshop_video_brain.core.models.enums import JobStatus
+from workshop_video_brain.edit_mcp.adapters.render.jobs import update_job_status
 from workshop_video_brain.edit_mcp.adapters.render.executor import execute_render
 from workshop_video_brain.edit_mcp.adapters.render.jobs import (
     create_render_job,
@@ -50,12 +55,16 @@ class RenderArtifactRegistry:
         Args:
             job: RenderJob to register.
         """
-        entries = self._load_entries()
-        entry = self._job_to_entry(job)
-        # Replace existing entry for this job ID if present
-        entries = [e for e in entries if e.get("id") != entry["id"]]
-        entries.append(entry)
-        self._save_entries(entries)
+        with locked_path(self._registry_path):
+            entries = self._load_entries()
+            entry = self._job_to_entry(job)
+            previous = next((existing for existing in entries if existing.get("id") == entry["id"]), None)
+            if previous and previous.get("source_version"):
+                entry["source_version"] = previous["source_version"]
+            # Replace existing entry for this job ID if present
+            entries = [e for e in entries if e.get("id") != entry["id"]]
+            entries.append(entry)
+            self._save_entries(entries)
         logger.info("Registered render job %s (status=%s)", job.id, job.status)
 
     def list_renders(self, workspace_root: Path | str | None = None) -> list[RenderJob]:
@@ -85,16 +94,17 @@ class RenderArtifactRegistry:
             return []
         try:
             raw = yaml.safe_load(self._registry_path.read_text(encoding="utf-8"))
-            return raw if isinstance(raw, list) else []
+            if not isinstance(raw, list) or any(not isinstance(entry, dict) for entry in raw):
+                raise ValueError("Render registry must be a list of job records")
+            return raw
         except Exception as exc:
-            logger.warning("Could not load render registry: %s", exc)
-            return []
+            raise ValueError(f"Cannot read render registry {self._registry_path}: {exc}") from exc
 
     def _save_entries(self, entries: list[dict]) -> None:
         self._registry_path.parent.mkdir(parents=True, exist_ok=True)
-        self._registry_path.write_text(
+        atomic_write_text(self._registry_path,
             yaml.dump(entries, default_flow_style=False, allow_unicode=True),
-            encoding="utf-8",
+            workspace_root=self._root,
         )
 
     def _job_to_entry(self, job: RenderJob) -> dict:
@@ -108,6 +118,8 @@ class RenderArtifactRegistry:
             "mode": job.mode,
             "status": job.status if isinstance(job.status, str) else job.status.value,
             "log_path": job.log_path,
+            "duration_seconds": job.duration_seconds,
+            "file_size_bytes": job.file_size_bytes,
             "source_version": self._capture_source_version(job.project_path),
         }
         if job.started_at:
@@ -145,6 +157,7 @@ class RenderArtifactRegistry:
         if p.exists():
             import os
             info["mtime"] = os.path.getmtime(str(p))
+            info["sha256"] = hashlib.sha256(p.read_bytes()).hexdigest()
 
         return info
 
@@ -177,6 +190,11 @@ def run_render(
     profile_name: str,
     mode: str = "standard",
     profiles_dir: Path | str | None = None,
+    *,
+    loaded_profile: RenderProfile | None = None,
+    output_path: Path | str | None = None,
+    timeout_seconds: int = 1800,
+    on_job: Callable[[RenderJob], None] | None = None,
 ) -> RenderJob:
     """Create, execute, and register a render job end-to-end.
 
@@ -194,7 +212,7 @@ def run_render(
     project_path = Path(project_path)
 
     # Load profile
-    profile: RenderProfile = load_profile(profile_name, profiles_dir)
+    profile: RenderProfile = loaded_profile or load_profile(profile_name, profiles_dir)
 
     # Create job
     job = create_render_job(
@@ -204,8 +222,17 @@ def run_render(
         mode=mode,
     )
 
+    # The already loaded profile is authoritative, including custom directories.
+    generated_path = Path(job.output_path).with_suffix("." + profile.output_extension)
+    job = job.model_copy(update={"output_path": str(generated_path), "log_path": f"{generated_path}.log"})
+
+    if output_path is not None:
+        job = job.model_copy(update={"output_path": str(output_path), "log_path": f"{output_path}.log"})
+
     # Register as queued
     register_render(workspace_root, job)
+    if on_job is not None:
+        on_job(job)
 
     # Proxy render safety: a full-res render must never silently use a proxy.
     # Kdenlive stores the PROXY path in each producer's ``resource`` at edit time
@@ -213,7 +240,7 @@ def run_render(
     # except the explicit "proxy" preview, render a resources-swapped copy whose
     # producers point back at their originals (Kdenlive's KdenliveDoc::useOriginals).
     render_source = project_path
-    if mode != "proxy":
+    if mode != "proxy" and project_path.suffix.lower() == ".kdenlive":
         try:
             from workshop_video_brain.edit_mcp.pipelines.proxy_wiring import (
                 originals_render_copy,
@@ -222,7 +249,11 @@ def run_render(
                 project_path, workspace_root / "renders" / ".proxy_originals"
             )
         except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("Proxy originals-swap skipped for %s: %s", project_path, exc)
+            failed = update_job_status(job, JobStatus.failed).model_copy(
+                update={"error_message": f"Cannot prepare original media for render: {exc}", "error_type": "missing_file"}
+            )
+            register_render(workspace_root, failed)
+            return failed
 
     exec_job = (
         job
@@ -233,7 +264,13 @@ def run_render(
     )
 
     # Execute
-    completed_job = execute_render(exec_job, profile)
+    register_render(workspace_root, update_job_status(job, JobStatus.running))
+    try:
+        completed_job = execute_render(exec_job, profile, timeout_seconds=timeout_seconds)
+    except Exception as exc:
+        completed_job = update_job_status(job, JobStatus.failed).model_copy(
+            update={"error_message": f"Render execution failed: {exc}", "error_type": "operation_failed"},
+        )
     # Keep the registry pointing at the original project, not the swap copy.
     if exec_job is not job:
         completed_job = completed_job.model_copy(

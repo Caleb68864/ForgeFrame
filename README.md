@@ -1,6 +1,6 @@
 # ForgeFrame -- Workshop Video Brain
 
-A local-first Claude Code plugin for tutorial video creators. Plan, edit, and publish workshop videos using AI-powered skills, 88 MCP tools, and a comprehensive video editing handbook.
+A local-first video production assistant for tutorial creators, with ForgeFrame skills, an MCP server, a CLI, and a comprehensive video editing handbook. Use the CLI directly or connect the MCP server to Codex or Claude Code.
 
 ---
 
@@ -23,65 +23,9 @@ Includes a [workflow cheatsheet](docs/video-editing-guide/appendix-a-workflow-ch
 
 ---
 
-## 17 Claude Code Skills
+## Skills and tools
 
-### Pre-Production
-| Skill | What It Does |
-|-------|-------------|
-| `/ff-init` | Initialize ForgeFrame environment with vault structure and config |
-| `/ff-new-project` | Create a complete project (workspace + outline + script + shot plan) from a brain dump |
-| `/ff-video-idea-to-outline` | Structured tutorial outline from a brain dump |
-| `/ff-tutorial-script` | Full script with hook, materials, steps, mistakes, and conclusion |
-| `/ff-shot-plan` | Production shot list covering 7 categories (A-roll, overhead, closeup, measurements, inserts, glamour, pickups) |
-| `/ff-capture-prep` | Pre-shoot checklist: camera settings, audio, lighting, optimized shot order |
-| `/ff-broll-whisperer` | B-roll suggestions from transcript analysis (5 shot type categories) |
-| `/ff-obsidian-video-note` | Create/update a living Obsidian project note with section-safe sync |
-
-### Post-Production
-| Skill | What It Does |
-|-------|-------------|
-| `/ff-auto-editor` | Assemble a first-cut Kdenlive project from clips + script |
-| `/ff-rough-cut-review` | Pacing and structure feedback from transcript + markers |
-| `/ff-pacing-meter` | Per-segment energy analysis: WPM, speech density, energy drops |
-| `/ff-voiceover-fixer` | Identify rambling sections with tightened rewrites |
-| `/ff-audio-cleanup` | Full voice processing pipeline: denoise → EQ → compress → normalize → limit |
-| `/ff-pattern-brain` | Extract materials, measurements, steps for MYOG overlays + printable notes |
-
-### Publishing
-| Skill | What It Does |
-|-------|-------------|
-| `/ff-publish` | YouTube metadata bundle: titles, description, tags, chapters, summary |
-| `/ff-social-clips` | Extract highlight clips for Shorts/Reels with platform-specific posts |
-| `/ff-youtube-analytics` | Fetch and analyze YouTube channel data with engagement insights |
-
-## 88 MCP Tools
-
-| Category | Tools | Count |
-|----------|-------|-------|
-| **Workspace** | create, status, snapshot_list, snapshot_restore | 4 |
-| **Media** | ingest, list_assets, proxy_generate, check_vfr, transcode_cfr | 5 |
-| **Transcript** | generate, export | 2 |
-| **Markers** | auto_generate, list | 2 |
-| **Clips** | label, search, insert, remove, move, split, trim, ripple_delete, speed | 9 |
-| **Timeline** | build_review, build_selects | 2 |
-| **Project** | create_working_copy, validate, summary, setup_profile, match_source, archive | 6 |
-| **Transitions** | apply, apply_at, apply_between | 3 |
-| **Compositing** | composite_pip, composite_wipe | 2 |
-| **Effects** | effect_add, effect_list_common | 2 |
-| **Color** | color_analyze, color_apply_lut | 2 |
-| **Audio** | fade, normalize, compress, denoise, enhance, enhance_all, analyze | 7 |
-| **Tracks** | add, mute, visibility, gap_insert | 4 |
-| **Subtitles** | generate, export | 2 |
-| **Render** | preview, final, list_profiles, status | 4 |
-| **QC** | qc_check | 1 |
-| **Assembly** | plan, build | 2 |
-| **Analysis** | broll_suggest, pacing_analyze, pattern_extract, replay_generate, title_cards_generate, voiceover_extract_segments | 6 |
-| **B-Roll Library** | index, search, tag, stats | 4 |
-| **Social** | find_clips, generate_package, clip_post | 3 |
-| **Publishing** | bundle, description, titles, tags, summary, note | 6 |
-| **YouTube** | fetch_channel, fetch_video, analyze, save_to_vault | 4 |
-| **ForgeFrame** | init, status, project_new, project_list | 4 |
-| **Server** | ping | 1 |
+See the [generated capability catalog](docs/capabilities.md) for the complete skills and MCP tools. Run `wvb capabilities` for current registration metadata, or `wvb capabilities --markdown` to regenerate the catalog.
 
 ## Installation
 
@@ -95,7 +39,7 @@ Includes a [workflow cheatsheet](docs/video-editing-guide/appendix-a-workflow-ch
 /plugin install workshop-video-brain@forgeframe
 ```
 
-This gives you all 17 skills and starts the MCP server automatically.
+This installs the ForgeFrame skills and starts the MCP server automatically.
 
 ### Manual Setup
 
@@ -104,6 +48,29 @@ git clone https://github.com/Caleb68864/ForgeFrame.git
 cd ForgeFrame
 uv sync
 ```
+
+### Codex and other MCP clients
+
+After installing the Python package, configure an MCP stdio server with command
+`workshop-video-brain-server` in your client. The same server supports both Codex
+and Claude Code. Skill files live in `workshop-video-brain/skills/ff-*/SKILL.md`;
+install them using your client's skill or plugin mechanism.
+
+### Optional features
+
+Both package roots expose the same extras: `research`, `ai-mask`,
+`ai-mask-heavy`, and `motion-track`. For example:
+
+```bash
+uv sync --extra research --extra motion-track
+wvb doctor
+wvb doctor --json
+```
+
+Doctor checks local binaries, FFmpeg encoders, MLT effects, optional engines,
+and model cache files. It does not download or initialize models. Cached model
+files indicate offline readiness; the selected model still needs to match the
+operation's model setting.
 
 ### Prerequisites
 
@@ -154,6 +121,27 @@ wvb qc-check ./renders/output.mp4  # Automated quality checks
 /ff-publish                         # Generate YouTube metadata
 /ff-social-clips                    # Extract clips for Shorts/Reels
 ```
+
+## Persistent jobs and guided editing
+
+Long operations run as persisted jobs with progress and logs:
+
+```bash
+wvb jobs submit ./workspace/ render --parameters '{"profile":"youtube-1080p"}'
+wvb jobs list ./workspace/
+wvb jobs status ./workspace/ JOB_ID
+wvb jobs cancel ./workspace/ JOB_ID
+wvb jobs retry ./workspace/ JOB_ID
+wvb project-status ./workspace/
+wvb workflow ./workspace/ --through review
+```
+
+The job operations include `render`, `proxy`, `transcribe`, and `workflow`.
+The guided workflow follows footage, selects, assembly, preview, and review,
+records completed stages, and pins the selected project version. Use project
+status to see missing inputs and the next action; prepare a script with steps
+before assembling a first cut. Job execution currently uses POSIX process
+management.
 
 ## Pipeline Features
 

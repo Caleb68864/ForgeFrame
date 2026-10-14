@@ -52,10 +52,7 @@ def is_protected_path(path: Path | str) -> bool:
     Resolves symlinks/``..`` first so ``working_copies/../source/x.kdenlive``
     is caught. Purely lexical after that: the path need not exist.
     """
-    try:
-        parts = Path(path).resolve().parts
-    except OSError:
-        parts = Path(path).absolute().parts
+    parts = Path(path).resolve().parts
     return any(
         parts[i] == a and parts[i + 1] == b
         for a, b in PROTECTED_TREES
@@ -70,7 +67,7 @@ def assert_not_protected(path: Path | str, what: str = "output") -> Path:
     projects/source" rule; the project serializer and the ffmpeg runner call
     it at their write sites so every tool inherits the rule.
     """
-    p = Path(path)
+    p = Path(path).resolve()
     if is_protected_path(p):
         raise ProtectedPathError(
             f"Refusing to write {what} inside a protected tree "

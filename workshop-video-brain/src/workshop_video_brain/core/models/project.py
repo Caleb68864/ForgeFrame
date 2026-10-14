@@ -43,6 +43,8 @@ class RenderJob(SerializableMixin):
     # ``edit_mcp.server.errors.VALID_ERROR_TYPES``), so a tool can report the
     # failure without having to re-derive what went wrong. Empty when unset.
     error_type: str = ""
+    duration_seconds: float = 0.0
+    file_size_bytes: int = 0
 
 
 class SnapshotRecord(SerializableMixin):

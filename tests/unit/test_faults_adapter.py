@@ -208,7 +208,6 @@ def test_wrong_root_rejected(fixture: str):
     [
         "zero_tracks.kdenlive",
         "filter_no_service.kdenlive",
-        "bad_entry_int.kdenlive",
         "bad_blank_int.kdenlive",
         "bad_chain_out.kdenlive",
     ],
@@ -225,6 +224,17 @@ def test_zero_track_project_serializes():
     project = parse_project(ADVERSARIAL / "zero_tracks.kdenlive")
     assert project.tracks == []
     assert project.profile.width == 1920
+
+
+def test_malformed_opaque_entry_rejected_without_replacing_target(tmp_path):
+    project = parse_project(ADVERSARIAL / "bad_entry_int.kdenlive")
+    assert isinstance(project, KdenliveProject)
+    target = tmp_path / "existing.kdenlive"
+    target.write_bytes(b"previous project revision")
+    with pytest.raises(ProjectSerializeError, match="Unknown producer reference 'p0'"):
+        serialize_project(project, target)
+    assert target.read_bytes() == b"previous project revision"
+    assert list(tmp_path.iterdir()) == [target]
 
 
 # ---------------------------------------------------------------------------
@@ -379,12 +389,35 @@ def _real() -> list[Path]:
     return sorted(REAL.glob("*.kdenlive"))
 
 
+# The parser preserves native chain/playlist XML but the current serializer
+# does not reconstruct their bin registrations or nested sequence definitions.
+# Well-formed output alone is insufficient: the write gate must reject these
+# incomplete reconstructions until native import gains that support.
+_UNSUPPORTED_REWRITES = {
+    "corpus_clip_ids_2604.kdenlive": "no matching registered bin clip",
+    "corpus_nesting_effects_2604.kdenlive": "Unknown producer reference",
+}
+
+
+@pytest.mark.parametrize("fixture,diagnostic", sorted(_UNSUPPORTED_REWRITES.items()))
+def test_unsupported_native_rewrite_is_typed_and_preserves_target(fixture, diagnostic, tmp_path):
+    project = parse_project(REAL / fixture)
+    assert isinstance(project, KdenliveProject)
+    target = tmp_path / "existing.kdenlive"
+    target.write_bytes(b"previous project revision")
+    with pytest.raises(ProjectSerializeError, match=diagnostic):
+        serialize_project(project, target)
+    assert target.read_bytes() == b"previous project revision"
+    assert list(tmp_path.iterdir()) == [target]
+
+
 def _structural_signature(root: ET.Element):
     return [(e.tag, tuple(sorted(e.attrib.items()))) for e in root.iter()]
 
 
 @pytest.mark.skipif(not _real(), reason="no real fixtures present")
-@pytest.mark.parametrize("fixture", _real(), ids=[p.name for p in _real()])
+@pytest.mark.parametrize("fixture", [p for p in _real() if p.name not in _UNSUPPORTED_REWRITES],
+                         ids=[p.name for p in _real() if p.name not in _UNSUPPORTED_REWRITES])
 def test_roundtrip_idempotence(fixture: Path, tmp_path: Path):
     """serialize(parse(x)) == serialize(parse(serialize(parse(x)))) structurally."""
     once = tmp_path / "once.kdenlive"

@@ -1,6 +1,6 @@
 ---
 date: 2026-04-08
-updated: 2026-04-09
+updated: 2026-10-13
 topic: "ForgeFrame Feature Roadmap"
 author: Caleb Bennett
 status: active
@@ -80,6 +80,72 @@ Gaps identified by comparing ForgeFrame capabilities against the video-editing-g
 
 9. **Project Archive Tool** (`project_archive`)
    Bundle workspace + renders + project file into dated archive. Supports "months later" editability goal from the handbook.
+
+## Reliability and Guided Workflow (2026-10-13)
+
+Execute these priorities in order. Independent research and implementation may
+run in parallel; integrate dependencies in this order. Completion means the
+behavior is available through documented user entry points, not only helpers.
+
+1. **Unify preview and final rendering** — implemented, runtime validation pending. Use one executor and
+   artifact registry; preserve rational frame rates, honor profile containers,
+   verify output streams/duration, clean partial outputs, and render originals
+   rather than proxies for full-quality exports.
+2. **Validate serialized Kdenlive XML** — implemented, compatibility follow-up below. Check the emitted
+   document before writes, with actionable errors for identity, references,
+   producer ranges, track structure, and the supported document shapes.
+3. **Persistent jobs for long operations** — implemented, runtime validation pending. Return job IDs immediately
+   for render, proxy generation, and transcription; persist status/progress/logs,
+   support cancellation, and expose recovery after restart.
+4. **Central safe file writes** — implemented, runtime validation pending. Share resolved protected-path checks,
+   mandatory snapshots before project replacement, validation, atomic writes,
+   and concurrency protection across project/manifest/registry writes.
+5. **Capability discovery and installation** — implemented, runtime validation pending. Generate the tool/skill
+   catalog from implementation metadata, align both package extras, refresh
+   installation guidance, and add `wvb doctor` for binaries, encoders, effects,
+   optional engines, and model readiness.
+6. **Guided project workflow** — implemented, runtime validation pending. Report readiness, missing artifacts,
+   and the next action; offer a resumable footage → selects → assembly → preview
+   → review workflow that pins project versions and explains clip choices.
+
+### Implementation notes and follow-up
+
+- Both render paths now use the executor and artifact registry. Rational rates,
+  profile containers/muxers, original-media selection, output verification,
+  failed-output cleanup, and unique filenames are shared.
+- XML checks run against the final tree and staged file before replacement.
+  **Compatibility remains unresolved:** `AGENTS.md` requires Kdenlive 25.x twin
+  chains, but the existing serializer and `tests/unit/test_serializer_eshape.py`
+  describe the GUI-confirmed Kdenlive 26.04 E shape (single media producers and
+  different bin identity rules). This change preserves existing output and
+  validates rules appropriate to each detected shape; it does not establish
+  25.x conformance. Confirm the supported version and reconcile the contract
+  with native fixtures before a format migration.
+- `wvb jobs submit/list/status/cancel/retry` and equivalent MCP tools persist
+  detached render/proxy/transcription/workflow operations in SQLite. Currently
+  Linux/macOS only; one detached writer per workspace. Progress describes stages
+  and assets, rather than frame-level render percentages. Synchronous APIs remain
+  available and must not be used concurrently to mutate the same workspace.
+  Restarted workers are reconciled on job inspection; interrupted jobs require
+  explicit retry, and live orphan children prevent unsafe reuse of outputs.
+- Project writes, version allocation, manifests, restores, render registry, and
+  new workflow reports share resolved path guards and atomic write/lock support.
+  Existing project replacement aborts if snapshot creation fails.
+- `wvb doctor`, `wvb capabilities`, and corresponding MCP tools expose host
+  availability and registration metadata. All four extras match both package
+  roots and both dependency lockfiles have been regenerated.
+  `docs/capabilities.md` is generated; regenerate when tools/skills change.
+- `wvb project-status` and `wvb workflow --through review` expose resumable,
+  version-pinned first cuts with clip-selection explanations. The initial
+  workflow expects speech transcripts and script steps in `reports/script.json`;
+  silent footage still needs manual planning. Review prepares a checklist and
+  leaves editorial approval to the creator.
+
+Validation performed: static source review, Python syntax parsing, generated
+capability documentation, and whitespace checks. No tests were added or run.
+Next validation work: update mocks for unified rendering; exercise focused
+render/XML/job/workflow checks; then run the full suite and open generated
+projects in the supported Kdenlive version.
 
 ## Skip For Now
 - **Tool-Aware Editing** -- Computer vision for tool detection. Requires CV models.

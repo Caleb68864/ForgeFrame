@@ -270,3 +270,193 @@ def validate_project(
         summary = "Validation issues: " + ", ".join(parts) + "."
 
     return ValidationReport(items=items, summary=summary)
+
+
+def validate_serialized_xml(root: ET.Element) -> ValidationReport:
+    """Check the final document, including opaque XML omitted by model checks.
+
+    Supports both the current GUI-confirmed E shape and older twin-chain
+    documents. Parser callers can continue accepting legacy flat MLT; this
+    runtime shape gate is intended for documents about to be written; it is
+    not a universal conformance checker for every Kdenlive 25 document.
+    """
+    items: list[ValidationItem] = []
+
+    def error(element: ET.Element, message: str) -> None:
+        items.append(ValidationItem(
+            severity=ValidationSeverity.blocking_error,
+            category="xml_structure", message=message,
+            location=f"{element.tag}:{element.get('id', '')}",
+        ))
+
+    nodes: dict[str, ET.Element] = {}
+    for element in root:
+        identity = element.get("id")
+        if identity:
+            if identity in nodes:
+                error(element, f"Duplicate XML id '{identity}'; assign a unique element id.")
+            nodes[identity] = element
+    props = {identity: xml_properties(element) for identity, element in nodes.items()}
+    profile = root.find("profile")
+    if profile is None:
+        error(root, "Missing MLT profile.")
+    else:
+        for name in ("width", "height", "frame_rate_num", "frame_rate_den"):
+            value = profile.get(name, "")
+            if not value.isdigit() or int(value) <= 0:
+                error(profile, f"Profile {name} must be a positive integer.")
+    sequences = [element for element in root.findall("tractor")
+                 if xml_properties(element).get("kdenlive:producer_type") == "17"]
+    if len(sequences) != 1:
+        error(root, "Expected exactly one main sequence tractor (kdenlive:producer_type=17).")
+    for element in root:
+        properties = xml_properties(element)
+        if "kdenlive:uuid" in properties and element not in sequences:
+            error(element, "kdenlive:uuid belongs only on the main sequence tractor.")
+    main_bin = nodes.get("main_bin")
+    if main_bin is None or main_bin.tag != "playlist":
+        error(root, "Missing main_bin playlist; register the sequence and media clips.")
+        bin_refs: set[str] = set()
+    else:
+        bin_refs = {entry.get("producer", "") for entry in main_bin.findall("entry")}
+        if xml_properties(main_bin).get("xml_retain") != "1":
+            error(main_bin, "main_bin requires xml_retain=1 for bin registration.")
+    timeline_refs = {entry.get("producer", "") for playlist in root.findall("playlist")
+                     if playlist is not main_bin for entry in playlist.findall("entry")}
+    twin_shape = any(
+        # Native bin clips may themselves use avformat-novalidate and be
+        # preserved as opaque chains alongside regenerated E-shape media.
+        # Only the explicit timeline/bin service roles identify our strict
+        # twin contract; a bin-only native chain is not a timeline twin.
+        (identity in timeline_refs and identity not in bin_refs
+         and properties.get("mlt_service") == "avformat-novalidate")
+        or (identity in bin_refs and element.tag == "chain"
+            and properties.get("kdenlive:control_uuid")
+            and properties.get("mlt_service") == "avformat")
+        for identity, element in nodes.items() for properties in [props[identity]]
+    )
+    parents = {child: parent for parent in root.iter() for child in parent}
+    for sequence in sequences:
+        properties = xml_properties(sequence)
+        sequence_uuid = properties.get("kdenlive:uuid")
+        if not sequence_uuid or sequence_uuid != properties.get("kdenlive:control_uuid"):
+            error(sequence, "Sequence uuid and control_uuid must be present and equal.")
+        if sequence.get("id") not in bin_refs:
+            error(sequence, "Main sequence must be registered in main_bin.")
+        wrappers = [element for element in root.findall("tractor")
+                    if xml_properties(element).get("kdenlive:projectTractor") == "1"]
+        if not any(track.get("producer") == sequence.get("id")
+                   for wrapper in wrappers for track in wrapper.findall("track")):
+            error(sequence, "Project tractor must reference the main sequence.")
+        for track in sequence.findall("track"):
+            target = nodes.get(track.get("producer", ""))
+            if target is not None and xml_properties(target).get("kdenlive:playlistid") == "black_track":
+                if "hide" in track.attrib:
+                    error(sequence, "Sequence background track must have no hide attribute.")
+                continue
+            if target is None or target.tag != "tractor":
+                error(sequence, f"Sequence track '{track.get('producer')}' must reference a track tractor.")
+                continue
+            lanes = target.findall("track")
+            if len(lanes) != 2 or any(nodes.get(lane.get("producer", "")) is None
+                                     or nodes[lane.get("producer", "")].tag != "playlist"
+                                     for lane in lanes):
+                error(target, "Track tractor requires two existing playlist lanes.")
+            if lanes and all(lane.get("hide") == "video" for lane in lanes):
+                services = {xml_properties(f).get("mlt_service") for f in target.findall("filter")
+                            if xml_properties(f).get("internal_added") == "237"}
+                if not {"volume", "panner", "audiolevel"}.issubset(services):
+                    error(target, "Audio track requires internal volume, panner, and audiolevel filters.")
+    for element in root.iter():
+        if element.tag not in {"entry", "track"}:
+            continue
+        reference = element.get("producer", "")
+        producer = nodes.get(reference)
+        if producer is None:
+            error(element, f"Unknown producer reference '{reference}'.")
+            continue
+        if element.tag != "entry":
+            continue
+        properties = props[reference]
+        # Native documents may use MLT timecodes. Only compare integer frame
+        # values here; never mistake a timecode for an invalid frame count.
+        out = element.get("out", "")
+        length = properties.get("length", "")
+        if out.isdigit() and length.isdigit() and int(out) >= int(length):
+            error(element, f"Entry for '{reference}' ends at frame {out}, beyond length {length}; extend the producer length or shorten the entry.")
+        for boundary in ("in", "out"):
+            value = element.get(boundary, "")
+            if value.startswith("-"):
+                error(element, f"Entry {boundary} must not be negative.")
+        start = element.get("in", "")
+        if start.isdigit() and out.isdigit() and int(start) > int(out):
+            error(element, "Entry in frame must not exceed its out frame.")
+        parent = parents.get(element)
+        timeline_entry = (parent is not None and parent.tag == "playlist"
+                          and parent is not main_bin
+                          and xml_properties(parent).get("kdenlive:playlistid") != "black_track")
+        if timeline_entry and producer.tag in {"producer", "chain"}:
+            if twin_shape:
+                clip_id = properties.get("kdenlive:id")
+                if not clip_id or xml_properties(element).get("kdenlive:id") != clip_id:
+                    error(element, f"Timeline entry for '{reference}' must carry its bin clip's kdenlive:id.")
+                registered = reference in bin_refs or any(
+                    props[bin_ref].get("kdenlive:id") == clip_id
+                    and props[bin_ref].get("kdenlive:control_uuid") == properties.get("kdenlive:control_uuid")
+                    for bin_ref in bin_refs if bin_ref in props
+                )
+            else:
+                registered = reference in bin_refs
+            if not registered:
+                error(element, f"Timeline producer '{reference}' has no matching registered bin clip.")
+    bin_ids: dict[str, str] = {}
+    for reference in bin_refs:
+        element = nodes.get(reference)
+        if element is None or element.tag not in {"producer", "chain", "tractor"}:
+            continue
+        clip_id = props[reference].get("kdenlive:id", "")
+        if not clip_id.isdigit():
+            error(element, "Bin clips require a positive integer kdenlive:id.")
+        elif clip_id in bin_ids:
+            error(element, f"Bin id {clip_id} is shared with '{bin_ids[clip_id]}'; assign unique clip ids.")
+        elif int(clip_id) <= 0:
+            error(element, "Bin clips require a positive integer kdenlive:id.")
+        bin_ids[clip_id] = reference
+    if twin_shape:
+        for identity, element in nodes.items():
+            properties = props[identity]
+            if properties.get("mlt_service") not in {"avformat", "avformat-novalidate"}:
+                continue
+            if not properties.get("kdenlive:control_uuid"):
+                error(element, "AV twin chains require a nonempty kdenlive:control_uuid.")
+            clip_id = properties.get("kdenlive:id", "")
+            if not clip_id.isdigit() or int(clip_id) < 4:
+                error(element, "Twin-shape user clip IDs must start at 4; 2 and 3 are reserved.")
+            twins = [other for other_id, other in nodes.items() if other_id != identity
+                     and other.tag == "chain"
+                     and props[other_id].get("kdenlive:control_uuid") == properties.get("kdenlive:control_uuid")
+                     and props[other_id].get("kdenlive:id") == properties.get("kdenlive:id")]
+            expected_service = ("avformat-novalidate" if identity in bin_refs else "avformat")
+            matching_twins = [other for other in twins
+                              if props[other.get("id", "")].get("mlt_service") == expected_service
+                              and ((other.get("id") in bin_refs) != (identity in bin_refs))]
+            if element.tag != "chain" or len(matching_twins) != 1:
+                error(element, "AV media requires one timeline avformat-novalidate chain and one registered bin avformat chain with shared control_uuid and clip id.")
+            expected_own_service = "avformat" if identity in bin_refs else "avformat-novalidate"
+            if properties.get("mlt_service") != expected_own_service:
+                error(element, f"AV chain '{identity}' must use {expected_own_service} for its bin/timeline role.")
+            if identity in bin_refs and properties.get("kdenlive:monitorPosition") != "0":
+                error(element, "Bin twin requires kdenlive:monitorPosition=0.")
+            if properties.get("kdenlive:kextractor") != "1":
+                error(element, "Both AV twins require kdenlive:kextractor=1.")
+            if identity in bin_refs:
+                for entry in main_bin.findall("entry") if main_bin is not None else []:
+                    if entry.get("producer") == identity:
+                        length = properties.get("length", "")
+                        out = entry.get("out", "")
+                        if length.isdigit() and out.isdigit() and int(out) != int(length) - 1:
+                            error(entry, f"Bin twin '{identity}' requires out=length-1.")
+    return ValidationReport(items=items, summary=(
+        f"Serialized XML has {len(items)} structural issue(s)." if items
+        else "Serialized XML structure is valid."
+    ))

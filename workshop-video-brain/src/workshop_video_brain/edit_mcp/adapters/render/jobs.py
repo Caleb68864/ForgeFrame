@@ -25,8 +25,7 @@ def _extension_for_profile_name(profile: str) -> str:
         )
 
         loaded = load_profile(profile)
-        if loaded.container:
-            return loaded.container.lstrip(".")
+        return loaded.output_extension
     except Exception:
         pass
     return "mp4"
@@ -67,7 +66,7 @@ def create_render_job(
     renders_dir = workspace_root / "renders"
     renders_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d-%H%M%S")
-    output_filename = f"{project_path.stem}-{profile}-{timestamp}.{ext}"
+    output_filename = f"{project_path.stem}-{profile}-{timestamp}-{uuid4().hex[:8]}.{ext}"
     output_path = renders_dir / output_filename
 
     # Log file alongside output

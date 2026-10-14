@@ -236,10 +236,11 @@ def build_assembly_plan(
 
     # --- Determine project title ---
     project_title = ""
-    manifest_path = workspace_root / "workspace_manifest.json"
+    manifest_path = workspace_root / "workspace.yaml"
     if manifest_path.exists():
         try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            import yaml
+            manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
             project_title = manifest.get("project_title", "") or manifest.get("title", "")
         except Exception:
             pass
@@ -605,12 +606,13 @@ def assemble_timeline(
     reports_dir = workspace_root / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     report_path = reports_dir / "assembly_report.md"
-    report_path.write_text(plan.assembly_report, encoding="utf-8")
+    from workshop_video_brain.workspace.safe_write import atomic_write_text
+    atomic_write_text(report_path, plan.assembly_report, workspace_root=workspace_root)
     logger.info("Assembly report written to %s", report_path)
 
     # --- Save assembly plan ---
     plan_path = reports_dir / "assembly_plan.json"
-    plan_path.write_text(plan.to_json(), encoding="utf-8")
+    atomic_write_text(plan_path, plan.to_json(), workspace_root=workspace_root)
     logger.info("Assembly plan written to %s", plan_path)
 
     return kdenlive_path

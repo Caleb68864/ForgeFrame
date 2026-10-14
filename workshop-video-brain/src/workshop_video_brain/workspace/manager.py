@@ -93,17 +93,25 @@ class WorkspaceManager:
     @staticmethod
     def save_manifest(workspace: Workspace) -> None:
         """Persist the workspace manifest to disk."""
-        manifest = WorkspaceManifest(
-            workspace_id=workspace.id,
-            project_title=workspace.project.title,
-            slug=workspace.project.slug,
-            status=workspace.project.status,
-            content_type=workspace.project.content_type,
-            vault_note_path=workspace.vault_note_path,
-            media_root=workspace.media_root,
-            keyframe_defaults=workspace.keyframe_defaults,
-        )
-        write_manifest(Path(workspace.workspace_root), manifest)
+        from .safe_write import locked_path
+        root = Path(workspace.workspace_root)
+        with locked_path(root / "workspace.yaml"):
+            changes = dict(
+                workspace_id=workspace.id, project_title=workspace.project.title,
+                slug=workspace.project.slug, status=workspace.project.status,
+                content_type=workspace.project.content_type,
+                vault_note_path=workspace.vault_note_path, media_root=workspace.media_root,
+                keyframe_defaults=workspace.keyframe_defaults,
+            )
+            if (root / "workspace.yaml").exists():
+                manifest = read_manifest(root)
+                if all(getattr(manifest, key) == value for key, value in changes.items()):
+                    return
+                changes["updated_at"] = datetime.now(tz=timezone.utc)
+                manifest = manifest.model_copy(update=changes)
+            else:
+                manifest = WorkspaceManifest(**changes)
+            write_manifest(root, manifest)
 
     @staticmethod
     def update_status(workspace: Workspace, new_status: ProjectStatus | str) -> None:

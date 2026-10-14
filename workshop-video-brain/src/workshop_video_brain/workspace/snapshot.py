@@ -16,22 +16,11 @@ logger = logging.getLogger(__name__)
 _SNAPSHOTS_DIR = "projects/snapshots"
 _METADATA_FILENAME = "metadata.yaml"
 
-# Paths that must NEVER be overwritten
-_PROTECTED_PREFIXES = ("media/raw", "projects/source")
-
 
 def _assert_not_protected(workspace_root: Path, path: Path) -> None:
     """Raise ValueError if *path* falls under a protected directory."""
-    try:
-        rel = path.relative_to(workspace_root)
-    except ValueError:
-        return  # outside workspace – allow
-    rel_str = str(rel).replace("\\", "/")
-    for prefix in _PROTECTED_PREFIXES:
-        if rel_str == prefix or rel_str.startswith(prefix + "/"):
-            raise ValueError(
-                f"Refusing to overwrite protected path: {path}"
-            )
+    from workshop_video_brain.core.utils.paths import assert_not_protected
+    assert_not_protected(path, "restored project")
 
 
 def create(
@@ -42,22 +31,30 @@ def create(
     """Copy *file_to_snapshot* into a new timestamped snapshot directory.
 
     Returns a SnapshotRecord describing the snapshot.
-    The source file is NEVER a protected path (media/raw, projects/source).
+    Reading a protected source is allowed; snapshots never replace that source.
     """
-    workspace_root = Path(workspace_root)
-    file_to_snapshot = Path(file_to_snapshot)
+    workspace_root = Path(workspace_root).resolve()
+    file_to_snapshot = Path(file_to_snapshot).resolve()
 
+    from workshop_video_brain.workspace.safe_write import locked_path
+    with locked_path(file_to_snapshot):
+        return _create_locked(workspace_root, file_to_snapshot, description)
+
+
+def _create_locked(workspace_root: Path, file_to_snapshot: Path, description: str) -> SnapshotRecord:
+    from workshop_video_brain.core.utils.paths import assert_not_protected
     ts = timestamp_prefix()
     slug = slugify(file_to_snapshot.stem) or "snapshot"
     base_snap_name = f"{ts}-{slug}"
-    # Ensure unique directory even when called multiple times within one second
-    snap_name = base_snap_name
-    counter = 1
-    while (workspace_root / _SNAPSHOTS_DIR / snap_name).exists():
-        snap_name = f"{base_snap_name}-{counter}"
-        counter += 1
-    snap_dir = workspace_root / _SNAPSHOTS_DIR / snap_name
-    snap_dir.mkdir(parents=True, exist_ok=True)
+    counter = 0
+    while True:
+        snap_name = base_snap_name if counter == 0 else f"{base_snap_name}-{counter}"
+        snap_dir = assert_not_protected(workspace_root / _SNAPSHOTS_DIR / snap_name)
+        try:
+            snap_dir.mkdir(parents=True, exist_ok=False)
+            break
+        except FileExistsError:
+            counter += 1
 
     # Capture manifest state
     manifest_snapshot: dict = {}
@@ -81,7 +78,8 @@ def create(
 
     # Persist metadata
     meta_path = snap_dir / _METADATA_FILENAME
-    meta_path.write_text(record.to_yaml(), encoding="utf-8")
+    from workshop_video_brain.workspace.safe_write import atomic_write_text
+    atomic_write_text(meta_path, record.to_yaml())
 
     return record
 
@@ -92,22 +90,29 @@ def restore(workspace_root: Path | str, snapshot_id: str) -> None:
     Copies the snapshot file back to its original location.
     Will NOT restore into media/raw or projects/source.
     """
-    workspace_root = Path(workspace_root)
-    snap_dir = workspace_root / _SNAPSHOTS_DIR / snapshot_id
+    workspace_root = Path(workspace_root).resolve()
+    if Path(snapshot_id).name != snapshot_id or snapshot_id in ("", ".", ".."):
+        raise ValueError("snapshot_id must name a snapshot directory")
+    snapshots_root = (workspace_root / _SNAPSHOTS_DIR).resolve()
+    snap_dir = (snapshots_root / snapshot_id).resolve()
+    if snap_dir.parent != snapshots_root:
+        raise ValueError("Snapshot directory must remain inside projects/snapshots")
     meta_path = snap_dir / _METADATA_FILENAME
     record = SnapshotRecord.from_yaml(meta_path.read_text(encoding="utf-8"))
 
-    original = Path(record.project_file_path)
+    original = Path(record.project_file_path).resolve()
     _assert_not_protected(workspace_root, original)
+    if not original.is_relative_to(workspace_root):
+        raise ValueError("Snapshot destination must remain inside the workspace")
 
     # Find the copied file in the snapshot dir (first non-metadata file)
-    candidates = [f for f in snap_dir.iterdir() if f.name != _METADATA_FILENAME]
-    if not candidates:
-        raise FileNotFoundError(f"No snapshot file found in {snap_dir}")
-    snap_file = candidates[0]
+    snap_file = snap_dir / original.name
+    if not snap_file.is_file() or not snap_file.resolve().is_relative_to(snap_dir):
+        raise FileNotFoundError(f"No matching snapshot file found in {snap_dir}")
 
-    original.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(snap_file, original)
+    from workshop_video_brain.workspace.safe_write import atomic_write_bytes
+    atomic_write_bytes(original, snap_file.read_bytes(), workspace_root=workspace_root,
+                       description=f"Before restoring snapshot {snapshot_id}")
 
 
 def list_snapshots(workspace_root: Path | str) -> list[SnapshotRecord]:

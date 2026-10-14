@@ -17,6 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+research = ["numpy>=1.26", "Pillow>=10.0", "pytesseract>=0.3"]
 # Local AI mask generation (producing matte videos for Shape Alpha / mask_set).
 # Default engine is the LIGHTEST viable one: rembg on onnxruntime -- CPU-friendly,
 # NO torch (~20 MB runtime + a 4-176 MB model auto-downloaded on first use).
