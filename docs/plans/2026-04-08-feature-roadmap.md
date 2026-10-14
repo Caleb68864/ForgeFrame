@@ -81,6 +81,44 @@ Gaps identified by comparing ForgeFrame capabilities against the video-editing-g
 9. **Project Archive Tool** (`project_archive`)
    Bundle workspace + renders + project file into dated archive. Supports "months later" editability goal from the handbook.
 
+## Next Step: Kdenlive 26.08 Compatibility Fixes (2026-10-14)
+
+Do this first, before the media MCP expansion phases
+(`docs/plans/2026-10-13-media-mcp-expansion.md`). Evidence:
+`docs/testing/2026-10-13-kdenlive-2608-differential.md` -- rendering the
+`scripts/kdenlive_check_pack.py` projects with `kdenlive --render` (Kdenlive
+26.08.2, headless) vs `melt` shows Kdenlive silently dropping generated content.
+
+1. **Automate the differential.** A `requires_kdenlive` external test that
+   builds the check pack, renders each project with `xvfb-run -a kdenlive
+   --render` and with melt, and asserts matching frames/duration/audio
+   (PSNR threshold, non-silent audio). Add a `requires_kdenlive` mark to
+   `tests/_testkit.py`; optionally install Kdenlive in CI `full`.
+2. **Audio is lost on insert.** `clip_insert` leaves `playlist_audio` empty and
+   the video track has `hide="audio"`, so timelines are silent in both renderers.
+   Place the A-side entry on the audio track; land `audio_fade` on it.
+3. **Effects dropped by Kdenlive.** `effect_add` emits a bare
+   `<filter mlt_service="avfilter.gblur">` inside the entry; Kdenlive 26.08
+   discards it. Emit the full Kdenlive effect identity (`kdenlive_id`, etc. --
+   see `vault/wiki/kdenlive-avfilter-and-effect-zones.md`).
+4. **Dissolves dropped by Kdenlive.** `transitions_apply_between` output blends
+   in melt but hard-cuts in Kdenlive. Re-check against
+   `vault/wiki/kdenlive-cross-dissolve-pattern.md` and a 26.08 native save.
+5. **Hard-rule violations in generated XML:** a media clip gets `kdenlive:id` 3
+   (reserved for the main sequence); `main_bin` entries have `out="0"`
+   (need `length-1`); timeline `<entry>` elements lack `kdenlive:id`; the
+   timewarp speed variant is registered in `main_bin` as its own clip.
+6. **GUI pass.** Open `kdenlive-check-pack/*.kdenlive` in Kdenlive 26.08, record
+   any load dialogs verbatim (`CHECKLIST.md`), save clean ones as native 26.08
+   reference fixtures, then rewrite the CLAUDE.md "Hard rules" (still 25.x
+   twin-chain wording) to the 26.x contract.
+7. **Adopt `kdenlive --verify-file`** (Kdenlive master: headless load +
+   `KdenliveDoc::checkConsistency()`) as a validator backend once it ships in a
+   release.
+
+Done when every check-pack step matches between Kdenlive and melt, audio is
+audible, and the GUI pass shows no dialogs.
+
 ## Reliability and Guided Workflow (2026-10-13)
 
 Execute these priorities in order. Independent research and implementation may
