@@ -372,6 +372,34 @@ def _apply_add_clip(project: KdenliveProject, intent: AddClip) -> None:
 
     # Insert at the correct position
     if intent.position is None or intent.position < 0:
+        if intent.align_with_track:
+            aligned_playlist = _find_playlist(project, intent.align_with_track)
+            aligned_entry = None
+            if aligned_playlist is not None:
+                aligned_entry = next(
+                    (e for e in reversed(aligned_playlist.entries) if e.producer_id == intent.producer_id),
+                    None,
+                )
+            aligned_start = 0
+            if aligned_playlist is not None:
+                for aligned in aligned_playlist.entries:
+                    if aligned is aligned_entry:
+                        break
+                    aligned_start += max(0, aligned.out_point - aligned.in_point + 1)
+                if aligned_entry is None:
+                    aligned_start = sum(max(0, e.out_point - e.in_point + 1) for e in aligned_playlist.entries)
+            target_length = sum(max(0, e.out_point - e.in_point + 1) for e in target_playlist.entries)
+            gap = aligned_start - target_length
+            if gap > 0:
+                target_playlist.entries.append(
+                    PlaylistEntry(producer_id="", in_point=0, out_point=gap - 1)
+                )
+            elif gap < 0:
+                logger.warning(
+                    "AddClip: aligned start for '%s' is before target playlist end; skipped",
+                    intent.producer_id,
+                )
+                return
         target_playlist.entries.append(entry)
         logger.info(
             "AddClip: appended producer '%s' to playlist '%s'",
@@ -1082,37 +1110,58 @@ def _apply_audio_fade(project: KdenliveProject, intent: AudioFade) -> None:
         return
 
     entry = real_entries[intent.clip_index]
+    source_start = 0
+    for item in playlist.entries:
+        if item is entry:
+            break
+        source_start += max(0, item.out_point - item.in_point + 1)
+    for track in project.tracks:
+        if track.track_type != "audio":
+            continue
+        candidate_playlist = _find_playlist(project, track.id)
+        if candidate_playlist is None:
+            continue
+        candidate_entries = [e for e in candidate_playlist.entries if e.producer_id]
+        if intent.clip_index >= len(candidate_entries):
+            continue
+        candidate = candidate_entries[intent.clip_index]
+        candidate_start = 0
+        for item in candidate_playlist.entries:
+            if item is candidate:
+                break
+            candidate_start += max(0, item.out_point - item.in_point + 1)
+        if candidate.producer_id == entry.producer_id and candidate_start == source_start:
+            playlist, entry = candidate_playlist, candidate
+            break
+
     fade_type = intent.fade_type
     dur = max(1, intent.duration_frames)
     clip_len = max(1, entry.out_point - entry.in_point + 1)
 
-    # MLT's ``volume`` filter animates ``level`` in **decibels** (0 = unity,
-    # -60 ≈ silence).  Keyframe positions are relative to the clip start.
-    _FLOOR = "-60"
-    if fade_type == "in":
-        level = f"0={_FLOOR};{min(dur, clip_len - 1)}=0"
-    else:
-        start = max(0, clip_len - 1 - dur)
-        level = f"{start}=0;{clip_len - 1}={_FLOOR}"
-
-    track_index = _playlist_index(project, intent.track_ref)
+    track_index = _playlist_index(project, playlist.id)
     if track_index is None:
         logger.warning(
             "AudioFade: playlist '%s' not indexable – skipped.", intent.track_ref
         )
         return
 
-    # A real MLT ``volume`` filter with a keyframed ``level`` (gain), nested in
-    # the clip <entry> by the serializer (§1.1).  The old ``type="volume"`` had
-    # no mlt_service and melt failed to load it.
+    # Kdenlive's native fade identity plus clip-local filter range.
+    fade_in = fade_type == "in"
+    filter_in = "0" if fade_in else str(max(0, clip_len - dur))
+    filter_out = str(min(dur, clip_len) - 1) if fade_in else str(clip_len - 1)
+    gain, end = ("0", "1") if fade_in else ("1", "0")
     xml = (
         f'<filter id="audiofade_{fade_type}_{intent.track_ref}_{intent.clip_index}" '
+        f'in="{filter_in}" out="{filter_out}" '
         f'mlt_service="volume" '
         f'track="{track_index}" '
         f'clip_index="{intent.clip_index}">'
         f'<property name="mlt_service">volume</property>'
-        f'<property name="level">{level}</property>'
-        f'<property name="kdenlive:fade_type">{fade_type}</property>'
+        f'<property name="window">75</property>'
+        f'<property name="max_gain">20dB</property>'
+        f'<property name="gain">{gain}</property>'
+        f'<property name="end">{end}</property>'
+        f'<property name="kdenlive_id">fade{fade_type}</property>'
         f'</filter>'
     )
     element = OpaqueElement(
@@ -1528,6 +1577,34 @@ def _apply_add_transition(project: KdenliveProject, intent: AddTransition) -> No
     left_entry.out_point += extend
 
     lead = max(0, cut - pull)
+
+    # Keep the paired audio timeline's incoming clip at the same frame as the
+    # video lane. The audio lane remains sequential (mixing is optional), so
+    # adjust the linked left entry's duration to place the right entry at lead.
+    source_track = next((t for t in project.tracks if t.id == playlist.id), None)
+    audio_track = next((t for t in project.tracks if t.track_type == "audio"), None)
+    audio_playlist = _find_playlist(project, audio_track.id) if audio_track else None
+    if source_track is not None and audio_playlist is not None:
+        audio_real = [e for e in audio_playlist.entries if e.producer_id]
+        if right_idx < len(audio_real):
+            audio_left, audio_right = audio_real[left_idx], audio_real[right_idx]
+            if (audio_left.producer_id == real[left_idx].producer_id
+                    and audio_right.producer_id == real[right_idx].producer_id):
+                audio_left_start = 0
+                for item in audio_playlist.entries:
+                    if item is audio_left:
+                        break
+                    audio_left_start += max(0, item.out_point - item.in_point + 1)
+                wanted_len = lead - audio_left_start
+                if wanted_len > 0:
+                    audio_left.out_point = audio_left.in_point + wanted_len - 1
+                elif wanted_len == 0:
+                    audio_playlist.entries.remove(audio_left)
+                else:
+                    logger.warning(
+                        "AddTransition: cannot align linked audio before frame %d; audio left unchanged",
+                        lead,
+                    )
 
     # Build the new top video track carrying the right clip (+ any clips that
     # followed it on the source track), preceded by a lead-in blank.

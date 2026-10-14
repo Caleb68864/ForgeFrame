@@ -12,11 +12,99 @@ service without rework.
 from __future__ import annotations
 
 import json
+import math
+import os
+import re
+import signal
 import subprocess
+import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from PIL import Image
+
+
+def kdenlive_render(
+    project: str | Path,
+    out: str | Path,
+    kdenlive_bin: str = "kdenlive",
+    timeout: int = 300,
+    capture_playlist: str | Path | None = None,
+) -> Path:
+    """Render a project with Kdenlive under a virtual X display."""
+    project, out = Path(project), Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    before = set(Path(tempfile.gettempdir()).glob("kdenlive-*.mlt"))
+    cmd = ["xvfb-run", "-a", kdenlive_bin, "--render", str(project), str(out)]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+    largest = ""
+    deadline = time.monotonic() + timeout
+    try:
+        while proc.poll() is None:
+            if capture_playlist is not None:
+                for candidate in Path(tempfile.gettempdir()).glob("kdenlive-*.mlt"):
+                    if candidate not in before:
+                        try:
+                            content = candidate.read_text(errors="replace")
+                            if len(content) > len(largest):
+                                largest = content
+                        except OSError:
+                            pass
+            if time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(cmd, timeout)
+            try:
+                _, stderr = proc.communicate(timeout=min(0.05, deadline - time.monotonic()))
+                break
+            except subprocess.TimeoutExpired:
+                continue
+    except subprocess.TimeoutExpired as exc:
+        os.killpg(proc.pid, signal.SIGKILL)
+        proc.communicate()
+        raise RuntimeError(f"Kdenlive render timed out after {timeout}s: {project}") from exc
+    if capture_playlist is not None and largest:
+        Path(capture_playlist).write_text(largest, encoding="utf-8")
+    if proc.returncode != 0 or not out.exists():
+        raise RuntimeError(f"Kdenlive render failed rc={proc.returncode} for {project}; stderr tail:\n{stderr[-1500:]}")
+    return out
+
+
+def melt_render_full(project: str | Path, out: str | Path, melt_bin: str = "melt", timeout: int = 180) -> Path:
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [melt_bin, str(project), "-consumer", f"avformat:{out}", "vcodec=libx264", "acodec=aac", "terminate_on_pause=1"]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    if proc.returncode != 0 or not out.exists():
+        raise RuntimeError(f"melt render failed rc={proc.returncode} for {project}; stderr tail:\n{proc.stderr[-1500:]}")
+    return out
+
+
+def video_psnr(a: str | Path, b: str | Path, ffmpeg_bin: str = "ffmpeg", timeout: int = 600) -> float:
+    cmd = [ffmpeg_bin, "-hide_banner", "-i", str(a), "-i", str(b), "-lavfi", "[0:v][1:v]psnr", "-f", "null", "-"]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    match = re.search(r"average:\s*([\w.+-]+)", proc.stderr)
+    if not match:
+        raise RuntimeError(f"ffmpeg PSNR output missing average for {a} and {b}:\n{proc.stderr[-1500:]}")
+    return math.inf if match.group(1) == "inf" else float(match.group(1))
+
+
+def video_frame_count(path: str | Path, ffprobe_bin: str = "ffprobe", timeout: int = 120) -> int:
+    cmd = [ffprobe_bin, "-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", str(path)]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffprobe frame count failed for {path}: {proc.stderr[-1000:]}")
+    return int(proc.stdout.strip())
+
+
+def mean_volume_db(path: str | Path, ffmpeg_bin: str = "ffmpeg", timeout: int = 600) -> float:
+    cmd = [ffmpeg_bin, "-hide_banner", "-i", str(path), "-vn", "-af", "volumedetect", "-f", "null", "-"]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    match = re.search(r"mean_volume:\s*(-?[\d.]+|-[iI]nfinity)\s*dB", proc.stderr)
+    if not match:
+        if "does not contain any stream" in proc.stderr or "Output file is empty" in proc.stderr:
+            return -math.inf
+        raise RuntimeError(f"ffmpeg mean volume missing for {path}:\n{proc.stderr[-1500:]}")
+    return -math.inf if "infinity" in match.group(1).lower() else float(match.group(1))
 
 # ---------------------------------------------------------------------------
 # melt acceptance

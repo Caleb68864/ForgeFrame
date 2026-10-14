@@ -88,9 +88,11 @@ def clip_insert(
         # (best-effort: a missing binary or unreadable file falls back to the
         # project fps and a single-frame out-point, as before).
         duration_seconds: float | None = None
+        has_audio = False
         try:
             from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
             asset = probe_media(media_file)
+            has_audio = asset.channels > 0 or bool(asset.audio_codec)
             if asset.duration > 0:
                 duration_seconds = asset.duration
             if asset.fps > 0:
@@ -134,8 +136,63 @@ def clip_insert(
             position=position,
             source_path=str(media_file),
         )
+        audio_playlist = next(
+            (playlist for playlist in project.playlists
+             if any(track.id == playlist.id and track.track_type == "audio" for track in project.tracks)),
+            None,
+        )
+        audio_placed = False
+        intents = [intent]
+        if has_audio and audio_playlist is not None:
+            audio_position = -1
+            audio_alignment = video_playlist.id
+            can_align_append = True
+            if position < 0:
+                video_length = sum(max(0, e.out_point - e.in_point + 1) for e in video_playlist.entries)
+                audio_length = sum(max(0, e.out_point - e.in_point + 1) for e in audio_playlist.entries)
+                if audio_length > video_length:
+                    can_align_append = False
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "clip_insert: audio playlist ends at frame %d after video frame %d; placing video only",
+                        audio_length, video_length,
+                    )
+            if position >= 0:
+                video_entries = video_playlist.entries
+                insertion_index = min(position, len(video_entries))
+                start_frame = sum(max(0, e.out_point - e.in_point + 1) for e in video_entries[:insertion_index])
+                cursor = 0
+                audio_position = -1
+                for index, entry in enumerate(audio_playlist.entries):
+                    if cursor == start_frame:
+                        audio_position = index
+                        break
+                    cursor += max(0, entry.out_point - entry.in_point + 1)
+                if cursor == start_frame and audio_position < 0:
+                    audio_position = len(audio_playlist.entries)
+                if audio_position < 0:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "clip_insert: no audio entry begins at video insertion frame %d; placing video only",
+                        start_frame,
+                    )
+                else:
+                    audio_alignment = ""
+            if (position < 0 and can_align_append) or audio_position >= 0:
+                audio_intent = AddClip(
+                    producer_id=producer_id,
+                    track_ref=audio_playlist.id,
+                    track_id=audio_playlist.id,
+                    in_point=in_frame,
+                    out_point=out_frame,
+                    position=audio_position,
+                    source_path=str(media_file),
+                    align_with_track=audio_alignment,
+                )
+                intents.append(audio_intent)
+                audio_placed = True
 
-        patched, report = patch_project(project, [intent], with_report=True)
+        patched, report = patch_project(project, intents, with_report=True)
         if report.all_skipped:
             return err(
                 "clip_insert applied no changes: "
@@ -152,6 +209,8 @@ def clip_insert(
             "in_frame": in_frame,
             "out_frame": out_frame,
             "playlist_id": video_playlist.id,
+            "audio_playlist_id": audio_playlist.id if audio_playlist else "",
+            "audio_placed": audio_placed,
             "position": position,
             "skipped_intents": report.skipped,
         })

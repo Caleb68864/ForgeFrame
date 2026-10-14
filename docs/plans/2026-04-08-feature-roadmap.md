@@ -94,9 +94,13 @@ Do this first, before the media MCP expansion phases
    --render` and with melt, and asserts matching frames/duration/audio
    (PSNR threshold, non-silent audio). Add a `requires_kdenlive` mark to
    `tests/_testkit.py`; optionally install Kdenlive in CI `full`.
-2. **Audio is lost on insert.** `clip_insert` leaves `playlist_audio` empty and
-   the video track has `hide="audio"`, so timelines are silent in both renderers.
-   Place the A-side entry on the audio track; land `audio_fade` on it.
+2. **Audio is lost on insert.** **Done 2026-10-14.** `clip_insert` now places
+   audio-bearing media on the first audio playlist at the same timeline frame,
+   and reports the target and placement status. Speed and dissolve edits keep
+   paired starts aligned; `audio_fade` targets the audio entry and emits
+   Kdenlive's native fade identity. Unit and external render proofs were added;
+   this host's MLT/Kdenlive binaries abort, so audible render measurements remain
+   pending. Other move/trim intents are listed as known sync gaps in the task report.
 3. **Effects dropped by Kdenlive.** `effect_add` emits a bare
    `<filter mlt_service="avfilter.gblur">` inside the entry; Kdenlive 26.08
    discards it. Emit the full Kdenlive effect identity (`kdenlive_id`, etc. --

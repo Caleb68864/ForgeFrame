@@ -38,6 +38,7 @@ class AddClip(TimelineIntent):
     out_point: int = 0
     position: int = -1  # -1 = append at end
     source_path: str = ""  # path to media resource
+    align_with_track: str = ""  # append at the aligned entry's timeline start
 
 
 class TrimClip(TimelineIntent):

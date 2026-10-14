@@ -42,6 +42,11 @@ def melt_bin() -> str:
 
 
 @pytest.fixture(scope="session")
+def kdenlive_bin() -> str:
+    return _require("kdenlive")
+
+
+@pytest.fixture(scope="session")
 def ffprobe_bin() -> str:
     return _require("ffprobe")
 

@@ -48,6 +48,8 @@ import pytest
 HAVE_FFMPEG = shutil.which("ffmpeg") is not None
 HAVE_FFPROBE = shutil.which("ffprobe") is not None
 HAVE_MELT = shutil.which("melt") is not None
+HAVE_KDENLIVE = shutil.which("kdenlive") is not None
+HAVE_XVFB_RUN = shutil.which("xvfb-run") is not None
 
 requires_ffmpeg = pytest.mark.skipif(not HAVE_FFMPEG, reason="ffmpeg not available on PATH")
 requires_ffprobe = pytest.mark.skipif(not HAVE_FFPROBE, reason="ffprobe not available on PATH")
@@ -55,6 +57,10 @@ requires_ffmpeg_ffprobe = pytest.mark.skipif(
     not (HAVE_FFMPEG and HAVE_FFPROBE), reason="ffmpeg/ffprobe not available on PATH"
 )
 requires_melt = pytest.mark.skipif(not HAVE_MELT, reason="melt not available on PATH")
+requires_kdenlive = pytest.mark.skipif(
+    not (HAVE_KDENLIVE and HAVE_XVFB_RUN),
+    reason="kdenlive (and xvfb-run for a headless display) not available on PATH",
+)
 requires_melt_ffmpeg = pytest.mark.skipif(
     not (HAVE_MELT and HAVE_FFMPEG), reason="melt/ffmpeg not available on PATH"
 )

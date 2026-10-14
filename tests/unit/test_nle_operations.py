@@ -557,7 +557,7 @@ class TestAudioFade:
         elem = patched.opaque_elements[0]
         assert "out" in elem.xml_string
 
-    def test_fade_xml_contains_level_ramp(self):
+    def test_fade_xml_uses_kdenlive_native_identity_and_range(self):
         from workshop_video_brain.core.models.timeline import AudioFade
         from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher import patch_project
 
@@ -566,9 +566,13 @@ class TestAudioFade:
             AudioFade(track_ref="pl_video", clip_index=0, fade_type="in", duration_frames=12)
         ])
         xml = patched.opaque_elements[0].xml_string
-        # fade-in: a real MLT volume filter with a dB level ramp from silence.
+        # Kdenlive's built-in fade-in filter uses gain/end and a local range.
         assert 'mlt_service="volume"' in xml
-        assert "-60" in xml  # dB floor => start near-silent
+        assert 'in="0"' in xml
+        assert 'out="11"' in xml
+        assert '<property name="gain">0</property>' in xml
+        assert '<property name="end">1</property>' in xml
+        assert '<property name="kdenlive_id">fadein</property>' in xml
 
     def test_fade_does_not_mutate_original(self):
         from workshop_video_brain.core.models.timeline import AudioFade
