@@ -144,7 +144,7 @@ def distort_props(amplitude: float, frequency: float) -> list[tuple[str, str]]:
         raise ValueError(f"distort_frequency must be >= 0; got {frequency}")
     return [
         ("mlt_service", "frei0r.distort0r"),
-        ("kdenlive_id", "frei0r_distort0r"),
+        ("kdenlive_id", "frei0r.distort0r"),
         (_DISTORT_AMPLITUDE_KEY, f"{amplitude:.4f}"),
         (_DISTORT_FREQUENCY_KEY, f"{frequency:.4f}"),
     ]
@@ -232,7 +232,6 @@ def paper_cutout_filter_xml(
                 clip_ref,
                 [
                     ("mlt_service", "affine"),
-                    ("kdenlive_id", "transform"),
                     ("rect", rect),
                 ],
             )

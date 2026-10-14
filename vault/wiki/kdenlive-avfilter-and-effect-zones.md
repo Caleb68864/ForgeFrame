@@ -32,10 +32,17 @@ Where `<name>` is the ffmpeg filter name (`gblur`, `boxblur`, `eq`, `colorbalanc
 
 The parameters use the `av.<param>` naming convention. Scalar params are bare values; animated params are `HH:MM:SS.mmm=value;...` keyframe strings (the same syntax `qtblend` rect uses).
 
-## What we already implement
+## What the serializer writes
 
-The serializer already emits this exact shape. No model changes are needed for
-`avfilter.*`; only the parameter dict differs per effect.
+Clip effects are represented internally as `OpaqueElement` values and moved
+inside the matching `<entry>` by `serializer._extract_clip_filters`. Before
+the effect-identity fix, the serializer preserved the builder's properties;
+the generic `effect_add` path did not add a `kdenlive_id`, so Kdenlive silently
+dropped the filter. Builders that supplied a file stem could instead trigger
+an abort. The resolver and serializer safety net now normalize ids for clip
+filters that already carry one. The safety net deliberately does not add a
+missing id, because some filters (including the audio fade's `volume` filter)
+have separate ownership and behaviour.
 
 The audit's 30 untested files are unblocked by:
 
@@ -67,7 +74,30 @@ What's NOT yet implemented as a high-level MCP wrapper:
 - Per-effect convenience tools (`effect_blur(sigma=...)`, `effect_eq(brightness=..., contrast=...)`).
 
 These are mechanical wrappers around `AddEffect`; the underlying
-serializer/parser path is already correct.
+filter serialization path now resolves the Kdenlive registry id before writing.
+
+## Effect identity (Kdenlive 26.08)
+
+Kdenlive looks up clip filters by the registry id in the effect XML's `id=`
+attribute. If that property is absent, Kdenlive drops the filter. If it is
+present but unknown, `kdenlive --render` aborts. The XML file name is only a
+catalog stem and often differs from the registry id.
+
+| Filter shape | Kdenlive result | PSNR vs melt |
+| --- | --- | --- |
+| Filter without `kdenlive_id` | Dropped | 25.8 dB |
+| `kdenlive_id=avfilter.gblur` | Blurred | 35.3 dB |
+| `kdenlive_id=avfilter_gblur` (file stem) | Aborts, rc 134 | -- |
+| `mlt_service=affine`, `kdenlive_id=transform`, `transition.rect` | Aborts, rc 134 | -- |
+| Same affine transition shape with `kdenlive_id=pan_zoom` | Renders | 60.6 dB |
+
+For example, `avfilter_gblur.xml` has registry id `avfilter.gblur`,
+`hsl_primaries.xml` has id `hslprimaries`, and `pan_zoom.xml` has id
+`pan_zoom` with MLT service `affine`. The generated table is
+`adapters/kdenlive/effect_ids.py`; `adapters/kdenlive/effect_identity.py`
+contains `normalize_effect_id`. The serializer safety net in
+`adapters/kdenlive/serializer.py` rewrites unknown ids when it can resolve
+them and removes an id when resolution fails.
 
 ## Effect zones (`kdenlive:zone_in` / `kdenlive:zone_out`)
 

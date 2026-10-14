@@ -48,12 +48,16 @@ For most smokes one entry per producer is fine because `AddClip`'s
 default length (= entry duration) is sufficient.  This is only a
 problem when a single producer is reused with different ranges.
 
-## Long-term fix
+## Central enforcement
 
-`AddClip` should probe the source file's actual duration and use
-that as the producer's `length`.  Today it doesn't probe -- it just
-sets length to the entry's range.  That's a latent bug for any
-multi-use scenario.
+The serializer now enforces this centrally with `_effective_length`: it takes
+the maximum of a plain integer declared length and the largest `out_point + 1`
+across every playlist use of that producer. This covers builders that do not
+set a length themselves and prevents a later use from exceeding the producer.
+
+`clip_insert` also records the probed media duration as `producer_length` in
+project-profile frames. Its in/out conversion uses the project FPS, since MLT
+producer frame ranges are expressed in the project timebase.
 
 ## Related
 

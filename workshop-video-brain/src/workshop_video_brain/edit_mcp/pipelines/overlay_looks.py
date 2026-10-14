@@ -248,13 +248,17 @@ def day_to_night_chain(
 
 def lookup_catalog_id(mlt_service: str) -> str | None:
     """Return the ``kdenlive_id`` for an ``mlt_service``, or ``None``."""
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.effect_identity import (
+        normalize_effect_id,
+    )
+
     try:
         from workshop_video_brain.edit_mcp.pipelines import effect_catalog as _catalog
     except ModuleNotFoundError:
         return None
     for kid, eff in _catalog.CATALOG.items():
         if eff.mlt_service == mlt_service:
-            return kid
+            return normalize_effect_id(mlt_service, kid)
     return None
 
 
@@ -267,6 +271,13 @@ def build_filter_xml(
 ) -> str:
     """Build a Kdenlive/MLT ``<filter>`` XML string (mirrors ``_build_filter_xml``)."""
     import xml.etree.ElementTree as ET
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.effect_identity import (
+        normalize_effect_id,
+    )
+
+    resolved_id = normalize_effect_id(
+        mlt_service, kdenlive_id, (name for name, _ in props)
+    )
 
     root = ET.Element(
         "filter",
@@ -274,8 +285,9 @@ def build_filter_xml(
     )
     svc = ET.SubElement(root, "property", {"name": "mlt_service"})
     svc.text = mlt_service
-    kid = ET.SubElement(root, "property", {"name": "kdenlive_id"})
-    kid.text = kdenlive_id
+    if resolved_id is not None:
+        kid = ET.SubElement(root, "property", {"name": "kdenlive_id"})
+        kid.text = resolved_id
     for name, value in props:
         prop = ET.SubElement(root, "property", {"name": name})
         prop.text = value

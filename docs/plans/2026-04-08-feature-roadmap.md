@@ -101,19 +101,17 @@ Do this first, before the media MCP expansion phases
    Kdenlive's native fade identity. Unit and external render proofs were added;
    this host's MLT/Kdenlive binaries abort, so audible render measurements remain
    pending. Other move/trim intents are listed as known sync gaps in the task report.
-3. **Effects dropped by Kdenlive.** `effect_add` emits a bare
-   `<filter mlt_service="avfilter.gblur">` inside the entry; Kdenlive 26.08
-   discards it. Emit the full Kdenlive effect identity (`kdenlive_id`, etc. --
-   see `vault/wiki/kdenlive-avfilter-and-effect-zones.md`).
+3. **Effects dropped by Kdenlive.** **Done 2026-10-14 (implementation; host render verification blocked).** A missing `kdenlive_id` makes Kdenlive drop a clip filter; an unknown id aborts `kdenlive --render`; the effect XML file name is not the registry id. The `effect_identity.normalize_effect_id` resolver and serializer safety net normalize known ids and remove unknown ones. See `vault/wiki/kdenlive-avfilter-and-effect-zones.md`.
 4. ~~**Dissolves dropped by Kdenlive.**~~ **Done 2026-10-14.** Not dropped but
    hidden: the luma targeted the background (`a_track=0`) and was planted after
    the track compositors, and the left clip was stretched past its media. Now
    matches Kdenlive's own layout; Kdenlive and melt render the same dissolve.
    See `vault/wiki/kdenlive-cross-dissolve-pattern.md`.
-5. **Hard-rule violations in generated XML:** a media clip gets `kdenlive:id` 3
-   (reserved for the main sequence); `main_bin` entries have `out="0"`
-   (need `length-1`); timeline `<entry>` elements lack `kdenlive:id`; the
-   timewarp speed variant is registered in `main_bin` as its own clip.
+5. ~~**Hard-rule violations in generated XML:** media and sequence IDs collide
+   with reserved IDs, media `main_bin` entries have `out="0"`, timeline entries
+   lack IDs, and speed variants appear in the bin.~~ **Done 2026-10-14.** IDs,
+   effective lengths, and timeline entry IDs now follow the native pattern.
+   Speed and timeremap variants share their source ID and stay out of `main_bin`.
 6. **GUI pass.** Open `kdenlive-check-pack/*.kdenlive` in Kdenlive 26.08, record
    any load dialogs verbatim (`CHECKLIST.md`), save clean ones as native 26.08
    reference fixtures, then rewrite the CLAUDE.md "Hard rules" (still 25.x

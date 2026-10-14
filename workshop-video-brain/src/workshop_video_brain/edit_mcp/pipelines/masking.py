@@ -368,7 +368,7 @@ def build_object_mask_xml(
 
     props: list[tuple[str, str]] = [
         ("mlt_service", "frei0r.alpha0ps_alphaspot"),
-        ("kdenlive_id", "frei0r_alpha0ps_alphaspot"),
+        ("kdenlive_id", "frei0r.alpha0ps_alphaspot"),
         ("0", str(shape)),
         ("1", str(pos_x)),
         ("2", str(pos_y)),
@@ -447,7 +447,7 @@ def build_chroma_key_advanced_xml(
     hue, sat, val = _hex_to_hsv(color)
     props: list[tuple[str, str]] = [
         ("mlt_service", "avfilter.hsvkey"),
-        ("kdenlive_id", "avfilter_hsvkey"),
+        ("kdenlive_id", "avfilter.hsvkey"),
         ("av.hue", f"{hue}"),
         ("av.sat", f"{sat}"),
         ("av.val", f"{val}"),

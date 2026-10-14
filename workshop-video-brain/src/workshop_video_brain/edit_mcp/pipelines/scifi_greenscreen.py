@@ -53,11 +53,11 @@ SCIFI_SPILL_TARGET_DEFAULT = "#C87F65"
 
 # Service identifiers, in tutorial stack order.
 KEYSPILL_SERVICE = "frei0r.keyspillm0pup"
-KEYSPILL_KID = "frei0r_keyspillm0pup"
+KEYSPILL_KID = "frei0r.keyspillm0pup"
 KEY_SERVICE = "avfilter.hsvkey"
-KEY_KID = "avfilter_hsvkey"
+KEY_KID = "avfilter.hsvkey"
 DESPILL_SERVICE = "avfilter.despill"
-DESPILL_KID = "avfilter_despill"
+DESPILL_KID = "avfilter.despill"
 
 
 def _require_number(value: float, name: str) -> float:

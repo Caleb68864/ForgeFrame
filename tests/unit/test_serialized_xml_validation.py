@@ -35,6 +35,7 @@ def test_serializer_output_passes(document):
     ('duplicate', 'Duplicate XML id'), ('profile', 'positive integer'),
     ('uuid', 'belongs only'), ('reference', 'Unknown producer reference'),
     ('range', 'beyond length'), ('bin', 'no matching registered bin'),
+    ('folder_id', 'Sequences folder id'), ('main_bin_out', 'must end at length - 1'),
     ('lanes', 'two existing playlist lanes'),
 ])
 def test_corruption_is_blocking(document, corruption, expected):
@@ -51,6 +52,10 @@ def test_corruption_is_blocking(document, corruption, expected):
         entry.set('producer', 'missing')
     elif corruption == 'range':
         prop(media, 'length', '99')
+    elif corruption == 'folder_id':
+        prop(media, 'kdenlive:id', '2')
+    elif corruption == 'main_bin_out':
+        document.find("playlist[@id='main_bin']").find("entry[@producer='clip']").set('out', '98')
     elif corruption == 'bin':
         main = document.find("playlist[@id='main_bin']")
         main.remove(main.find("entry[@producer='clip']"))
@@ -106,3 +111,46 @@ def test_unused_native_chain_does_not_change_generated_document_contract(documen
     prop(chain, 'kdenlive:control_uuid', 'native-bin-control')
     prop(chain, 'kdenlive:id', '4')
     assert validate_serialized_xml(document).items == []
+
+
+def test_pre_sequences_document_may_register_media_with_id_two(document):
+    media = document.find("producer[@id='clip']")
+    prop(media, 'kdenlive:id', '2')
+    timeline = next(p for p in document.findall('playlist') if p.get('id') != 'main_bin')
+    prop(timeline.find("entry[@producer='clip']"), 'kdenlive:id', '2')
+    main = document.find("playlist[@id='main_bin']")
+    for folder_property in main.findall("property"):
+        if folder_property.get('name') in {'kdenlive:sequenceFolder', 'kdenlive:folder.-1.2'}:
+            main.remove(folder_property)
+    assert validate_serialized_xml(document).items == []
+
+
+def test_timewarp_variant_outside_main_bin_shares_registered_id(document):
+    timeline = next(p for p in document.findall('playlist') if p.get('id') != 'main_bin')
+    entry = timeline.find("entry[@producer='clip']")
+    entry.set('producer', 'clip_tw2')
+    entry.set('out', '49')
+    prop(entry, 'kdenlive:id', '4')
+    variant = ET.SubElement(document, 'producer', id='clip_tw2')
+    prop(variant, 'mlt_service', 'timewarp')
+    prop(variant, 'length', '50')
+    prop(variant, 'kdenlive:id', '4')
+    assert validate_serialized_xml(document).items == []
+    prop(variant, 'kdenlive:id', '8')
+    prop(entry, 'kdenlive:id', '8')
+    assert any('no matching registered bin clip' in item.message
+               for item in validate_serialized_xml(document).items)
+
+
+@pytest.mark.parametrize('entry_id', [None, '5'])
+def test_timeline_entry_id_must_match_registered_clip(document, entry_id):
+    timeline = next(p for p in document.findall('playlist') if p.get('id') != 'main_bin')
+    entry = timeline.find("entry[@producer='clip']")
+    found = entry.find("property[@name='kdenlive:id']")
+    if found is not None:
+        entry.remove(found)
+    if entry_id is not None:
+        prop(entry, 'kdenlive:id', entry_id)
+    report = validate_serialized_xml(document)
+    assert any("must carry its bin clip's kdenlive:id (4)" in item.message
+               for item in report.items), report

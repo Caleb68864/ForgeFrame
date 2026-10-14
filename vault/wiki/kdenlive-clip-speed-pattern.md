@@ -67,9 +67,25 @@ To play a clip at non-default speed in Kdenlive 25.x, the timeline references a 
 
 ## Implementation in this repo
 
-- Model: none. `PlaylistEntry.speed` was removed (2026-09-12): it said the serializer emitted the timewarp producer, and this serializer has no timewarp code. The speed lives in the producer the entry names.
-- `adapters/kdenlive/serializer.py` — walks all entries, collects unique `(producer_id, speed)` pairs with `speed != 1.0`, emits one `<producer mlt_service="timewarp">` per pair, and rewrites the entry's `producer` reference at emit time.
-- `adapters/kdenlive/patcher_intents.py::_apply_set_clip_speed` — creates the `<producer mlt_service="timewarp">` variant, repoints `entry.producer_id` at it, and rescales `entry.in_point`/`out_point` for the new frame count. The previous opaque-XML implementation was rejected by Kdenlive 25.x.
+- `adapters/kdenlive/patcher_intents.py::_apply_set_clip_speed` and
+  `_ensure_timewarp_producer` create the timeline-only timewarp producers;
+  `server/bundles/speed_ramp.py` can also create timewarp slices or a chain
+  carrying a `timeremap` link. Timeline entries point directly at those variants.
+- `adapters/kdenlive/serializer.py::_variant_base` detects a timewarp base by
+  matching normalized `warp_resource` to the source resource, and detects a
+  timeremap base by the link plus matching source resource. Variants share the
+  base producer's `kdenlive:id`, but are omitted from `main_bin`. Their own
+  lengths are still serialized for timeline use. The matching does not depend
+  on variant ID naming.
+- The serializer emits the shared `kdenlive:id` as the first property on each
+  timeline entry. Preserved opaque native producers use their own stored ID.
+- The emitted timewarp `resource` remains `2:<path>`. Before this change,
+  Kdenlive 26.08.2 rebuilt a registered speed variant as a separate bin clip
+  and prefixed the project root to that resource. A post-change rebuilt MLT
+  capture could not be collected on this host because headless Kdenlive
+  aborted, so whether omitting the variant from `main_bin` prevents the
+  mangling remains unverified. The native six-decimal resource form was not
+  adopted without that verification.
 
 ## Sources
 

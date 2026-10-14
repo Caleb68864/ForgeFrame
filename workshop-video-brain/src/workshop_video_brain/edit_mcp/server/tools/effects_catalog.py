@@ -55,6 +55,9 @@ def effect_add(
     from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
     from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
     from workshop_video_brain.edit_mcp.pipelines.effect_apply import apply_effect
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.effect_identity import (
+        normalize_effect_id,
+    )
     from workshop_video_brain.workspace import create_snapshot
 
     try:
@@ -102,13 +105,23 @@ def effect_add(
 
     create_snapshot(ws_path, project_path, description=f"before_effect_{effect_name}")
     serialize_project(patched, project_path)
-    return _ok({
+    resolved_id = normalize_effect_id(
+        effect_name.strip(), str(param_dict.get("kdenlive_id", "")), param_dict
+    )
+    payload = {
         "project_file": project_file,
         "track": track,
         "clip": clip,
         "effect_name": effect_name,
         "params": param_dict,
-    })
+        "kdenlive_id": resolved_id,
+    }
+    if resolved_id is None:
+        payload["warning"] = (
+            f"'{effect_name}' is not a Kdenlive effect: melt renders it, "
+            "Kdenlive will drop it."
+        )
+    return _ok(payload)
 
 
 @mcp.tool()

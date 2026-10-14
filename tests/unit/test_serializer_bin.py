@@ -143,17 +143,17 @@ class TestProducerMetadata:
 
         assert _uuid(out1) == _uuid(out2)
 
-    def test_kdenlive_id_starts_at_2(self, tmp_path):
+    def test_kdenlive_id_starts_at_4(self, tmp_path):
         project = _make_project()
         out = tmp_path / "test.kdenlive"
         serialize_project(project, out)
         root = ET.parse(out).getroot()
         prod = next(p for p in root.findall("producer") if p.get("id") == "prod0")
         props = _get_props(prod)
-        assert props["kdenlive:id"] == "2"
+        assert props["kdenlive:id"] == "4"
 
     def test_kdenlive_id_sequential(self, tmp_path):
-        """Multiple producers get sequential IDs starting at 2."""
+        """Multiple producers get sequential IDs starting at 4."""
         project = _make_project(
             producers=[
                 Producer(id="p0", resource="/a.mp4", properties={"resource": "/a.mp4"}),
@@ -175,7 +175,33 @@ class TestProducerMetadata:
             pid = prod.get("id")
             if pid in ("p0", "p1", "p2"):
                 ids[pid] = _get_props(prod)["kdenlive:id"]
-        assert ids == {"p0": "2", "p1": "3", "p2": "4"}
+        assert ids == {"p0": "4", "p1": "5", "p2": "6"}
+
+    def test_sequence_id_is_three(self, tmp_path):
+        serialize_project(_make_project(), tmp_path / "sequence_id.kdenlive")
+        root = ET.parse(tmp_path / "sequence_id.kdenlive").getroot()
+        assert _get_props(_sequence_tractor(root))["kdenlive:id"] == "3"
+
+    def test_opaque_native_id_is_skipped(self, tmp_path):
+        from workshop_video_brain.core.models.kdenlive import OpaqueElement
+        project = _make_project()
+        project.opaque_elements.append(OpaqueElement(
+            tag="chain",
+            xml_string='<chain id="native"><property name="kdenlive:id">4</property></chain>',
+        ))
+        serialize_project(project, tmp_path / "opaque_id.kdenlive")
+        root = ET.parse(tmp_path / "opaque_id.kdenlive").getroot()
+        prod = next(p for p in root.findall("producer") if p.get("id") == "prod0")
+        assert _get_props(prod)["kdenlive:id"] == "5"
+
+    def test_main_bin_media_out_and_sequence_out(self, tmp_path):
+        serialize_project(_make_project(), tmp_path / "bin_out.kdenlive")
+        root = ET.parse(tmp_path / "bin_out.kdenlive").getroot()
+        main_bin = root.find("./playlist[@id='main_bin']")
+        media = main_bin.find("entry[@producer='prod0']")
+        sequence = next(e for e in main_bin.findall("entry") if e.get("producer", "").startswith("{"))
+        assert media.get("out") == "99"
+        assert sequence.get("out") == "0"
 
     def test_clip_type_avformat(self, tmp_path):
         project = _make_project(

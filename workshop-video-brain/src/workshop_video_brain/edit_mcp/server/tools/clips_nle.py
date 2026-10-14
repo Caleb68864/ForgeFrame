@@ -82,7 +82,7 @@ def clip_insert(
         latest = latest_project(kdenlive_files)
         project = parse_project(latest)
 
-        fps = project.profile.fps or 25.0
+        project_fps = project.profile.fps or 25.0
 
         # Probe media for duration/fps via the canonical ffprobe adapter
         # (best-effort: a missing binary or unreadable file falls back to the
@@ -95,20 +95,23 @@ def clip_insert(
             has_audio = asset.channels > 0 or bool(asset.audio_codec)
             if asset.duration > 0:
                 duration_seconds = asset.duration
-            if asset.fps > 0:
-                fps = asset.fps
         except Exception:  # noqa: BLE001 -- documented best-effort probe
             pass
 
+        producer_length = (
+            seconds_to_frames(duration_seconds, project_fps)
+            if duration_seconds is not None else 0
+        )
+
         # Convert seconds to frames (half-up, canonical helper)
-        in_frame = seconds_to_frames(in_seconds, fps)
+        in_frame = seconds_to_frames(in_seconds, project_fps)
         if out_seconds < 0:
             if duration_seconds is not None:
-                out_frame = seconds_to_frames(duration_seconds, fps) - 1
+                out_frame = seconds_to_frames(duration_seconds, project_fps) - 1
             else:
                 out_frame = in_frame  # fallback: single frame
         else:
-            out_frame = seconds_to_frames(out_seconds, fps)
+            out_frame = seconds_to_frames(out_seconds, project_fps)
 
         # Find first video playlist to insert into
         audio_playlist_ids = {t.id for t in project.tracks if t.track_type == "audio"}
@@ -135,6 +138,7 @@ def clip_insert(
             out_point=out_frame,
             position=position,
             source_path=str(media_file),
+            producer_length=producer_length,
         )
         audio_playlist = next(
             (playlist for playlist in project.playlists
@@ -187,6 +191,7 @@ def clip_insert(
                     out_point=out_frame,
                     position=audio_position,
                     source_path=str(media_file),
+                    producer_length=producer_length,
                     align_with_track=audio_alignment,
                 )
                 intents.append(audio_intent)
@@ -208,6 +213,7 @@ def clip_insert(
             "producer_id": producer_id,
             "in_frame": in_frame,
             "out_frame": out_frame,
+            "producer_length": producer_length,
             "playlist_id": video_playlist.id,
             "audio_playlist_id": audio_playlist.id if audio_playlist else "",
             "audio_placed": audio_placed,

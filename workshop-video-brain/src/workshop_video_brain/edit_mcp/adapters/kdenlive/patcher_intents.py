@@ -351,10 +351,13 @@ def _apply_add_clip(project: KdenliveProject, intent: AddClip) -> None:
     # Ensure the producer exists in the project
     existing_ids = {p.id for p in project.producers}
     if intent.producer_id and intent.producer_id not in existing_ids:
+        properties = {"resource": intent.source_path} if intent.source_path else {}
+        if intent.producer_length > 0:
+            properties["length"] = str(intent.producer_length)
         new_producer = Producer(
             id=intent.producer_id,
             resource=intent.source_path or "",
-            properties={"resource": intent.source_path} if intent.source_path else {},
+            properties=properties,
         )
         project.producers.append(new_producer)
         logger.info(
@@ -362,6 +365,14 @@ def _apply_add_clip(project: KdenliveProject, intent: AddClip) -> None:
             intent.producer_id,
             intent.source_path,
         )
+    else:
+        producer = next((p for p in project.producers if p.id == intent.producer_id), None)
+        if producer is not None:
+            current = producer.properties.get("length", "")
+            existing_length = int(current) if current.isdigit() else 0
+            producer.properties["length"] = str(max(
+                existing_length, intent.producer_length, intent.out_point + 1
+            ))
 
     # Create the new playlist entry
     entry = PlaylistEntry(
@@ -1267,21 +1278,36 @@ def _apply_add_effect(project: KdenliveProject, intent: AddEffect) -> None:
         )
         return
 
-    # Build filter XML
-    # Filters are OpaqueElement objects with position_hint="after_tractor",
-    # matching the existing SetClipSpeed and AudioFade patterns in the patcher.
-    props_xml = "".join(
-        f'<property name="{k}">{v}</property>' for k, v in intent.params.items()
+    # Build filter XML with ElementTree so arbitrary parameter text is escaped.
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.effect_identity import (
+        normalize_effect_id,
     )
+
     filter_id = f"effect_{intent.track_index}_{intent.clip_index}_{intent.effect_name}"
-    xml = (
-        f'<filter id="{filter_id}" '
-        f'mlt_service="{intent.effect_name}" '
-        f'track="{intent.track_index}" '
-        f'clip_index="{intent.clip_index}">'
-        f'{props_xml}'
-        f'</filter>'
+    filter_elem = ET.Element(
+        "filter",
+        {
+            "id": filter_id,
+            "mlt_service": intent.effect_name,
+            "track": str(intent.track_index),
+            "clip_index": str(intent.clip_index),
+        },
     )
+    service_prop = ET.SubElement(filter_elem, "property", {"name": "mlt_service"})
+    service_prop.text = intent.effect_name
+    props = {str(name): str(value) for name, value in intent.params.items()}
+    resolved_id = normalize_effect_id(
+        intent.effect_name, props.get("kdenlive_id", ""), props
+    )
+    if resolved_id is not None:
+        id_prop = ET.SubElement(filter_elem, "property", {"name": "kdenlive_id"})
+        id_prop.text = resolved_id
+    for name, value in props.items():
+        if name == "kdenlive_id":
+            continue
+        prop = ET.SubElement(filter_elem, "property", {"name": name})
+        prop.text = value
+    xml = ET.tostring(filter_elem, encoding="unicode")
 
     element = OpaqueElement(
         tag="filter",

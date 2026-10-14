@@ -307,6 +307,7 @@ def validate_serialized_xml(root: ET.Element) -> ValidationReport:
                 error(profile, f"Profile {name} must be a positive integer.")
     sequences = [element for element in root.findall("tractor")
                  if xml_properties(element).get("kdenlive:producer_type") == "17"]
+    sequence_refs = {sequence.get("id", "") for sequence in sequences}
     if len(sequences) != 1:
         error(root, "Expected exactly one main sequence tractor (kdenlive:producer_type=17).")
     for element in root:
@@ -323,6 +324,10 @@ def validate_serialized_xml(root: ET.Element) -> ValidationReport:
             error(main_bin, "main_bin requires xml_retain=1 for bin registration.")
     timeline_refs = {entry.get("producer", "") for playlist in root.findall("playlist")
                      if playlist is not main_bin for entry in playlist.findall("entry")}
+    registered_clip_ids = {
+        props.get(reference, {}).get("kdenlive:id", "")
+        for reference in bin_refs if reference not in sequence_refs
+    }
     twin_shape = any(
         # Native bin clips may themselves use avformat-novalidate and be
         # preserved as opaque chains alongside regenerated E-shape media.
@@ -395,26 +400,55 @@ def validate_serialized_xml(root: ET.Element) -> ValidationReport:
         timeline_entry = (parent is not None and parent.tag == "playlist"
                           and parent is not main_bin
                           and xml_properties(parent).get("kdenlive:playlistid") != "black_track")
+        if timeline_entry and properties.get("kdenlive:id"):
+            entry_clip_id = xml_properties(element).get("kdenlive:id", "")
+            if entry_clip_id != properties["kdenlive:id"]:
+                error(element, f"Timeline entry for '{reference}' must carry its bin clip's kdenlive:id ({properties['kdenlive:id']}).")
         if timeline_entry and producer.tag in {"producer", "chain"}:
+            remap_variant = (
+                properties.get("mlt_service") == "timewarp"
+                or (producer.tag == "chain" and any(
+                    child.tag == "link" and (
+                        child.get("mlt_service") == "timeremap"
+                        or xml_properties(child).get("mlt_service") == "timeremap"
+                    ) for child in producer
+                ))
+            )
+            shared_registered = (
+                remap_variant
+                and bool(properties.get("kdenlive:id"))
+                and properties.get("kdenlive:id") in registered_clip_ids
+            )
             if twin_shape:
                 clip_id = properties.get("kdenlive:id")
-                if not clip_id or xml_properties(element).get("kdenlive:id") != clip_id:
-                    error(element, f"Timeline entry for '{reference}' must carry its bin clip's kdenlive:id.")
-                registered = reference in bin_refs or any(
+                registered = reference in bin_refs or shared_registered or any(
                     props[bin_ref].get("kdenlive:id") == clip_id
                     and props[bin_ref].get("kdenlive:control_uuid") == properties.get("kdenlive:control_uuid")
                     for bin_ref in bin_refs if bin_ref in props
                 )
             else:
-                registered = reference in bin_refs
+                registered = reference in bin_refs or shared_registered
             if not registered:
                 error(element, f"Timeline producer '{reference}' has no matching registered bin clip.")
     bin_ids: dict[str, str] = {}
+    sequence_ids = {
+        props.get(sequence.get("id", ""), {}).get("kdenlive:id", "")
+        for sequence in sequences
+    }
+    folder_id = (
+        xml_properties(main_bin).get("kdenlive:sequenceFolder", "")
+        if main_bin is not None else ""
+    )
     for reference in bin_refs:
         element = nodes.get(reference)
         if element is None or element.tag not in {"producer", "chain", "tractor"}:
             continue
         clip_id = props[reference].get("kdenlive:id", "")
+        if reference not in sequence_refs:
+            if clip_id in sequence_ids:
+                error(element, f"Bin clip '{reference}' uses the main sequence kdenlive:id {clip_id}.")
+            if folder_id and clip_id == folder_id:
+                error(element, f"Bin clip '{reference}' uses kdenlive:id {folder_id}, which is the Sequences folder id; user clips start at 4.")
         if not clip_id.isdigit():
             error(element, "Bin clips require a positive integer kdenlive:id.")
         elif clip_id in bin_ids:
@@ -422,6 +456,16 @@ def validate_serialized_xml(root: ET.Element) -> ValidationReport:
         elif int(clip_id) <= 0:
             error(element, "Bin clips require a positive integer kdenlive:id.")
         bin_ids[clip_id] = reference
+    if main_bin is not None:
+        for entry in main_bin.findall("entry"):
+            reference = entry.get("producer", "")
+            if reference in sequence_refs:
+                continue
+            producer_props = props.get(reference, {})
+            out = entry.get("out", "")
+            length = producer_props.get("length", "")
+            if out.isdigit() and length.isdigit() and int(out) != int(length) - 1:
+                error(entry, f"main_bin media entry for '{reference}' must end at length - 1 ({int(length) - 1}), got {out}.")
     if twin_shape:
         for identity, element in nodes.items():
             properties = props[identity]

@@ -32,7 +32,7 @@ from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
 from workshop_video_brain.edit_mcp.server.tools_helpers import _ok
 
 _MLT_SERVICE = "affine"
-_KDENLIVE_ID = "transform"
+_KDENLIVE_ID = "pan_zoom"
 # ``affine`` reads ``transition.rect`` -- a bare ``rect`` here is a proven no-op
 # on this MLT build (render-verified). See pan_zoom.build_pan_zoom_transform_keyframes.
 _RECT_PROPERTY = "transition.rect"

@@ -14,7 +14,7 @@ from tests.integration.external._oracle import (
 pytestmark = [pytest.mark.external, requires_kdenlive, requires_melt_ffmpeg, requires_ffmpeg_ffprobe]
 
 AUDIO_XFAIL: set[str] = set()
-FRAMES_XFAIL = {"effect_blur", "title"}
+FRAMES_XFAIL: set[str] = set()
 PACK_SLUGS = ("single_clip", "two_clips", "speed", "dissolve", "audio_fade", "effect_blur", "title")
 
 

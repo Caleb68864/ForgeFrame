@@ -40,7 +40,7 @@ TRANSFORM_KDENLIVE_ID = "transform"
 TRANSFORM_RECT_PROP = "rect"
 
 DBLUR_SERVICE = "avfilter.dblur"
-DBLUR_KDENLIVE_ID = "avfilter_dblur"
+DBLUR_KDENLIVE_ID = "avfilter.dblur"
 DBLUR_ANGLE_PROP = "av.angle"
 DBLUR_RADIUS_PROP = "av.radius"
 
