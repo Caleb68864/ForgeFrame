@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 
 from workshop_video_brain.server import mcp
+from workshop_video_brain.edit_mcp.adapters.mlt.registry import UnregisteredServiceError, check_service
 from workshop_video_brain.edit_mcp.server.errors import (  # noqa: F401
     tool_guard,
     err,
@@ -34,6 +35,20 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 
 
 
+def _unregistered_error(exc: UnregisteredServiceError, param: str, given: str) -> dict:
+    if exc.substitute:
+        suggestion = str(exc)
+    else:
+        suggestion = (
+            f"{exc} Run mlt_services to search, or pass allow_unregistered=true "
+            "if the render machine has this plugin."
+        )
+    return invalid_input(
+        str(exc), suggestion, param=param, given=given,
+        suggestions=exc.suggestions, substitute=exc.substitute,
+    )
+
+
 @mcp.tool()
 @tool_guard
 def effect_add(
@@ -43,6 +58,7 @@ def effect_add(
     clip: int,
     effect_name: str,
     params: str = "",
+    allow_unregistered: bool = False,
 ) -> dict:
     """Add a named effect to a clip in a Kdenlive project.
 
@@ -50,6 +66,10 @@ def effect_add(
     'lift_gamma_gain'). params is a JSON string of key-value pairs
     (e.g. '{"av.brightness": "0.1"}') or empty for effect defaults.
     Snapshot is created before modifying the project.
+
+    A name MLT cannot load on this host is refused before anything is written.
+    Pass allow_unregistered=True if the project will render on another machine
+    with extra plugins. A service Kdenlive drops on load is always refused.
     """
     import json as _json
     from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
@@ -71,6 +91,11 @@ def effect_add(
 
     if not effect_name or not effect_name.strip():
         return invalid_input("effect_name must be a non-empty string", "Pass an MLT service id, e.g. 'avfilter.gblur' or 'lift_gamma_gain'.", param="effect_name")
+
+    try:
+        service_check = check_service("filters", effect_name.strip(), check_host=not allow_unregistered)
+    except UnregisteredServiceError as exc:
+        return _unregistered_error(exc, "effect_name", effect_name)
 
     # Reject negative indexes up front: apply_effect indexes Python lists, so a
     # negative track/clip would silently wrap to the wrong element (false
@@ -115,6 +140,7 @@ def effect_add(
         "effect_name": effect_name,
         "params": param_dict,
         "kdenlive_id": resolved_id,
+        "service_check": service_check,
     }
     if resolved_id is None:
         payload["warning"] = (
@@ -564,6 +590,12 @@ def effect_stack_apply(
         )
     except FileNotFoundError as exc:
         return from_exception(exc)
+
+    for index, effect in enumerate(preset.effects):
+        try:
+            check_service("filters", effect.mlt_service)
+        except UnregisteredServiceError as exc:
+            return _unregistered_error(exc, f"preset effects[{index}]", effect.mlt_service)
 
     # Parse + apply the preset in memory BEFORE snapshotting so a corrupt
     # project or a bad index fails cleanly without leaking a snapshot.

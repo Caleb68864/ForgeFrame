@@ -492,3 +492,14 @@ Channel performance insights
 | Write a YouTube description and generate tags | `/ff-publish` |
 | Create short-form clips for social | `/ff-social-clips` |
 | See how my channel is performing | `/ff-youtube-analytics` |
+
+---
+
+## Splitting a recording into shots
+
+Two MCP tools work from detected scene cuts.
+
+- **`media_split_scenes(source, output_dir)`** writes one file per shot into a folder you name. It refuses `media/raw` and `projects/source`. It re-encodes by default so cuts land exactly; `reencode=False` is faster but starts each shot on a keyframe.
+- **`guide_add_scene_cuts(workspace_path, source)`** adds a guide at each cut of a clip already on your timeline. Guide positions are timeline frames, so a clip placed twice gets guides in both places. Cuts in trimmed-away footage get none, and a speed-changed placement is skipped.
+
+Both use ffmpeg unless the `scene-detect` extra is installed and you pass `engine="auto"` or `engine="pyscenedetect"`; `media_split_scenes` defaults to `auto`. See `vault/wiki/scene-detection-engines.md`.

@@ -18,6 +18,7 @@ def test_doctor_absent_binaries_models_and_engines(tmp_path, monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError('must not spawn missing binaries')
     monkeypatch.setattr(doctor.subprocess, 'run', forbidden)
+    monkeypatch.setattr('workshop_video_brain.edit_mcp.adapters.mlt.engine.find_mlt_python', lambda **k: None)
     report = doctor.environment_report()
     assert not any(report['features'].values())
     assert not any(report['optional_engines'].values())

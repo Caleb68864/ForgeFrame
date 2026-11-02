@@ -352,6 +352,22 @@ def frame_delta(a: str | Path, b: str | Path) -> float:
     return sum(abs(x - y) for x, y in zip(fa, fb)) / len(fa)
 
 
+def edge_energy(path: str | Path) -> float:
+    """Mean absolute luma step between horizontally adjacent pixels (a sharpness measure)."""
+    from PIL import Image
+
+    with Image.open(path) as image:
+        gray = image.convert("L")
+        width, height = gray.size
+        pixels = gray.tobytes()
+    steps = sum(
+        abs(pixels[row * width + col + 1] - pixels[row * width + col])
+        for row in range(height)
+        for col in range(width - 1)
+    )
+    return steps / (height * (width - 1))
+
+
 def frames_differ(a: str | Path, b: str | Path, min_delta: float = DIFFER_MIN_DELTA) -> bool:
     """True when frames *a* and *b* differ beyond *min_delta*.
 

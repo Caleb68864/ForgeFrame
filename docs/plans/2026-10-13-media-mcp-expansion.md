@@ -28,26 +28,26 @@ WhisperX, diarization, OpenTimelineIO (undecided).
 
 ## Phase 1 — PySceneDetect
 
-- `scene-detect` extra (`scenedetect[opencv-headless]`) in both pyproject files.
-- `adapters/scenedetect/` engine (content/adaptive/threshold detectors), lazy import.
-- `engine="auto|ffmpeg|pyscenedetect"` on `pipelines/scene_detect.detect_scenes`,
+- **Done 2026-11-02.** `scene-detect` extra (`scenedetect[opencv-headless]`) in both pyproject files.
+- **Done 2026-11-02.** `adapters/scenedetect/` engine (content/adaptive/threshold detectors), lazy import.
+- **Done 2026-11-02.** `engine="auto|ffmpeg|pyscenedetect"` on `pipelines/scene_detect.detect_scenes`,
   following the `ai_mask.resolve_engine` / `EngineUnavailable` pattern.
-- Consumers: `clips_detect_scenes`, `research_detect_scenes`, visual-research
-  candidates; new `media_split_scenes` (per-shot files) and scene markers/guides on
-  a timeline.
-- Doctor row, `requires_scenedetect` mark (find_spec), CI `full` install.
+- **Done 2026-11-02.** Consumers: `clips_detect_scenes`, `research_detect_scenes`, visual-research
+  candidates; new `media_split_scenes` (per-shot files) and `guide_add_scene_cuts` (guides on
+  a timeline).
+- **Done 2026-11-02.** Doctor row, `requires_scenedetect` mark (find_spec), CI `full` install.
 
 ## Phase 2 — auto-editor
 
-- `adapters/autoeditor/` runs the CLI with `--export json` (timeline v3) under
-  `ANALYSIS_TIMEOUT_SECONDS`; pipeline converts it to keep-ranges.
+- **Done 2026-11-02.** `adapters/autoeditor/` runs the CLI with `--export v3` (`--export json` is
+  rejected) under `ANALYSIS_TIMEOUT_SECONDS`; pipeline converts it to keep-ranges.
   Do **not** import its `--export kdenlive` output (bypasses our serializer rules);
   optionally test it as a compatibility experiment.
-- Uses: `media_remove_silence` (bare file → tightened file via ffmpeg concat),
-  `timeline_build_jump_cut` (keep-ranges → `.kdenlive` via the selects builder,
+- Uses: **done 2026-11-02:** `media_remove_silence` (bare file → tightened file via ffmpeg concat),
+  **done 2026-11-02:** `timeline_build_jump_cut` (keep-ranges → `.kdenlive` via the selects builder,
   generalised to the source's profile instead of hard-coded 1080p25).
-- Also expose the existing unused `adapters/ffmpeg/audio.remove_silence` as the
-  no-dependency fallback engine.
+- **Changed 2026-11-02.** The no-dependency fallback uses `silencedetect` directly, not
+  `adapters/ffmpeg/audio.remove_silence`, which passes `-vn` and drops the picture.
 - Rename-clash note: the `ff-auto-editor` skill is unrelated (script assembly).
 
 ## Phase 3 — MLT Python bindings (out-of-process)
@@ -55,15 +55,17 @@ WhisperX, diarization, OpenTimelineIO (undecided).
 Bindings are system-only (Arch: Python 3.14; Ubuntu 24.04 `python3-mlt`: 3.12),
 not on PyPI, absent on Windows/macOS, and segfault on bad handles. So:
 
-- `adapters/mlt/_worker.py` runs under whichever interpreter can `import mlt7`
+- **Done 2026-11-02.** `adapters/mlt/_worker.py` runs under whichever interpreter can `import mlt7`
   (`WVB_MLT_PYTHON`, else venv python, else `/usr/bin/python3`), JSON over stdio,
   with timeouts. `adapters/mlt/engine.py` falls back to the melt CLI.
-- Features in value order: (1) post-serialize **load-check** (profile, tracks,
-  clip ids/in-out vs model), (2) frame-accurate timeline **thumbnails** without a
-  temp render, (3) **per-frame render progress** into job records, (4) in-memory
+- Features in value order: (1) **done 2026-11-02:** post-serialize **load-check** (profile, tracks,
+  clip ids/in-out vs model), (2) **done 2026-11-02:** frame-accurate timeline **thumbnails** without a
+  temp render, (3) **done 2026-11-02, opt-in through `WVB_RENDER_ENGINE=mlt`:** **per-frame render
+  progress** into job records (at least 40 dB against melt at the project profile; melt's own
+  percentage output is prompt 18), (4) **done 2026-11-02:** in-memory
   **service registry** replacing `melt -query`, rejecting unregistered services
   before write, (5) playlist inspection for parser debugging.
-- Doctor row, `requires_mlt_bindings` mark, optional `python3-mlt` in CI `full`.
+- **Done 2026-11-02.** Doctor row, `requires_mlt_bindings` mark, `python3-mlt` in CI `full`.
 
 ## Phase 4 — Harvest from 12bijaya (reimplement; repo has no licence)
 
@@ -100,7 +102,7 @@ never write into protected trees):
   (shift, merge/split, restyle, convert); **text-based editing** — delete
   transcript words/lines → cut list → file render or `.kdenlive`.
 - Images: resize/convert/watermark/overlay on files.
-- Generalise `selects_timeline` / `assembly` builders to the source profile.
+- **Done 2026-11-02.** Generalise `selects_timeline` / `assembly` builders to the source profile.
 
 Each tool follows the CLAUDE.md checklist (pipeline logic, `@tool_guard`,
 specific error constructors, `_testkit`, external render proof for

@@ -81,7 +81,7 @@ Auto-reframe for vertical, caption burn-in, multicam sync by audio, Demucs (voic
 - "WhisperX uses faster-whisper, so it is a drop-in upgrade" — 0-3.
 
 ## Open questions
-- Does auto-editor's `--export kdenlive` open cleanly in Kdenlive 25.x/26.04, or should ForgeFrame consume only its cut list (JSON / timeline v3)?
+- Does auto-editor's `--export kdenlive` open cleanly in Kdenlive 25.x/26.04, or should ForgeFrame consume only its cut list (JSON / timeline v3)? **Partly answered 2026-11-02:** auto-editor 29.3.1's export renders headless in Kdenlive 26.08.2 and melt (both rc 0), and is GUI-untested. ForgeFrame consumes only the cut list regardless; see `vault/wiki/auto-editor-cut-list.md`.
 - How lossy is a round trip through Kdenlive's native OTIO (markers, guides, speed, mixes)? Is an OTIO export tool worth it?
 - Which ASR handles verbatim fillers with word timestamps best: WhisperX, CrisperWhisper, or faster-whisper `word_timestamps`?
 - If #2137 (QtRO) or a D-Bus automation API ships, adopt a live-preview hybrid?

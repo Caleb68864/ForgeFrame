@@ -352,3 +352,37 @@ class TestAlphaRenderProfiles:
                 tmpdir, Path(tmpdir) / "edit.kdenlive", "webm-alpha"
             )
             assert job.output_path.endswith(".webm")
+
+
+def test_melt_render_sizes_through_a_profile_file(tmp_path):
+    """width=/height= consumer properties pillarbox melt's output and can hang it."""
+    from workshop_video_brain.edit_mcp.adapters.render.executor import _with_melt_profile, _write_melt_profile
+
+    project = tmp_path / "p.kdenlive"
+    project.write_text(
+        '<mlt><profile width="1920" height="1080" frame_rate_num="30000" frame_rate_den="1001" colorspace="709"/></mlt>'
+    )
+    written = _write_melt_profile(project, 1280, 720)
+    try:
+        fields = dict(line.split("=", 1) for line in written.read_text().splitlines())
+    finally:
+        written.unlink()
+    assert (fields["width"], fields["height"]) == ("1280", "720")
+    assert (fields["frame_rate_num"], fields["frame_rate_den"]) == ("30000", "1001")
+    assert (fields["display_aspect_num"], fields["display_aspect_den"]) == ("16", "9")
+
+    cmd = _with_melt_profile(
+        ["melt", "p.kdenlive", "-consumer", "avformat:o.mp4", "vcodec=libx264", "width=1280", "height=720",
+         "frame_rate_num=25", "frame_rate_den=1", "f=mp4"],
+        written,
+    )
+    assert cmd[:3] == ["melt", "-profile", str(written)]
+    assert cmd[3:] == ["p.kdenlive", "-consumer", "avformat:o.mp4", "vcodec=libx264", "f=mp4"]
+
+
+def test_a_project_with_no_profile_writes_no_profile_file(tmp_path):
+    from workshop_video_brain.edit_mcp.adapters.render.executor import _write_melt_profile
+
+    project = tmp_path / "p.kdenlive"
+    project.write_text("<mlt/>")
+    assert _write_melt_profile(project, 1280, 720) is None

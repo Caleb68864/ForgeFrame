@@ -26,6 +26,7 @@ import json
 import logging
 import shutil
 import subprocess
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -34,6 +35,7 @@ from workshop_video_brain.core.models.enums import JobStatus
 from workshop_video_brain.core.models.project import RenderJob
 from workshop_video_brain.core.template_paths import template_dir
 from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
+from workshop_video_brain.edit_mcp.adapters.mlt.engine import MltUnavailable, MltWorkerError, timeline_frames
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
 from workshop_video_brain.edit_mcp.adapters.render.executor import execute_render
 from workshop_video_brain.edit_mcp.adapters.render.media_check import (
@@ -46,7 +48,6 @@ from workshop_video_brain.edit_mcp.pipelines.thumbnail_sheet import grid_dimensi
 from workshop_video_brain.edit_mcp.pipelines.titles import normalize_color
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
     ANALYSIS_TIMEOUT_SECONDS as _ANALYSIS_TIMEOUT_SECONDS,
-    DEFAULT_TIMEOUT_SECONDS as _RENDER_TIMEOUT_SECONDS,
 )
 
 logger = logging.getLogger(__name__)
@@ -385,9 +386,9 @@ def _rgba(color: str) -> tuple[int, int, int, int]:
 def _render_kdenlive_frame(project_path: Path, at_seconds: float, out_png: Path) -> bool:
     """Melt-render a single project frame at *at_seconds* to *out_png*.
 
-    Uses the composite-over-track path proven by ``test_title_renders``: render
-    frames ``0..N`` and keep the last, so a title composited on a top track shows
-    correctly rather than being flattened onto black.
+    Grabs the composited frame through ``timeline_frames``, so a title on a top
+    track shows correctly. ``test_title_composite_matches_the_slow_melt_method``
+    compares this with the old "render 0..N and keep the last" method.
 
     Raises ``FileNotFoundError`` naming every media file the project references
     that is not on disk. This is the same precondition the render path enforces,
@@ -405,34 +406,23 @@ def _render_kdenlive_frame(project_path: Path, at_seconds: float, out_png: Path)
     if absent:
         raise FileNotFoundError(missing_media_message(project_path, absent))
 
-    fps = 25.0
+    fps, width, height = 25.0, 1920, 1080
     try:
         from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
 
-        fps = parse_project(project_path).profile.fps or 25.0
+        profile = parse_project(project_path).profile
+        fps, width, height = profile.fps or 25.0, profile.width, profile.height
     except Exception as exc:  # noqa: BLE001
-        logger.debug("could not read project fps, defaulting 25: %s", exc)
+        logger.debug("could not read project profile, defaulting 1080p25: %s", exc)
 
     frame = seconds_to_frames(max(0.0, at_seconds), fps)
-    tmp_dir = out_png.parent / f".mlt_{project_path.stem}_{frame}"
-    if tmp_dir.exists():
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-
-    cmd = [
-        "melt", str(project_path), f"out={frame}",
-        "-consumer", f"avformat:{tmp_dir}/f_%05d.png",
-    ]
-    subprocess.run(
-        cmd, capture_output=True, text=True, check=False,
-        timeout=_RENDER_TIMEOUT_SECONDS,
-    )
-    frames = sorted(tmp_dir.glob("f_*.png"))
-    if not frames:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        return False
-    shutil.move(str(frames[-1]), str(out_png))
-    shutil.rmtree(tmp_dir, ignore_errors=True)
+    with tempfile.TemporaryDirectory(prefix=f".mlt_{project_path.stem}_", dir=out_png.parent) as scratch:
+        try:
+            grabbed = timeline_frames(project_path, [frame], width, scratch, profile_size=(width, height))
+        except (MltUnavailable, MltWorkerError) as exc:
+            logger.warning("Could not grab frame %d of %s: %s", frame, project_path, exc)
+            return False
+        shutil.move(grabbed["frames"][0]["path"], str(out_png))
     return out_png.exists()
 
 

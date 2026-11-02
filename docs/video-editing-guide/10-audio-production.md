@@ -342,3 +342,15 @@ Apply this chain consistently and your viewers will be able to follow your tutor
 **Next:** Chapter 11 covers pacing, storytelling, and retention --- how to structure your tutorial so viewers stay engaged from the hook through the payoff.
 
 **Previous:** Chapter 09 (Color Correction & Grading) covers visual quality with the same principle: systematic correction over expensive gear.
+
+---
+
+## Removing silence from a file
+
+`media_remove_silence(source, output_path)` writes a tightened copy of an audio or video file with the silent parts cut out, and leaves the original alone. It refuses to write into `media/raw` or `projects/source`.
+
+- `threshold_db` (default -30): anything quieter counts as silence.
+- `min_silence` (default 0.5 s): the shortest gap worth cutting.
+- `margin` (default 0.2 s): padding kept around speech, so words are not clipped.
+
+`media_silence_keep_ranges` reports what would be kept, without rendering. Both work with ffmpeg alone. If the `auto-editor` extra is installed and its binary fetched, `engine="auto"` prefers it. That engine ignores `min_silence`. See `vault/wiki/auto-editor-cut-list.md`.

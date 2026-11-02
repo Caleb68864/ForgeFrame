@@ -1,4 +1,6 @@
 """Persistence, recovery, cancellation and artifact boundaries for detached jobs."""
+import subprocess
+import sys
 import time
 from uuid import uuid4
 
@@ -35,6 +37,36 @@ def test_dead_workers_reconcile_persistently(workspace, monkeypatch, original, e
     monkeypatch.setattr(jobs, '_worker_alive', lambda r: False)
     assert jobs.get_job(workspace, saved['id'])['status'] == expected
     assert jobs.list_jobs(workspace, reconcile=False)[0]['status'] == expected
+
+
+@pytest.fixture
+def unrelated_process():
+    """A live process whose command line is not the worker's, as during exec."""
+    process = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+    yield process
+    process.kill()
+    process.wait()
+
+
+def test_unclaimed_job_survives_worker_exec_window(workspace, unrelated_process):
+    saved = record(workspace, status='queued', created_at=time.time(), pid=unrelated_process.pid)
+    assert jobs.get_job(workspace, saved['id'])['status'] == 'queued'
+
+
+@pytest.mark.parametrize('changes', [
+    pytest.param({'status': 'queued', 'created_at': time.time() - 60}, id='startup-grace-expired'),
+    pytest.param({'status': 'running', 'created_at': time.time(), 'started_at': time.time()}, id='already-claimed'),
+])
+def test_foreign_process_is_not_a_worker_outside_exec_window(workspace, unrelated_process, changes):
+    saved = record(workspace, pid=unrelated_process.pid, **changes)
+    assert jobs.get_job(workspace, saved['id'])['status'] == 'interrupted'
+
+
+def test_unclaimed_job_with_exited_process_is_interrupted(workspace):
+    process = subprocess.Popen([sys.executable, '-c', 'pass'])
+    process.wait()
+    saved = record(workspace, status='queued', created_at=time.time(), pid=process.pid)
+    assert jobs.get_job(workspace, saved['id'])['status'] == 'interrupted'
 
 
 def test_read_only_listing_does_not_reconcile(workspace, monkeypatch):

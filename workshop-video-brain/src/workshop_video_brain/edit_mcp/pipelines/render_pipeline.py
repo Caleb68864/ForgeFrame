@@ -16,6 +16,7 @@ from workshop_video_brain.core.models.project import RenderJob
 from workshop_video_brain.workspace.safe_write import atomic_write_text, locked_path
 from workshop_video_brain.core.models.enums import JobStatus
 from workshop_video_brain.edit_mcp.adapters.render.jobs import update_job_status
+from workshop_video_brain.edit_mcp.adapters.render.progress import RenderProgress
 from workshop_video_brain.edit_mcp.adapters.render.executor import execute_render
 from workshop_video_brain.edit_mcp.adapters.render.jobs import (
     create_render_job,
@@ -195,6 +196,7 @@ def run_render(
     output_path: Path | str | None = None,
     timeout_seconds: int = 1800,
     on_job: Callable[[RenderJob], None] | None = None,
+    on_progress: Callable[[RenderProgress], None] | None = None,
 ) -> RenderJob:
     """Create, execute, and register a render job end-to-end.
 
@@ -266,7 +268,9 @@ def run_render(
     # Execute
     register_render(workspace_root, update_job_status(job, JobStatus.running))
     try:
-        completed_job = execute_render(exec_job, profile, timeout_seconds=timeout_seconds)
+        completed_job = execute_render(
+            exec_job, profile, timeout_seconds=timeout_seconds, on_progress=on_progress
+        )
     except Exception as exc:
         completed_job = update_job_status(job, JobStatus.failed).model_copy(
             update={"error_message": f"Render execution failed: {exc}", "error_type": "operation_failed"},

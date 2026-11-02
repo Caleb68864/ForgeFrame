@@ -10,7 +10,13 @@ from workshop_video_brain.edit_mcp.pipelines.analysis_common import (
     timestamp_slug,
     write_json_report,
 )
-from workshop_video_brain.edit_mcp.pipelines.scene_detect import detect_scenes
+from workshop_video_brain.edit_mcp.pipelines.scene_detect import (
+    DETECTORS,
+    ENGINES,
+    EngineUnavailable,
+    detect_scenes,
+    resolve_engine,
+)
 from workshop_video_brain.edit_mcp.server.bundles._pipeline_errors import (
     error_from_pipeline_result,
 )
@@ -22,7 +28,10 @@ from workshop_video_brain.server import mcp
 from workshop_video_brain.edit_mcp.server.errors import (  # hardening pass 1
     tool_guard,
     err,
+    invalid_input,
+    missing_dependency,
     operation_failed,
+    MISSING_DEPENDENCY,
     MISSING_FILE,
 )
 
@@ -33,6 +42,9 @@ def clips_detect_scenes(
     workspace_path: str,
     source: str = "",
     threshold: float = 0.4,
+    engine: str = "ffmpeg",
+    detector: str = "content",
+    detector_threshold: float | None = None,
 ) -> dict:
     """Detect shot boundaries in a long recording via ffmpeg's ``scene`` score.
 
@@ -43,8 +55,12 @@ def clips_detect_scenes(
     Args:
         workspace_path: Path to workspace root.
         source: Path to the video file (absolute or workspace-relative).
-        threshold: Scene-change sensitivity, 0..1 (default 0.4). Lower detects
-            more, subtler cuts.
+        threshold: ffmpeg's scene-change sensitivity, 0..1 (default 0.4). Lower
+            detects more, subtler cuts.
+        engine: "ffmpeg" (default), "pyscenedetect", or "auto", which prefers
+            PySceneDetect when the scene-detect extra is installed.
+        detector: PySceneDetect detector: "content", "adaptive" or "threshold".
+        detector_threshold: PySceneDetect's native threshold (library default if omitted).
     """
     try:
         ws_path = _validate_workspace_path(workspace_path)
@@ -54,8 +70,20 @@ def clips_detect_scenes(
         if not src.exists():
             return err(f"File not found: {src}", error_type=MISSING_FILE, suggestion="Check the source path; it is resolved relative to the workspace root unless absolute.", path=str(src))
 
-        result = detect_scenes(src, threshold=threshold)
+        try:
+            resolve_engine(engine)
+        except EngineUnavailable:
+            return missing_dependency("scenedetect", ENGINES["pyscenedetect"]["pip"])
+        except ValueError as exc:
+            return invalid_input(str(exc), suggestion="Pass engine as auto, ffmpeg or pyscenedetect.")
+        if detector not in DETECTORS:
+            return invalid_input(f"Unknown detector '{detector}'.", suggestion=f"Pass detector as one of: {', '.join(DETECTORS)}.")
+
+        result = detect_scenes(src, threshold=threshold, engine=engine, detector=detector,
+                               detector_threshold=detector_threshold)
         if not result.get("success"):
+            if result.get("error_type") == MISSING_DEPENDENCY:
+                return missing_dependency("scenedetect", ENGINES["pyscenedetect"]["pip"])
             return error_from_pipeline_result(
                 result, "Scene detection failed", path=str(src),
             )

@@ -95,3 +95,7 @@ To play a clip at non-default speed in Kdenlive 25.x, the timeline references a 
 
 - [[kdenlive-twin-chain-pattern]] — the bin/timeline twin-chain pattern; timewarp doesn't replace it, it adds a third producer for the speed-changed timeline use.
 - [[kdenlive-uuid-vs-control-uuid]] — control_uuid links the timewarp variant back to the source bin clip.
+
+## One producer per track (found 2026-11-02)
+
+A `timewarp` producer referenced from both an audio and a video track loads with `set.test_audio=1` and `set.test_image=1` on its second use. Both streams are off, so the clip renders black or silent, whichever track came second. Plain avformat producers are not affected. The serializer writes a `<id>_kdaudio` copy for the audio track, sharing the `kdenlive:id` and staying out of `main_bin`. The parser folds it back, so the model keeps one producer per speed.

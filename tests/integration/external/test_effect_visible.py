@@ -27,7 +27,7 @@ from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize
 
 from . import builders
 from ._check_pack import build_check_pack
-from ._oracle import frames_differ, frames_similar, render_frame
+from ._oracle import edge_energy, frames_differ, frames_similar, render_frame
 
 pytestmark = [pytest.mark.external, requires_melt]
 
@@ -99,4 +99,10 @@ def test_effect_add_gblur_changes_pixels(melt_bin, render_dir: Path):
     with_effect = render_frame(
         effect_step.path, FRAME, render_dir, melt_bin=melt_bin, name="gblur_effect.png"
     )
-    assert frames_differ(base, with_effect), "effect_add gblur did not change rendered bars"
+    # A blur keeps every region's mean colour, so the colour fingerprint behind
+    # frames_differ barely moves (delta 1.2). What it must destroy is edge energy
+    # (measured 0.72 -> 0.50 on these bars; a no-op would stay at 1.0x).
+    base_edges, blurred_edges = edge_energy(base), edge_energy(with_effect)
+    assert blurred_edges < 0.85 * base_edges, (
+        f"effect_add gblur did not soften the bars: edge energy {base_edges:.2f} -> {blurred_edges:.2f}"
+    )

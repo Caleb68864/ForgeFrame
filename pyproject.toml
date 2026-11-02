@@ -21,6 +21,9 @@ research = ["numpy>=1.26", "Pillow>=10.0", "pytesseract>=0.3"]
 ai-mask = ["rembg>=2.0", "onnxruntime>=1.16"]
 ai-mask-heavy = ["ultralytics>=8.3"]
 motion-track = ["opencv-contrib-python-headless>=4.8"]
+# 0.6.x, not 0.7: 0.7 requires the GUI opencv-python (libGL) and dropped this extra.
+scene-detect = ["scenedetect[opencv-headless]>=0.6.7,<0.7"]
+auto-editor = ["auto-editor>=29"]
 
 [project.scripts]
 workshop-video-brain-server = "workshop_video_brain.server:main"

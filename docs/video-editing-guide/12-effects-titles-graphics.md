@@ -545,3 +545,11 @@ To use it:
 - Set your project profile to a 10-bit codec (e.g., ProRes 422, DNxHR HQX, or FFV1).
 - Ensure your source footage is 10-bit (or at least high-quality 8-bit — upsampling 8-bit does not create new data).
 - Preview may fall back to 8-bit for performance; final render will use the full pipeline.
+
+---
+
+## Finding Out Which Effects You Can Use
+
+`mlt_services(kind="filters", query="blur")` lists the effects MLT can load on this machine, and `mlt_service_info("filters", "box_blur")` shows one effect's parameters.
+
+`effect_add` refuses a name MLT cannot load before it writes anything, and suggests close matches. If the project will render on another machine with extra plugins, pass `allow_unregistered=True`. A few effects are always refused because Kdenlive has been known to drop them on load, and the error names the replacement.

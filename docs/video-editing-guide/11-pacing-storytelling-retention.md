@@ -206,3 +206,11 @@ In Chapter 12, we move to effects, titles, and graphics—the visual layer that 
 ---
 
 *See also: Chapter 05 (Filming Your Tutorial) for capturing the b-roll this chapter assumes you have. Chapter 14 (Quality Control) for automated pre-publish review. The `ff-pacing-meter` and `ff-voiceover-fixer` skills are cataloged in Chapter 19 (ForgeFrame Skill Reference).*
+
+---
+
+## Jump cuts from silence
+
+`timeline_build_jump_cut(workspace_path, source)` turns a recording into a new Kdenlive timeline with the silence cut out. The kept parts sit back to back, with audio staying in sync, in a project that matches the source's size and frame rate. It writes a new working copy and leaves existing ones alone.
+
+To set your own cuts, pass `keep_ranges_json="[[0.5, 2.0], [3.0, 4.5]]"` in source seconds. `add_cut_guides=True` marks each cut with a guide. To preview the cut list first, use `media_silence_keep_ranges`.

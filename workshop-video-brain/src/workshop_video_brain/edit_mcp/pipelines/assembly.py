@@ -17,6 +17,7 @@ from workshop_video_brain.core.models.assembly import (
 )
 from workshop_video_brain.core.models.clips import ClipLabel
 from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
+from workshop_video_brain.edit_mcp.pipelines.project_profile import profile_from_media
 from workshop_video_brain.core.models.kdenlive import (
     Guide,
     KdenliveProject,
@@ -428,6 +429,7 @@ def assemble_timeline(
     plan: AssemblyPlan,
     add_transitions: bool = True,
     add_chapter_markers: bool = True,
+    profile: ProjectProfile | None = None,
 ) -> Path:
     """Build a Kdenlive first-cut project from an AssemblyPlan.
 
@@ -441,12 +443,16 @@ def assemble_timeline(
         Path to the written .kdenlive file.
     """
     workspace_root = Path(workspace_root)
-    fps = 25.0
+    if profile is None:
+        profile = profile_from_media(
+            clip.source_path or clip.clip_ref for step in plan.steps for clip in step.clips
+        )
+    fps = profile.fps
 
     project = KdenliveProject(
         version="7",
         title=plan.project_title or "Assembled Timeline",
-        profile=ProjectProfile(width=1920, height=1080, fps=fps, colorspace="709"),
+        profile=profile,
     )
 
     # Tracks: V2 (primary), V1 (inserts/broll), A1 (primary audio), A2 (secondary)
