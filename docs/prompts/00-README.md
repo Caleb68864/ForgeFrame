@@ -48,6 +48,24 @@ Review the model's report and diff after each prompt, then commit it yourself
 | 38 | `38-text-based-editing.md` | Phase 5 | 02, 12, 13, 30, 36 |
 | 39 | `39-image-file-tools.md` | Phase 5 | 30 |
 
+### Status (checked against the code 2026-11-02)
+
+| # | Status | Proof |
+|---|---|---|
+| 01 | Done | `5724bb7`; `test_kdenlive_differential.py`, all 21 cases pass |
+| 02 | Done 2026-11-02 | `5724bb7` fixed melt only. Kdenlive stayed silent until audio tracks got `kdenlive:audio_track=1` |
+| 03 | Done | `da08b49`; render-verified 2026-11-02. Four stale tests and one blind gblur assertion fixed |
+| 04, 05 | Done | `da08b49`; `test_bin_lengths.py`, `test_serializer_entry_ids.py`, `test_speed_variant_bin.py` |
+| 06 | **Waiting on Caleb** | Part A needs the Kdenlive GUI; Part B starts after it |
+| 07 | Parked | Kdenlive 26.08.2 has no `--verify-file` (checked 2026-11-02) |
+| 08 | Done 2026-11-02 | `docs/testing/2026-11-02-reliability-runtime-validation.md`, `test_reliability_cli.py` |
+| 10-16 | Done 2026-11-02 | See `docs/plans/2026-10-13-media-mcp-expansion.md` Phases 1-3 |
+| 17 onward | Not started | |
+
+Prompt 18 note: `execute_render` now sizes melt with `-profile` (`vault/wiki/melt-render-profile.md`), so read that before changing melt flags.
+
+Known and not fixed: `parser.py` cannot read timecode in/out (`in="00:00:00.000"`), which is what native 26.x saves use. It logs "Skipping malformed" and keeps those elements opaque.
+
 Gaps in the numbering are deliberate (room to insert prompts). Prompt 06
 may produce follow-up prompts numbered `09-...` for code changes the GUI
 pass reveals; run those before 10.

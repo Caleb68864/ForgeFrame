@@ -339,7 +339,7 @@ def test_apply_keyframe_byte_exact(tmp_path):
     names = [e["kdenlive_id"] for e in patcher.list_effects(project, DST)]
     transform_idx = None
     for i, n in enumerate(names):
-        if n == "transform":
+        if n == "affine":  # the unregistered "transform" id does not survive a save
             transform_idx = i
     assert transform_idx is not None, f"no transform on target: {names}"
     pasted = patcher.get_effect_property(project, DST, transform_idx, "rect")

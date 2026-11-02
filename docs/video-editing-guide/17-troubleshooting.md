@@ -145,6 +145,14 @@ See Ch.10 (Audio Production) for a full explanation of each processing stage and
 2. If you transcoded source footage before editing, check that the transcode preserved or correctly set color metadata.
 3. Consult the Kdenlive "Color Hell" documentation for edge cases involving MLT's color pipeline.
 
+## Checking What MLT Actually Builds
+
+`project_validate` now also loads the project with the real MLT engine and compares what it builds with what ForgeFrame parsed: profile, tracks, and each clip's in, out and timeline position. Differences appear as `load_check` issues. A crash while loading is reported as an issue too, which usually means the file references something MLT cannot build. Pass `load_check=False` to skip this.
+
+`project_mlt_inspect` returns MLT's own view of a project. Both work best with your distro's `python3-mlt`; without it, `project_validate` falls back to `melt`, which only shows whether the file loads. `wvb doctor` reports which you have.
+
+---
+
 ## QC Checklist
 
 Run through this checklist before delivering or uploading any final export:

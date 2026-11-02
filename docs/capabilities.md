@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-220 MCP tools; 20 skills.
+229 MCP tools; 20 skills.
 
 ## Skills
 
@@ -60,7 +60,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | clip_speed | clips_nle | Change clip playback speed (0.5=slow, 2.0=fast). |
 | clip_split | clips_nle | Split a clip at a timestamp (razor tool). |
 | clip_trim | clips_nle | Trim a clip's in and/or out points. |
-| clips_detect_scenes | scene_detect | Detect shot boundaries in a long recording via ``scdet``. |
+| clips_detect_scenes | scene_detect | Detect shot boundaries in a long recording via ffmpeg's ``scene`` score. |
 | clips_find_duplicates | clip_dupes | Find perceptual near-duplicate video clips in a folder. |
 | clips_label | clips_nle | Auto-label all clips in workspace from transcript and marker data. |
 | clips_preview_gif | clip_preview | Generate a small looping GIF (or tiny mp4) preview of a clip. |
@@ -131,6 +131,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | forgeframe_status | timeline_project | Check ForgeFrame initialization status. |
 | gap_insert | clips_nle | Insert a gap/blank at a position on the timeline. |
 | guide_add | guides | Add a timeline guide to a Kdenlive project at *at_seconds*. |
+| guide_add_scene_cuts | scene_guides | Add a guide on the timeline at every scene cut of a placed source. |
 | guide_list | guides | List all guides in a Kdenlive project (read-only). |
 | guide_remove | guides | Remove guides by time (numeric seconds) or by label (string). |
 | job_cancel | jobs | Request cancellation of the worker and its FFmpeg/MLT child processes. |
@@ -151,12 +152,17 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | media_denoise_video | media_denoise_video | Clean up grainy / high-ISO / low-light footage in one call. |
 | media_ingest | workspace_media | Run the full ingest pipeline: scan, proxy, transcribe, detect silence. |
 | media_list_assets | workspace_media | List media assets found in the workspace media/raw directory. |
+| media_remove_silence | media_remove_silence | Write a tightened copy of an audio or video file with its silence cut out. |
 | media_segment_at_silence | silence_segment | Split a long recording into per-take files at detected silences. |
+| media_silence_keep_ranges | media_remove_silence | Report which source seconds silence removal would keep, without rendering. |
 | media_slideshow | slideshow | Assemble a folder of images into a timelapse/slideshow video clip. |
+| media_split_scenes | media_split_scenes | Split a video into one file per detected shot. |
 | media_stabilize | stabilize | Stabilize shaky footage with two-pass FFmpeg vidstab. |
 | media_sync_by_audio | audio_sync | Find the time offset between two recordings of the same event. |
 | media_thumbnail_sheet | thumbnail_sheet | Extract representative keyframes (+ optional contact sheet) from a clip. |
 | media_transcode_cfr | workspace_media | Transcode a VFR video file to constant frame rate (CFR). |
+| mlt_service_info | mlt_services | Return MLT's metadata for one service, including its parameters, as YAML. |
+| mlt_services | mlt_services | List the MLT services this host can load. |
 | move_down | effects_bundles | Move a filter down one position in a clip's filter stack. |
 | move_to_bottom | effects_bundles | Move a filter to the bottom (last index) of a clip's filter stack. |
 | move_to_top | effects_bundles | Move a filter to the top (index 0) of a clip's filter stack. |
@@ -172,6 +178,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | project_create_working_copy | timeline_project | Create an initial .kdenlive working copy for the workspace. |
 | project_list | timeline_project | List all ForgeFrame projects with their status. |
 | project_match_source | render | Probe a source file and return recommended project profile settings. |
+| project_mlt_inspect | mlt_inspect | Return the profile, tracks, playlists and clips MLT builds from a project. |
 | project_new | timeline_project | Create a new video project with workspace, vault note, and production plan. |
 | project_setup_profile | render | Set up project profile (resolution, fps, colorspace). |
 | project_status | guided_workflow | Report readiness, missing inputs, selected version, jobs, and next action. |
@@ -220,8 +227,10 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | subtitles_export | transcript_markers | Export subtitle files in the specified format. |
 | subtitles_generate | transcript_markers | Generate SRT subtitles from transcripts in the workspace. |
 | thumbnail_generate | review_loop | Make a publish thumbnail: extract a frame and overlay bold title text. |
+| timeline_build_jump_cut | jump_cut | Build a new Kdenlive timeline with the silence of a recording cut out. |
 | timeline_build_review | timeline_project | Build a Kdenlive review timeline from workspace markers. |
 | timeline_build_selects | timeline_project | Build a Kdenlive selects timeline from high-confidence markers. |
+| timeline_thumbnails | timeline_thumbnails | Write PNGs of chosen moments of the timeline, with all tracks composited. |
 | title_card_add | titles | Add an on-screen title card to a Kdenlive project. |
 | title_cards_generate | assembly_titles | Generate title cards from chapter markers in the workspace. |
 | track_add | clips_nle | Add a new video or audio track to the project. |
@@ -253,3 +262,4 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | youtube_fetch_channel | social_publish | Fetch video data from a YouTube channel. Requires yt-dlp. |
 | youtube_fetch_video | social_publish | Fetch data for a single YouTube video. |
 | youtube_save_to_vault | social_publish | Fetch channel data and save analytics to Obsidian vault. |
+

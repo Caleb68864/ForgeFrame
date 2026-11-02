@@ -119,6 +119,7 @@ def test_effect_add_unknown_service_reports_warning_and_omits_id(tmp_path):
         0,
         0,
         "foo.bar",
+        allow_unregistered=True,
     )
     assert result["status"] == "success", result
     assert result["data"]["kdenlive_id"] is None

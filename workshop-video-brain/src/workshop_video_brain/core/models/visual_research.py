@@ -167,6 +167,7 @@ class _CandidateGenerationConfig(SerializableMixin):
 class _SceneDetectionConfig(SerializableMixin):
     threshold: float = 0.3
     min_scene_length_seconds: float = 1.0
+    engine: str = "ffmpeg"
 
 
 class _QualityConfig(SerializableMixin):

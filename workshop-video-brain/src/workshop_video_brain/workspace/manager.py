@@ -30,7 +30,7 @@ class WorkspaceManager:
             media_root: Absolute path to the media source directory.
             config: Optional extra configuration dict stored in the workspace.
             workspace_root: Where to create the workspace.  Defaults to
-                            ``media_root / slug``.
+                            ``media_root.parent / slug``.
         """
         slug = slugify(title)
         media_root = Path(media_root)

@@ -151,6 +151,11 @@ def _fake_melt(monkeypatch):
         )
         return sp.CompletedProcess(cmd, 0, stdout="", stderr="")
 
+    # This stands in for the melt CLI, so take the melt path of timeline_frames.
+    from workshop_video_brain.edit_mcp.adapters.mlt import engine
+
+    monkeypatch.setattr(engine, "find_mlt_python", lambda **_k: None)
+    monkeypatch.setattr(engine.shutil, "which", lambda name: name)
     monkeypatch.setattr(rl.subprocess, "run", _run)
     return calls
 

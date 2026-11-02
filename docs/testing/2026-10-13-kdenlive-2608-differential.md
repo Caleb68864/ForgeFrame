@@ -13,9 +13,9 @@ loader + `kdenlive_render`). Frames/audio are compared.
 | 02 two clips | match (PSNR 38) | ok |
 | 03 speed 2x | match, 6.0 s | ok (timewarp honoured) |
 | 04 dissolve | **differs** (PSNR 28) | melt blends at 3.6 s, Kdenlive hard-cuts. Not dropped: hidden under the left clip (`a_track=0`, planted after the compositors) and the left clip ran past its media. **Fixed 2026-10-14** -- both now render the same full dissolve (PSNR 36.6). |
-| 05 audio fade | Not measured (melt aborts rc -6; Kdenlive aborts rc 1) | Renderers could not produce outputs on this host; audio pairing/fade are covered by unit checks, but real-render levels remain unverified. |
-| 06 gblur | Not measured (Kdenlive aborts; `xvfb-run` rc 1; melt process rc -6, `xvfb-run` rc 1) | `kdenlive_id=avfilter.gblur` is now emitted and captured in the check-pack project; render comparison remains blocked by the host binaries |
-| 07 title | Not measured (Kdenlive aborts; `xvfb-run` rc 1; melt process rc -6, `xvfb-run` rc 1) | Existing title differential check remains enabled; render comparison remains blocked by the host binaries |
+| 05 audio fade | match (PSNR 36.59) | Measured 2026-11-02 at -24.7 dB in both. First 0.5 s -35.6 dB, seconds 2-3 -24.1 dB, in both renderers. |
+| 06 gblur | match (PSNR 36.65) | Measured 2026-11-02: blurred in both, rc 0. Edge energy 0.72 without the effect, 0.50 with it. |
+| 07 title | match (PSNR 43.19) | Measured 2026-11-02, rc 0. |
 
 Defects found in the generated XML (06_effect_blur.kdenlive):
 
@@ -36,7 +36,21 @@ Defects found in the generated XML (06_effect_blur.kdenlive):
    are omitted from `main_bin`.
 6. **Fixed 2026-10-14.** `effect_add` and other clip-filter builders resolve Kdenlive's registry id. A missing id is omitted, and unknown ids are normalized or removed by the serializer safety net.
 
-The differential is automated in `tests/integration/external/test_kdenlive_differential.py`. Real render comparisons for steps 05-07 remain unavailable on this host because Kdenlive and melt abort. A GUI pass over the pack is still needed for load dialogs.
+The differential is automated in `tests/integration/external/test_kdenlive_differential.py`. All 21 cases pass as of 2026-11-02; the earlier "host binaries abort" blocker no longer reproduces (MLT 7.42, Kdenlive 26.08.2). A GUI pass over the pack is still outstanding (prompt 06 Part A).
+
+## Addendum 2026-11-02: Kdenlive audio was still silent
+
+Defect 1's fix made melt audible, but `kdenlive --render` stayed at -91 dB on every step, against -24.1 dB in melt. `test_audio_audible` failed all seven steps. Kdenlive recognises an audio track by `kdenlive:audio_track=1`, not by `hide="video"` lanes, so our audio track loaded as a video track. Marking it exposed a second defect: a `timewarp` producer shared by an audio and a video track loads with both streams disabled on its second use, so the dissolve's video went black (PSNR 17). The serializer now marks audio tracks and emits a per-track copy of such producers.
+
+| Step | PSNR | Frames K/M | Mean volume K/M (dB) |
+| --- | --- | --- | --- |
+| 01 single clip | 35.20 | 100/100 | -24.1 / -24.1 |
+| 02 two clips | 37.41 | 200/200 | -24.1 / -24.1 |
+| 03 speed 2x | 36.54 | 150/150 | -24.1 / -24.1 |
+| 04 dissolve | 36.59 | 126/126 | -24.1 / -24.1 |
+| 05 audio fade | 36.59 | 126/126 | -24.7 / -24.7 |
+| 06 gblur | 36.65 | 126/126 | -24.7 / -24.7 |
+| 07 title | 43.19 | 126/126 | -24.7 / -24.7 |
 
 The prompt 05 generated `03_speed.kdenlive` has `a_bars` ID 4 and `b_blue`
 ID 5 in `main_bin`; `b_blue_tw2` is absent there, carries ID 5, and its

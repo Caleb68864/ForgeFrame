@@ -43,6 +43,10 @@ Detailed notes (one concept per page) live in `vault/wiki/`:
 - `kdenlive-lumakey-threshold-tuning.md` — lumakey threshold must straddle a luma boundary actually present in the source clip
 - `kdenlive-smoke-test-visible-values.md` — smoke parameter values must produce an unambiguously visible effect, not just a technically-correct subtle one
 - `kdenlive-smoke-verification-checklist.md` — manual-review checklist for every smoke output (what to look for in Kdenlive 25.08.3)
+- `kdenlive-canonical-profile-names.md` — MLT profile names for standard formats, and where the table comes from
+- `kdenlive-av-clip-placement.md` — a clip with audio needs a video and an audio entry; the audio track needs `kdenlive:audio_track=1`, or `kdenlive --render` is silent
+- `melt-render-profile.md` — size a melt render with `-profile`; `width=`/`height=` pillarbox it and can hang it
+- `mlt-python-bindings-worker.md` — the out-of-process MLT worker, its load check, frame grabs and render progress
 - `golden-fixture-testing.md` — testing strategy without launching Kdenlive
 
 ### Hard rules (read before editing the serializer)

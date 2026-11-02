@@ -145,6 +145,17 @@ def _media_items(
     return items
 
 
+def summarize_items(items: list[ValidationItem]) -> str:
+    """One line counting *items* by severity."""
+    if not items:
+        return "No issues found."
+    counts: dict[str, int] = {}
+    for item in items:
+        counts[str(item.severity)] = counts.get(str(item.severity), 0) + 1
+    parts = [f"{v} {k}" for k, v in counts.items()]
+    return "Validation issues: " + ", ".join(parts) + "."
+
+
 def validate_project(
     project: KdenliveProject,
     workspace_root: Path | None = None,
@@ -259,17 +270,7 @@ def validate_project(
                 )
             )
 
-    # Build summary
-    if not items:
-        summary = "No issues found."
-    else:
-        counts: dict[str, int] = {}
-        for item in items:
-            counts[str(item.severity)] = counts.get(str(item.severity), 0) + 1
-        parts = [f"{v} {k}" for k, v in counts.items()]
-        summary = "Validation issues: " + ", ".join(parts) + "."
-
-    return ValidationReport(items=items, summary=summary)
+    return ValidationReport(items=items, summary=summarize_items(items))
 
 
 def validate_serialized_xml(root: ET.Element) -> ValidationReport:

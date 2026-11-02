@@ -20,6 +20,7 @@ from workshop_video_brain.core.models.kdenlive import (
 from workshop_video_brain.core.models.enums import MarkerCategory
 from workshop_video_brain.core.utils.naming import slugify
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_versioned
+from workshop_video_brain.edit_mcp.pipelines.project_profile import profile_from_media
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,7 @@ def build_review_timeline(
     assets: list[MediaAsset],
     workspace_root: Path,
     mode: str = "ranked",
+    profile: ProjectProfile | None = None,
 ) -> Path:
     """Build a Kdenlive review timeline from markers.
 
@@ -133,10 +135,15 @@ def build_review_timeline(
 
     asset_map = _build_asset_map(assets)
 
+    if profile is None:
+        profile = profile_from_media(
+            (asset_map[m.clip_ref].path if m.clip_ref in asset_map else m.clip_ref) for m in ordered
+        )
+
     project = KdenliveProject(
         version="7",
         title="Review Timeline",
-        profile=ProjectProfile(width=1920, height=1080, fps=25.0, colorspace="709"),
+        profile=profile,
     )
 
     # Create video + audio track pair

@@ -72,10 +72,9 @@ def guide_add(
         category: Optional guide category (Kdenlive category index as a string).
 
     Returns a success dict with the updated guide list and the Kdenlive
-    ``docproperties.guides`` JSON.  NOTE: our serializer writes legacy
-    ``<guide>`` elements, so guides added here round-trip through our own
-    parser but may not display in a Kdenlive 24.x/25.x GUI until the serializer
-    emits the JSON property (see guides-chapters.md).
+    ``docproperties.guides`` JSON.  The serializer writes that JSON to both
+    ``kdenlive:sequenceproperties.guides`` and ``kdenlive:docproperties.guides``
+    as well as the legacy ``<guide>`` elements our own parser reads.
     """
     try:
         project_path = _resolve(project_file)

@@ -373,9 +373,9 @@ def test_qc_check_rejects_empty_and_dir(fresh_ws):
 # re-parseable project -- no corruption).
 # ---------------------------------------------------------------------------
 def test_effect_add_unknown_effect_is_harmless_passthrough(fresh_ws):
-    # effect_add intentionally accepts ANY MLT service id (docstring). An
-    # unknown name must still produce a valid, re-parseable project file.
-    out = effect_add(fresh_ws.s(), "proj.kdenlive", 2, 0, "totally-unknown-effect-xyz")
+    # allow_unregistered accepts a service this host does not have. An unknown
+    # name must still produce a valid, re-parseable project file.
+    out = effect_add(fresh_ws.s(), "proj.kdenlive", 2, 0, "totally-unknown-effect-xyz", allow_unregistered=True)
     assert out["status"] == "success", out
     project = parse_project(fresh_ws.ws / "proj.kdenlive")  # must not raise
     assert project is not None

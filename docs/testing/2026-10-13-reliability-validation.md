@@ -43,3 +43,6 @@ Whisper.cpp was not installed or integrated. The new real MCP connection checks
 remain unresolved: initialization timed out before tool handlers were reached;
 their remaining run was stopped at the user's request.
 
+## Addendum 2026-11-02
+
+The MCP transport tests no longer time out: `tests/integration/test_reliability_mcp_transport.py` passes. Runtime validation is recorded in `2026-11-02-reliability-runtime-validation.md`.

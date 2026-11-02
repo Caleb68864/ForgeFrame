@@ -330,8 +330,12 @@ def _run_worker(root: Path, job_id: str) -> None:
             def on_job(job):
                 pending_output(Path(job.output_path))
                 _update(root, job_id, render_job_id=str(job.id))
+            from workshop_video_brain.edit_mcp.adapters.render.progress import Throttle
+            on_progress = Throttle(lambda p: progress(
+                "rendering", p.frame + 1, p.total_frames or 1, percent=round(p.percent, 1), engine=p.engine,
+            ))
             rendered = run_render(root, project, params.get("profile", "preview"),
-                                  mode=params.get("mode", "standard"), on_job=on_job)
+                                  mode=params.get("mode", "standard"), on_job=on_job, on_progress=on_progress)
             if rendered.status != "succeeded":
                 raise RuntimeError(rendered.error_message or f"Render failed; see {rendered.log_path}")
             result = rendered.model_dump(mode="json")

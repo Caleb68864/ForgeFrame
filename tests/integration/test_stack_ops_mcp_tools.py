@@ -164,8 +164,9 @@ def test_paste_prepend_puts_filters_at_front(tmp_path):
 
     project = _reparse(ws, pf)
     names = _effect_names(project, DST)
-    # First N are the pasted stack -- first should be 'transform'
-    assert names[0] == "transform"
+    # First N are the pasted stack. The fixture's filter has no registered Kdenlive
+    # id ("transform" is unknown), so after a save it is named by its service.
+    assert names[0] == "affine"
 
 
 def test_paste_replace_clears_target(tmp_path):
@@ -350,7 +351,7 @@ def test_keyframe_preservation_round_trip(tmp_path):
     names = _effect_names(project2, DST)
     transform_idx = None
     for i, name in enumerate(names):
-        if name == "transform":
+        if name == "affine":  # "transform" is not a registered id; see above
             transform_idx = i
     assert transform_idx is not None, f"no transform on target: {names}"
     pasted_rect = patcher.get_effect_property(project2, DST, transform_idx, "rect")

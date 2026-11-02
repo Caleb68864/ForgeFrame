@@ -24,3 +24,7 @@ also adjust the preceding audio duration so the incoming audio starts at the
 same frame. The sequence's separate tracks keep media linked by producer and
 timeline position; other move, trim, split, and ripple intents still need
 explicit audio-sync handling.
+
+## Marking the audio track (found 2026-11-02)
+
+An audio entry is not enough. Kdenlive identifies an audio track by `<property name="kdenlive:audio_track">1</property>` on both playlists and the track tractor (`cross_dissolve_native.kdenlive`, lines 82, 89, 92), not by `hide="video"` lanes. Without it the track loads as video and `kdenlive --render` is silent at -91 dB, while melt, which ignores the property, stays at -24.1 dB. Only a Kdenlive render shows this.

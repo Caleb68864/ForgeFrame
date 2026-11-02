@@ -112,6 +112,12 @@ See Chapter 05 (Filming Your Tutorial) for how to prevent VFR at capture time. I
 > [!warning]
 > Always transcode VFR to CFR **before** importing into Kdenlive. Transcoding after editing (on the Kdenlive timeline or the final render) does not fix the timing relationship between audio and video that was established at import.
 
+## Checking Timeline Frames
+
+`timeline_thumbnails(workspace_path, times="1.5,10")` writes PNGs of chosen moments of the timeline with all tracks composited, into `reports/timeline_frames/`. It is quick, so use it to spot-check a title or an overlay before a full render. A project with missing media returns an error rather than a black image.
+
+---
+
 ## What to Do When QC Fails
 
 | QC Failure | Root Cause | Go Back To |

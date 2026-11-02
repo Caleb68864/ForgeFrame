@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 from workshop_video_brain.core.models import SceneChange
@@ -138,6 +139,7 @@ def detect_scene_changes(
     end_seconds: float | None = None,
     threshold: float = 0.30,
     minimum_gap_seconds: float = 1.0,
+    scan: Callable[[Path, float, float, float | None], list[tuple[float, float]]] | None = None,
 ) -> list[SceneChange]:
     """Detect scene changes in *video_path*, optionally within a time range.
 
@@ -150,6 +152,9 @@ def detect_scene_changes(
         threshold: ffmpeg ``scene`` filter score threshold (0.0-1.0).
         minimum_gap_seconds: Minimum spacing enforced between consecutive
             detections (and between fallback samples).
+        scan: Replaces :func:`scan_scene_cuts` when given, called as
+            ``scan(video_path, threshold, range_start, range_end)``. Lets a
+            caller above this layer inject another scene engine.
 
     Returns:
         Scene changes sorted by timestamp, at least ``minimum_gap_seconds``
@@ -177,7 +182,7 @@ def detect_scene_changes(
         range_end = min(range_end, total_duration)
     range_end = max(range_end, range_start)
 
-    raw_timestamps = _run_scene_filter(video_path, range_start, range_end, threshold)
+    raw_timestamps = _run_scene_filter(video_path, range_start, range_end, threshold, scan)
 
     changes = _enforce_minimum_gap(raw_timestamps, minimum_gap_seconds)
 
@@ -198,10 +203,11 @@ def _run_scene_filter(
     range_start: float,
     range_end: float,
     threshold: float,
+    scan: Callable[[Path, float, float, float | None], list[tuple[float, float]]] | None = None,
 ) -> list[tuple[float, float]]:
     """Scene hits for the range; an undecodable range yields none (-> uniform fallback)."""
     try:
-        return scan_scene_cuts(video_path, threshold, range_start, range_end)
+        return (scan or scan_scene_cuts)(video_path, threshold, range_start, range_end)
     except SceneScanError as exc:
         logger.warning("Scene detection could not decode %s: %s", video_path, exc)
         return []
