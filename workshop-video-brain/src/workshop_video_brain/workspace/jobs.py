@@ -77,8 +77,14 @@ def _update(root: Path, job_id: str, **changes) -> dict:
 
 def _worker_alive(record: dict) -> bool:
     pid = record.get("pid")
+    in_startup_grace = time.time() - record["created_at"] < 30
     if not pid:
-        return time.time() - record["created_at"] < 30
+        return in_startup_grace
+    # Popen can return before the child's command line reads as the worker's:
+    # /proc/<pid>/cmdline still shows the parent's, or nothing, during exec.
+    # Until the worker claims the job, a live process with another command is
+    # still starting. Declaring it dead would make the worker abandon the job.
+    starting = record.get("started_at") is None and in_startup_grace
     try:
         proc = Path(f"/proc/{pid}")
         if proc.exists():
@@ -90,7 +96,9 @@ def _worker_alive(record: dict) -> bool:
             result = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
                                     capture_output=True, text=True, timeout=5)
             command = result.stdout
-        return "workshop_video_brain.workspace.jobs" in command and record["id"] in command
+            if not command.strip():
+                return False
+        return starting or ("workshop_video_brain.workspace.jobs" in command and record["id"] in command)
     except (OSError, subprocess.TimeoutExpired, IndexError):
         return False
 

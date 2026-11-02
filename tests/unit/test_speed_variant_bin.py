@@ -11,7 +11,7 @@ from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize
 from workshop_video_brain.edit_mcp.adapters.kdenlive.validator import validate_serialized_xml
 
 
-FIXTURES = Path("/home/caleb/Projects/ForgeFrame/tests/fixtures")
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
 
 def _project():
