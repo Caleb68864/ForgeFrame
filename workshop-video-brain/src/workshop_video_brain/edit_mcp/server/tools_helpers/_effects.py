@@ -61,6 +61,9 @@ def apply_simple_effect(
         serialize_project,
     )
     from workshop_video_brain.workspace import create_snapshot
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.effect_identity import (
+        normalize_effect_id,
+    )
 
     try:
         ws_path, _ws = _require_workspace(workspace_path)
@@ -73,13 +76,17 @@ def apply_simple_effect(
 
         project = parse_project(project_path)
 
+        resolved_id = normalize_effect_id(mlt_service, kdenlive_id, params)
         filt = ET.Element("filter")
         svc = ET.SubElement(filt, "property", {"name": "mlt_service"})
         svc.text = mlt_service
-        kid = ET.SubElement(filt, "property", {"name": "kdenlive_id"})
-        kid.text = kdenlive_id
+        if resolved_id is not None:
+            kid = ET.SubElement(filt, "property", {"name": "kdenlive_id"})
+            kid.text = resolved_id
 
         for _mlt_name, _value in params.items():
+            if _mlt_name == "kdenlive_id":
+                continue
             if isinstance(_value, bool):
                 _str_val = "1" if _value else "0"
             else:
@@ -124,7 +131,11 @@ def _lookup_catalog_by_service(mlt_service: str):
         from workshop_video_brain.edit_mcp.pipelines import effect_catalog as _catalog
     except ModuleNotFoundError:
         return None, None
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.effect_identity import (
+        normalize_effect_id,
+    )
+
     for kid, eff in _catalog.CATALOG.items():
         if eff.mlt_service == mlt_service:
-            return kid, eff
+            return normalize_effect_id(mlt_service, kid), eff
     return None, None

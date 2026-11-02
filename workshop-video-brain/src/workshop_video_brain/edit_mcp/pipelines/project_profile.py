@@ -1,12 +1,21 @@
 """Project profile setup pipeline -- resolution, frame rate, colorspace."""
 from __future__ import annotations
 
+import logging
+import math
+import subprocess
+from collections.abc import Iterable
 from copy import deepcopy
 from fractions import Fraction
 from pathlib import Path
 
-from workshop_video_brain.core.models.kdenlive import KdenliveProject
+from workshop_video_brain.core.models.kdenlive import KdenliveProject, ProjectProfile
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import FFmpegCommandError, FFmpegNotFound
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_PROFILE = ProjectProfile(width=1920, height=1080, fps=25.0, colorspace="709")
 
 VALID_COLORSPACES = {601, 709, 240}
 
@@ -89,3 +98,28 @@ def match_profile_to_source(source_path: Path) -> dict:
         "fps_den": fps_den,
         "colorspace": 709,
     }
+
+
+def profile_from_media(paths: Iterable[str | Path]) -> ProjectProfile:
+    """Return the profile of the first path that exists and has a usable video stream.
+
+    Falls back to a copy of :data:`DEFAULT_PROFILE` when none qualifies, which is
+    what lets a builder keep working from unresolved clip references.
+    """
+    for raw in paths:
+        path = Path(raw) if raw else None
+        if path is None or not path.is_file():
+            continue
+        try:
+            asset = probe_media(path)
+            matched = match_profile_to_source(path)
+        except (FFmpegCommandError, FFmpegNotFound, subprocess.CalledProcessError, OSError, ValueError) as exc:
+            logger.info("Skipping %s for the project profile: %s", path, exc)
+            continue
+        fps_den = matched["fps_den"]
+        fps = matched["fps_num"] / fps_den if fps_den else 0.0
+        if not asset.video_codec or not asset.width or not asset.height or not math.isfinite(fps) or fps <= 0:
+            continue
+        logger.info("Project profile taken from %s", path)
+        return ProjectProfile(width=asset.width, height=asset.height, fps=fps, colorspace="709")
+    return DEFAULT_PROFILE.model_copy()

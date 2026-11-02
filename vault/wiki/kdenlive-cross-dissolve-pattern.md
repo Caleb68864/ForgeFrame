@@ -18,8 +18,10 @@ A cross-dissolve in Kdenlive 25.x is **always** the stacked-clips pattern: clip 
 ## The XML pattern
 
 ```xml
-<!-- Inside the main sequence tractor (after the <track> declarations,
-     after the auto-internal mix/qtblend transitions) -->
+<!-- Inside the main sequence tractor, after the <track> declarations,
+     BEFORE the auto-internal video compositors (qtblend/cairoblend).
+     Kdenlive-saved files put it after the audio mixes and before the first
+     video compositor; written after them, it is composited over and hidden. -->
 <transition id="dissolve_v1_v2" in="<frame>" out="<frame>">
   <property name="a_track">1</property>           <!-- 1-based ordinal -->
   <property name="b_track">3</property>           <!-- 1-based ordinal -->
@@ -33,6 +35,19 @@ A cross-dissolve in Kdenlive 25.x is **always** the stacked-clips pattern: clip 
   <property name="fix_background_alpha">1</property>
 </transition>
 ```
+
+## Kdenlive 26.08 differential (2026-10-14)
+
+`transitions_apply_between` used to write `a_track=0` (the black background)
+and append the luma after the internal compositors. melt rendered a blend by
+accident; Kdenlive 26.08 blended B into the background and layered A's track
+compositor over it, so the dissolve looked like a hard cut. The left clip was
+also extended past its media end (black in melt, trimmed by Kdenlive). Fixed:
+`a_track` = the left clip's track slot, `kdenlive_id=dissolve`, planted before
+the first video compositor, the crossfade track gets its own compositor, and
+the overlap uses only real footage (left-clip handle, else pull the right clip
+earlier). Kdenlive's own render playlist (captured during `kdenlive --render`)
+has exactly this layout, and melt renders it identically.
 
 ## Track ordinal semantics
 

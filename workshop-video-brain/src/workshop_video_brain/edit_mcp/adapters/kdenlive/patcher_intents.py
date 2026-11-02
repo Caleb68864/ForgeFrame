@@ -351,10 +351,13 @@ def _apply_add_clip(project: KdenliveProject, intent: AddClip) -> None:
     # Ensure the producer exists in the project
     existing_ids = {p.id for p in project.producers}
     if intent.producer_id and intent.producer_id not in existing_ids:
+        properties = {"resource": intent.source_path} if intent.source_path else {}
+        if intent.producer_length > 0:
+            properties["length"] = str(intent.producer_length)
         new_producer = Producer(
             id=intent.producer_id,
             resource=intent.source_path or "",
-            properties={"resource": intent.source_path} if intent.source_path else {},
+            properties=properties,
         )
         project.producers.append(new_producer)
         logger.info(
@@ -362,6 +365,14 @@ def _apply_add_clip(project: KdenliveProject, intent: AddClip) -> None:
             intent.producer_id,
             intent.source_path,
         )
+    else:
+        producer = next((p for p in project.producers if p.id == intent.producer_id), None)
+        if producer is not None:
+            current = producer.properties.get("length", "")
+            existing_length = int(current) if current.isdigit() else 0
+            producer.properties["length"] = str(max(
+                existing_length, intent.producer_length, intent.out_point + 1
+            ))
 
     # Create the new playlist entry
     entry = PlaylistEntry(
@@ -372,6 +383,34 @@ def _apply_add_clip(project: KdenliveProject, intent: AddClip) -> None:
 
     # Insert at the correct position
     if intent.position is None or intent.position < 0:
+        if intent.align_with_track:
+            aligned_playlist = _find_playlist(project, intent.align_with_track)
+            aligned_entry = None
+            if aligned_playlist is not None:
+                aligned_entry = next(
+                    (e for e in reversed(aligned_playlist.entries) if e.producer_id == intent.producer_id),
+                    None,
+                )
+            aligned_start = 0
+            if aligned_playlist is not None:
+                for aligned in aligned_playlist.entries:
+                    if aligned is aligned_entry:
+                        break
+                    aligned_start += max(0, aligned.out_point - aligned.in_point + 1)
+                if aligned_entry is None:
+                    aligned_start = sum(max(0, e.out_point - e.in_point + 1) for e in aligned_playlist.entries)
+            target_length = sum(max(0, e.out_point - e.in_point + 1) for e in target_playlist.entries)
+            gap = aligned_start - target_length
+            if gap > 0:
+                target_playlist.entries.append(
+                    PlaylistEntry(producer_id="", in_point=0, out_point=gap - 1)
+                )
+            elif gap < 0:
+                logger.warning(
+                    "AddClip: aligned start for '%s' is before target playlist end; skipped",
+                    intent.producer_id,
+                )
+                return
         target_playlist.entries.append(entry)
         logger.info(
             "AddClip: appended producer '%s' to playlist '%s'",
@@ -1082,37 +1121,58 @@ def _apply_audio_fade(project: KdenliveProject, intent: AudioFade) -> None:
         return
 
     entry = real_entries[intent.clip_index]
+    source_start = 0
+    for item in playlist.entries:
+        if item is entry:
+            break
+        source_start += max(0, item.out_point - item.in_point + 1)
+    for track in project.tracks:
+        if track.track_type != "audio":
+            continue
+        candidate_playlist = _find_playlist(project, track.id)
+        if candidate_playlist is None:
+            continue
+        candidate_entries = [e for e in candidate_playlist.entries if e.producer_id]
+        if intent.clip_index >= len(candidate_entries):
+            continue
+        candidate = candidate_entries[intent.clip_index]
+        candidate_start = 0
+        for item in candidate_playlist.entries:
+            if item is candidate:
+                break
+            candidate_start += max(0, item.out_point - item.in_point + 1)
+        if candidate.producer_id == entry.producer_id and candidate_start == source_start:
+            playlist, entry = candidate_playlist, candidate
+            break
+
     fade_type = intent.fade_type
     dur = max(1, intent.duration_frames)
     clip_len = max(1, entry.out_point - entry.in_point + 1)
 
-    # MLT's ``volume`` filter animates ``level`` in **decibels** (0 = unity,
-    # -60 ≈ silence).  Keyframe positions are relative to the clip start.
-    _FLOOR = "-60"
-    if fade_type == "in":
-        level = f"0={_FLOOR};{min(dur, clip_len - 1)}=0"
-    else:
-        start = max(0, clip_len - 1 - dur)
-        level = f"{start}=0;{clip_len - 1}={_FLOOR}"
-
-    track_index = _playlist_index(project, intent.track_ref)
+    track_index = _playlist_index(project, playlist.id)
     if track_index is None:
         logger.warning(
             "AudioFade: playlist '%s' not indexable – skipped.", intent.track_ref
         )
         return
 
-    # A real MLT ``volume`` filter with a keyframed ``level`` (gain), nested in
-    # the clip <entry> by the serializer (§1.1).  The old ``type="volume"`` had
-    # no mlt_service and melt failed to load it.
+    # Kdenlive's native fade identity plus clip-local filter range.
+    fade_in = fade_type == "in"
+    filter_in = "0" if fade_in else str(max(0, clip_len - dur))
+    filter_out = str(min(dur, clip_len) - 1) if fade_in else str(clip_len - 1)
+    gain, end = ("0", "1") if fade_in else ("1", "0")
     xml = (
         f'<filter id="audiofade_{fade_type}_{intent.track_ref}_{intent.clip_index}" '
+        f'in="{filter_in}" out="{filter_out}" '
         f'mlt_service="volume" '
         f'track="{track_index}" '
         f'clip_index="{intent.clip_index}">'
         f'<property name="mlt_service">volume</property>'
-        f'<property name="level">{level}</property>'
-        f'<property name="kdenlive:fade_type">{fade_type}</property>'
+        f'<property name="window">75</property>'
+        f'<property name="max_gain">20dB</property>'
+        f'<property name="gain">{gain}</property>'
+        f'<property name="end">{end}</property>'
+        f'<property name="kdenlive_id">fade{fade_type}</property>'
         f'</filter>'
     )
     element = OpaqueElement(
@@ -1218,21 +1278,36 @@ def _apply_add_effect(project: KdenliveProject, intent: AddEffect) -> None:
         )
         return
 
-    # Build filter XML
-    # Filters are OpaqueElement objects with position_hint="after_tractor",
-    # matching the existing SetClipSpeed and AudioFade patterns in the patcher.
-    props_xml = "".join(
-        f'<property name="{k}">{v}</property>' for k, v in intent.params.items()
+    # Build filter XML with ElementTree so arbitrary parameter text is escaped.
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.effect_identity import (
+        normalize_effect_id,
     )
+
     filter_id = f"effect_{intent.track_index}_{intent.clip_index}_{intent.effect_name}"
-    xml = (
-        f'<filter id="{filter_id}" '
-        f'mlt_service="{intent.effect_name}" '
-        f'track="{intent.track_index}" '
-        f'clip_index="{intent.clip_index}">'
-        f'{props_xml}'
-        f'</filter>'
+    filter_elem = ET.Element(
+        "filter",
+        {
+            "id": filter_id,
+            "mlt_service": intent.effect_name,
+            "track": str(intent.track_index),
+            "clip_index": str(intent.clip_index),
+        },
     )
+    service_prop = ET.SubElement(filter_elem, "property", {"name": "mlt_service"})
+    service_prop.text = intent.effect_name
+    props = {str(name): str(value) for name, value in intent.params.items()}
+    resolved_id = normalize_effect_id(
+        intent.effect_name, props.get("kdenlive_id", ""), props
+    )
+    if resolved_id is not None:
+        id_prop = ET.SubElement(filter_elem, "property", {"name": "kdenlive_id"})
+        id_prop.text = resolved_id
+    for name, value in props.items():
+        if name == "kdenlive_id":
+            continue
+        prop = ET.SubElement(filter_elem, "property", {"name": name})
+        prop.text = value
+    xml = ET.tostring(filter_elem, encoding="unicode")
 
     element = OpaqueElement(
         tag="filter",
@@ -1463,9 +1538,21 @@ def _apply_add_transition(project: KdenliveProject, intent: AddTransition) -> No
     The pseudo ``<transition type="crossfade">`` MLT rejected (§1.1) is replaced
     by a genuine ``luma`` transition in the tractor between two overlapping
     video tracks: the right clip is moved onto a new top video track, pulled
-    earlier so it overlaps the (extended) left clip, and a ``luma`` transition
-    dissolves the lower track into the upper one over the overlap.  The cut is
-    the visual midpoint of the transition.
+    earlier so it overlaps the left clip, and a ``luma`` transition
+    dissolves the lower track into the upper one over the overlap.
+
+    The overlap only uses footage that exists.  The left clip is extended into
+    its handle (unused source frames past its out-point) by up to half the
+    duration, keeping the cut at the visual midpoint; the rest of the overlap
+    comes from pulling the right clip (and everything after it) earlier, which
+    shortens the timeline.  When the producer ``length`` is unknown the handle
+    is taken as zero.  Extending past the media end renders black in melt and
+    is trimmed away by Kdenlive (2026-10-14 differential).
+
+    The composition targets the left clip's track (``a_track``), never the
+    black background -- Kdenlive layers each track's compositor over a
+    background-targeted dissolve and hides it.  Ground truth:
+    ``tests/fixtures/kdenlive_references/cross_dissolve_native.kdenlive``.
     """
     duration = max(1, intent.duration_frames)
     playlist = _find_playlist(project, intent.track_ref)
@@ -1489,36 +1576,61 @@ def _apply_add_transition(project: KdenliveProject, intent: AddTransition) -> No
     left_entry = real[left_idx]
     right_entry = real[right_idx]
 
-    # Timeline start frames (sum of entry lengths, including blanks, before the
-    # target entry in the source playlist).
-    left_start = 0
+    # Timeline frame where the right clip starts (sum of entry lengths,
+    # including blanks, before it in the source playlist).
     cut = 0
-    seen_left = False
     for e in playlist.entries:
-        if e is left_entry:
-            seen_left = True
         if e is right_entry:
             break
-        if not seen_left:
-            left_start += max(0, e.out_point - e.in_point + 1)
         cut += max(0, e.out_point - e.in_point + 1)
 
-    half1 = duration // 2
-    half2 = duration - half1
-
-    # Extend the left clip forward by half2 (clamped to the producer length).
+    # Unused source frames after the left clip's out-point (0 when unknown).
+    handle = 0
     src = next((p for p in project.producers if p.id == left_entry.producer_id), None)
-    max_out = left_entry.out_point + half2
     if src is not None and "length" in src.properties:
         try:
             plen = int(src.properties["length"])
-            max_out = min(max_out, left_entry.in_point + plen - 1)
+            handle = max(0, plen - 1 - left_entry.out_point)
         except ValueError:
             pass
-    left_entry.out_point = max_out
-    left_timeline_end = left_start + (left_entry.out_point - left_entry.in_point + 1) - 1
+    left_len = left_entry.out_point - left_entry.in_point + 1
+    right_len = right_entry.out_point - right_entry.in_point + 1
+    duration = max(1, min(duration, right_len, left_len + handle))
 
-    lead = max(0, cut - half1)
+    extend = min(duration - duration // 2, handle)
+    pull = min(duration - extend, left_len)
+    extend = duration - pull
+    left_entry.out_point += extend
+
+    lead = max(0, cut - pull)
+
+    # Keep the paired audio timeline's incoming clip at the same frame as the
+    # video lane. The audio lane remains sequential (mixing is optional), so
+    # adjust the linked left entry's duration to place the right entry at lead.
+    source_track = next((t for t in project.tracks if t.id == playlist.id), None)
+    audio_track = next((t for t in project.tracks if t.track_type == "audio"), None)
+    audio_playlist = _find_playlist(project, audio_track.id) if audio_track else None
+    if source_track is not None and audio_playlist is not None:
+        audio_real = [e for e in audio_playlist.entries if e.producer_id]
+        if right_idx < len(audio_real):
+            audio_left, audio_right = audio_real[left_idx], audio_real[right_idx]
+            if (audio_left.producer_id == real[left_idx].producer_id
+                    and audio_right.producer_id == real[right_idx].producer_id):
+                audio_left_start = 0
+                for item in audio_playlist.entries:
+                    if item is audio_left:
+                        break
+                    audio_left_start += max(0, item.out_point - item.in_point + 1)
+                wanted_len = lead - audio_left_start
+                if wanted_len > 0:
+                    audio_left.out_point = audio_left.in_point + wanted_len - 1
+                elif wanted_len == 0:
+                    audio_playlist.entries.remove(audio_left)
+                else:
+                    logger.warning(
+                        "AddTransition: cannot align linked audio before frame %d; audio left unchanged",
+                        lead,
+                    )
 
     # Build the new top video track carrying the right clip (+ any clips that
     # followed it on the source track), preceded by a lead-in blank.
@@ -1538,36 +1650,30 @@ def _apply_add_transition(project: KdenliveProject, intent: AddTransition) -> No
 
     # Register a matching video track so the serializer builds a tractor slot.
     if project.tracks:
-        source_positions = {t.id: i for i, t in enumerate(project.tracks)}
-        src_pos = source_positions.get(intent.track_ref, vindex)
         project.tracks.append(Track(id=top_id, track_type="video", name="Crossfade"))
-        top_pos = len(project.tracks) - 1
-    else:
-        # Serializer falls back to playlists-as-tracks; positions are playlist
-        # indices.  The new playlist was appended last.
-        src_pos = vindex
-        top_pos = len(project.playlists) - 1
 
-    # In the E-shape sequence tractor every timeline track composites onto
-    # track 0 (the accumulator) via its always-active compositor, so the video
-    # track's clip is already on track 0 during the overlap.  The crossfade must
-    # dissolve the incoming (top/xfade) track INTO that accumulator, i.e.
-    # a_track=0 -- not the source track slot (which would write to a track that
-    # never reaches the output).  The xfade track carries no always-active
-    # compositor, so this luma is its only route to the output.
-    _ = _tractor_index(project, src_pos)  # (retained for logging/back-compat)
-    a_track = 0
-    b_track = _tractor_index(project, top_pos)
-    t_in = max(0, cut - half1)
-    t_out = left_timeline_end  # end of the (extended) left clip on the timeline
+    # The serializer emits one sequence slot per playlist, in playlist order,
+    # so slot indices come from playlist positions.  Kdenlive's layout: the
+    # dissolve mixes the incoming (top) track into the left clip's track and
+    # is planted before the per-track compositors (serializer), which then
+    # carry the mixed result to the output.
+    a_track = _tractor_index(project, vindex)
+    b_track = _tractor_index(project, len(project.playlists) - 1)
+    t_in = lead
+    t_out = cut + extend - 1  # end of the (extended) left clip on the timeline
 
     xml = (
         f'<transition id="transition_{len(project.opaque_elements)}">'
-        f'<property name="mlt_service">luma</property>'
         f'<property name="a_track">{a_track}</property>'
         f'<property name="b_track">{b_track}</property>'
         f'<property name="in">{t_in}</property>'
         f'<property name="out">{t_out}</property>'
+        f'<property name="mlt_service">luma</property>'
+        f'<property name="kdenlive_id">dissolve</property>'
+        f'<property name="softness">0</property>'
+        f'<property name="reverse">0</property>'
+        f'<property name="alpha_over">1</property>'
+        f'<property name="fix_background_alpha">1</property>'
         f'</transition>'
     )
     project.opaque_elements.append(

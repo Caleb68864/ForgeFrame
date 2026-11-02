@@ -33,6 +33,7 @@ from workshop_video_brain.edit_mcp.adapters.ffmpeg.frames import (
     extract_frame_burst,
 )
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.scene import detect_scene_changes
+from workshop_video_brain.edit_mcp.pipelines.scene_detect import scene_change_scan
 
 _TIMESTAMP_DEDUPE_PRECISION = 3
 
@@ -93,6 +94,9 @@ def generate_candidates(
         video_path,
         start_seconds=region.start_seconds,
         end_seconds=region.end_seconds,
+        threshold=config.scene_detection.threshold,
+        minimum_gap_seconds=config.scene_detection.min_scene_length_seconds,
+        scan=scene_change_scan(config.scene_detection.engine),
     )
     for change in scene_changes:
         scene_candidate = extract_frame(

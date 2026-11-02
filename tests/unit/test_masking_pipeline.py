@@ -156,7 +156,7 @@ def test_build_object_mask_xml():
     root = ET.fromstring(xml)
     assert root.get("mlt_service") == "frei0r.alpha0ps_alphaspot"
     props = {p.get("name"): p.text for p in root.findall("property")}
-    assert props["kdenlive_id"] == "frei0r_alpha0ps_alphaspot"
+    assert props["kdenlive_id"] == "frei0r.alpha0ps_alphaspot"
     assert props["0"] == "0"
     assert props["7"] == "0.4"
 
@@ -201,7 +201,7 @@ def test_build_chroma_key_advanced_xml():
     props = {p.get("name"): p.text for p in root.findall("property")}
     for name in ("av.hue", "av.sat", "av.val", "av.similarity", "av.blend"):
         assert name in props, f"missing property {name}"
-    assert props["kdenlive_id"] == "avfilter_hsvkey"
+    assert props["kdenlive_id"] == "avfilter.hsvkey"
 
 
 def test_advanced_chroma_tolerance_order():

@@ -205,6 +205,54 @@ def parse_effect_xml(path: pathlib.Path) -> EffectDef:
     )
 
 
+def parse_effect_identity(path: pathlib.Path) -> tuple[str, str, str]:
+    """Return ``(file stem, registry id, MLT service)`` for an effect file.
+
+    Most files use ``<effect>`` as the document root. Kdenlive's grouped
+    effects wrap one or more equivalent ``<effect>`` nodes in ``<group>``;
+    their root effect identity is taken from the first nested effect node.
+    Only identity attributes are inspected, so unknown parameter types do not
+    affect this generated registry table.
+    """
+    document = ET.parse(path).getroot()
+    root = document
+    if root.tag.rsplit("}", 1)[-1] != "effect":
+        root = root.find(".//{*}effect")
+    if root is None or root.tag.rsplit("}", 1)[-1] != "effect":
+        raise ValueError(f"No Kdenlive effect element in XML: {path}")
+    stem = pathlib.Path(path).stem
+    service = root.get("tag") or ""
+    return stem, root.get("id") or service or stem, service
+
+
+def emit_effect_ids_module(
+    rows: list[tuple[str, str, str]], source_version: str
+) -> str:
+    """Render an importable, deterministic stem-to-registry-id module."""
+    sorted_rows = sorted(rows)
+    lines = [
+        '"""GENERATED FILE -- do not edit by hand.',
+        "",
+        "Regenerate with: uv run python scripts/generate_effect_ids.py",
+        f"Source: Kdenlive {source_version} effects at /usr/share/kdenlive/effects/",
+        '"""',
+        "from __future__ import annotations",
+        "",
+        "EFFECT_IDS: dict[str, tuple[str, str]] = {",
+    ]
+    lines.extend(
+        f"    {stem!r}: ({effect_id!r}, {service!r}),"
+        for stem, effect_id, service in sorted_rows
+    )
+    lines.extend(["}", "", "KNOWN_EFFECT_IDS: frozenset[str] = frozenset({"])
+    lines.extend(
+        f"    {effect_id!r},"
+        for effect_id in sorted({effect_id for _, effect_id, _ in sorted_rows})
+    )
+    lines.extend(["})", ""])
+    return "\n".join(lines)
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class DiffReport:
     """Summary of the local-vs-upstream effect catalog cross-check."""

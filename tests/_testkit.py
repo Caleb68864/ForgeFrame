@@ -34,6 +34,7 @@ split as its own mechanical change when it next grows.
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import inspect
 import shutil
 import subprocess
@@ -48,6 +49,8 @@ import pytest
 HAVE_FFMPEG = shutil.which("ffmpeg") is not None
 HAVE_FFPROBE = shutil.which("ffprobe") is not None
 HAVE_MELT = shutil.which("melt") is not None
+HAVE_KDENLIVE = shutil.which("kdenlive") is not None
+HAVE_XVFB_RUN = shutil.which("xvfb-run") is not None
 
 requires_ffmpeg = pytest.mark.skipif(not HAVE_FFMPEG, reason="ffmpeg not available on PATH")
 requires_ffprobe = pytest.mark.skipif(not HAVE_FFPROBE, reason="ffprobe not available on PATH")
@@ -55,8 +58,45 @@ requires_ffmpeg_ffprobe = pytest.mark.skipif(
     not (HAVE_FFMPEG and HAVE_FFPROBE), reason="ffmpeg/ffprobe not available on PATH"
 )
 requires_melt = pytest.mark.skipif(not HAVE_MELT, reason="melt not available on PATH")
+requires_kdenlive = pytest.mark.skipif(
+    not (HAVE_KDENLIVE and HAVE_XVFB_RUN),
+    reason="kdenlive (and xvfb-run for a headless display) not available on PATH",
+)
 requires_melt_ffmpeg = pytest.mark.skipif(
     not (HAVE_MELT and HAVE_FFMPEG), reason="melt/ffmpeg not available on PATH"
+)
+HAVE_SCENEDETECT = (
+    importlib.util.find_spec("scenedetect") is not None and importlib.util.find_spec("cv2") is not None
+)
+requires_scenedetect = pytest.mark.skipif(
+    not HAVE_SCENEDETECT, reason="scenedetect (scene-detect extra) not installed"
+)
+
+
+
+def _have_mlt_bindings() -> bool:
+    # Not find_spec: the bindings are never in the venv, only in a system Python.
+    try:
+        from workshop_video_brain.edit_mcp.adapters.mlt import engine
+
+        return engine.find_mlt_python() is not None
+    except Exception:  # noqa: BLE001
+        return False
+
+
+HAVE_MLT_BINDINGS = _have_mlt_bindings()
+requires_mlt_bindings = pytest.mark.skipif(not HAVE_MLT_BINDINGS, reason="MLT Python bindings not available")
+
+
+def _auto_editor_binary():
+    from workshop_video_brain.edit_mcp.adapters.autoeditor.cli import resolve_binary
+
+    return resolve_binary()
+
+
+HAVE_AUTO_EDITOR = _auto_editor_binary() is not None
+requires_auto_editor = pytest.mark.skipif(
+    not HAVE_AUTO_EDITOR, reason="auto-editor binary (auto-editor extra) not available"
 )
 
 # ---------------------------------------------------------------------------
@@ -168,6 +208,31 @@ def make_test_clip(
         args += ["-pix_fmt", pix_fmt]
     args.append(str(path))
     _run_ffmpeg(args)
+    return path
+
+
+def make_hard_cut_clip(
+    path: str | Path,
+    *,
+    first: str = "red",
+    second: str = "blue",
+    seconds_each: float = 2.0,
+    fps: int = 25,
+    size: tuple[int, int] = (320, 240),
+    with_audio: bool = False,
+) -> Path:
+    """Generate a clip with one hard cut at exactly seconds_each."""
+    path = Path(path)
+    w, h = size
+    args = []
+    for color in (first, second):
+        args += ["-f", "lavfi", "-i", f"color=c={color}:size={w}x{h}:rate={fps}:duration={seconds_each}"]
+    graph = "[0:v][1:v]concat=n=2:v=1:a=0[v]"
+    maps = ["-map", "[v]"]
+    if with_audio:
+        args += ["-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds_each * 2}"]
+        maps += ["-map", "2:a"]
+    _run_ffmpeg([*args, "-filter_complex", graph, *maps, "-pix_fmt", "yuv420p", str(path)])
     return path
 
 

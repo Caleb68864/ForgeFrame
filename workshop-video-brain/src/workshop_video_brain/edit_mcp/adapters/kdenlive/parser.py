@@ -23,6 +23,7 @@ from workshop_video_brain.core.models.kdenlive import (
     Track,
 )
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import (
+    AUDIO_TWIN_SUFFIX,
     TRACK_NAME_PROPERTY,
 )
 from workshop_video_brain.edit_mcp.adapters.render.media_check import effective_root
@@ -136,6 +137,24 @@ def _parse_chain(elem: ET.Element) -> Producer:
     )
 
 
+def _fold_audio_twins(producers: list, playlists: list) -> None:
+    """Merge the serializer's per-track speed producers back into their base."""
+    ids = {producer.id for producer in producers}
+    twins = {
+        producer.id
+        for producer in producers
+        if producer.id.endswith(AUDIO_TWIN_SUFFIX)
+        and producer.id.removesuffix(AUDIO_TWIN_SUFFIX) in ids
+    }
+    if not twins:
+        return
+    for playlist in playlists:
+        for entry in playlist.entries:
+            if entry.producer_id in twins:
+                entry.producer_id = entry.producer_id.removesuffix(AUDIO_TWIN_SUFFIX)
+    producers[:] = [producer for producer in producers if producer.id not in twins]
+
+
 def _parse_playlist(
     elem: ET.Element, track_index: int = 0
 ) -> tuple[Playlist, list[OpaqueElement]]:
@@ -188,6 +207,10 @@ def _parse_playlist(
                     position_hint="track",
                 )
             )
+        elif child.tag == "property" and child.get("name") == "kdenlive:audio_track":
+            # Regenerated from Track.track_type; keeping it would re-emit it at
+            # the document root, where it labels nothing.
+            continue
         else:
             opaques.append(_elem_to_opaque(child, position_hint=f"playlist:{playlist_id}"))
             logger.warning("Unsupported element <%s> inside playlist '%s'", child.tag, playlist_id)
@@ -664,6 +687,8 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
             logger.warning(
                 "Unknown element <%s> preserved as opaque node", tag
             )
+
+    _fold_audio_twins(producers, playlists)
 
     return KdenliveProject(
         version=version,

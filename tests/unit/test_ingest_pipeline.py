@@ -46,7 +46,11 @@ def make_config(ffmpeg_available: bool = True, whisper_available: bool = True) -
 
 
 def make_asset(tmp_path: Path, name: str = "clip.mp4") -> MediaAsset:
-    return MediaAsset(path=str(tmp_path / "media" / "raw" / name))
+    source = tmp_path / "media" / "raw" / name
+    source.parent.mkdir(parents=True, exist_ok=True)
+    if not source.exists():
+        source.write_bytes(b"fixture media; adapters mocked")
+    return MediaAsset(path=str(source), media_type="video", audio_codec="aac", channels=2)
 
 
 INGEST_MOD = "workshop_video_brain.edit_mcp.pipelines.ingest"
@@ -105,8 +109,7 @@ def _setup_happy_path_mocks(mock_scan, mock_needs_proxy, mock_proxy_path_for,
     mock_scan.return_value = [asset]
     mock_needs_proxy.return_value = True
 
-    fake_proxy = MagicMock()
-    fake_proxy.exists.return_value = False
+    fake_proxy = tmp_path / "media" / "proxies" / "clip_proxy.mp4"
     mock_proxy_path_for.return_value = fake_proxy
     mock_generate_proxy.return_value = Path(str(tmp_path / "proxies" / "clip_proxy.mp4"))
 
@@ -164,8 +167,7 @@ class TestRunIngestHappyPath:
         asset = make_asset(tmp_path)
         mock_scan.return_value = [asset]
         mock_needs_proxy.return_value = True
-        fake_proxy = MagicMock()
-        fake_proxy.exists.return_value = False
+        fake_proxy = tmp_path / "media" / "proxies" / "clip_proxy.mp4"
         mock_proxy_path_for.return_value = fake_proxy
         mock_whisper.is_available.return_value = True
 
@@ -173,12 +175,19 @@ class TestRunIngestHappyPath:
         transcripts_dir = tmp_path / "transcripts"
         transcripts_dir.mkdir(parents=True, exist_ok=True)
         json_path = _transcript_json_path(transcripts_dir, asset)
-        json_path.write_text("{}", encoding="utf-8")
+        from workshop_video_brain.core.models.transcript import Transcript
+        cached = Transcript(asset_id=asset.id, raw_text="cached speech")
+        json_path.write_text(cached.to_json(), encoding="utf-8")
+        mock_generate_proxy.return_value = fake_proxy
+        mock_detect_silence.return_value = []
+        mock_whisper.transcript_to_srt.return_value = "cached subtitle"
 
         report = run_ingest(make_workspace(tmp_path), make_config())
 
         mock_whisper.transcribe.assert_not_called()
         assert report.transcribed_count == 0
+        assert report.errors == []
+        mock_generate_proxy.assert_called_once()
 
     @patch(f"{INGEST_MOD}.WorkspaceManager")
     @patch(f"{INGEST_MOD}.detect_silence")
@@ -196,8 +205,7 @@ class TestRunIngestHappyPath:
         mock_scan.return_value = [asset1, asset2]
         mock_needs_proxy.return_value = True
 
-        fake_proxy = MagicMock()
-        fake_proxy.exists.return_value = False
+        fake_proxy = tmp_path / "media" / "proxies" / "clip_proxy.mp4"
         mock_proxy_path_for.return_value = fake_proxy
         mock_generate_proxy.return_value = Path(str(tmp_path / "proxy.mp4"))
 
@@ -237,8 +245,7 @@ class TestRunIngestPartialFailures:
         mock_scan.return_value = [asset]
         mock_needs_proxy.return_value = True
 
-        fake_proxy = MagicMock()
-        fake_proxy.exists.return_value = False
+        fake_proxy = tmp_path / "media" / "proxies" / "clip_proxy.mp4"
         mock_proxy_path_for.return_value = fake_proxy
         mock_generate_proxy.side_effect = RuntimeError("proxy failed")
 

@@ -179,8 +179,8 @@ def test_day_to_night_bad_intensity_raises(bad):
 # ---------------------------------------------------------------------------
 
 def test_lookup_catalog_id_resolves_known_services():
-    assert lookup_catalog_id("avfilter.eq") == "avfilter_eq"
-    assert lookup_catalog_id("frei0r.colorize") == "frei0r_colorize"
+    assert lookup_catalog_id("avfilter.eq") == "avfilter.eq"
+    assert lookup_catalog_id("frei0r.colorize") == "frei0r.colorize"
     assert lookup_catalog_id("no.such.service") is None
 
 
@@ -195,5 +195,5 @@ def test_build_filter_xml_shape():
     assert el.attrib["clip_index"] == "0"
     props = {p.attrib["name"]: p.text for p in el.findall("property")}
     assert props["mlt_service"] == "avfilter.eq"
-    assert props["kdenlive_id"] == "avfilter_eq"
+    assert props["kdenlive_id"] == "avfilter.eq"
     assert props["av.brightness"] == "-0.2"

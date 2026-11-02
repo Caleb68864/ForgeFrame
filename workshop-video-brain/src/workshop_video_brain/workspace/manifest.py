@@ -42,5 +42,21 @@ def read_manifest(workspace_root: Path | str) -> WorkspaceManifest:
 
 def write_manifest(workspace_root: Path | str, manifest: WorkspaceManifest) -> None:
     """Serialise *manifest* to workspace.yaml inside *workspace_root*."""
+    import yaml
+    from workshop_video_brain.workspace.safe_write import atomic_write_text, locked_path
     path = Path(workspace_root) / _MANIFEST_FILENAME
-    path.write_text(manifest.to_yaml(), encoding="utf-8")
+    with locked_path(path):
+        existing = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
+        if existing is not None and not isinstance(existing, dict):
+            raise ValueError(f"Workspace manifest must be a mapping: {path}")
+        def merge(current: dict, updated: dict) -> dict:
+            result = dict(current)
+            for key, value in updated.items():
+                if isinstance(value, dict) and isinstance(result.get(key), dict):
+                    result[key] = merge(result[key], value)
+                else:
+                    result[key] = value
+            return result
+
+        merged = merge(existing or {}, yaml.safe_load(manifest.to_yaml()))
+        atomic_write_text(path, yaml.safe_dump(merged, sort_keys=False, allow_unicode=True))

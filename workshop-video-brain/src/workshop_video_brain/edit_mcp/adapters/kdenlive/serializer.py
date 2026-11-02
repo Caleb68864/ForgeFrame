@@ -6,6 +6,7 @@ writing.
 """
 from __future__ import annotations
 
+import copy
 import logging
 import os
 import uuid
@@ -15,16 +16,24 @@ from pathlib import Path
 
 from workshop_video_brain.core.models.kdenlive import KdenliveProject
 from workshop_video_brain.core.utils.paths import assert_not_protected
+from workshop_video_brain.edit_mcp.adapters.kdenlive.profiles import canonical_profile_name
 from workshop_video_brain.edit_mcp.adapters.render.media_check import (
     looks_like_media_resource,
 )
-from workshop_video_brain.workspace import snapshot as snapshot_manager
+from workshop_video_brain.workspace.safe_write import atomic_write_bytes, locked_path
 
 #: The per-track-tractor property carrying ``Track.name``.  Named once, here,
 #: and imported by the parser, so the writer and the reader cannot drift onto
 #: two different property names -- which is the failure mode that leaves a value
 #: written and never read back.
 TRACK_NAME_PROPERTY = "kdenlive:track_name"
+# Suffix of the per-track copy of a speed-changed producer (see
+# _audio_twin_ids). Written here, folded back into its base by the parser, so
+# the model keeps one producer per speed.
+AUDIO_TWIN_SUFFIX = "_kdaudio"
+SEQUENCE_FOLDER_ID = 2
+MAIN_SEQUENCE_ID = 3
+FIRST_CLIP_ID = 4
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +213,164 @@ def _entry_length(entry) -> int:
     return max(0, entry.out_point - entry.in_point + 1)
 
 
+def _assign_bin_ids(project: KdenliveProject) -> dict[str, int]:
+    """Assign IDs to bin clips and map timeline-only variants to their base."""
+    occupied: set[int] = set()
+    for opaque in project.opaque_elements:
+        if opaque.tag not in ("producer", "chain"):
+            continue
+        try:
+            element = ET.fromstring(opaque.xml_string)
+        except ET.ParseError:
+            continue
+        value = _elem_props(element).get("kdenlive:id")
+        if value is not None and (value.text or "").isdigit():
+            occupied.add(int(value.text))
+    variants = {producer.id: _variant_base(producer, project)
+                for producer in project.producers}
+    result: dict[str, int] = {}
+    candidate = FIRST_CLIP_ID
+    for producer in project.producers:
+        if variants[producer.id] is not None:
+            continue
+        while candidate in occupied:
+            candidate += 1
+        result[producer.id] = candidate
+        occupied.add(candidate)
+        candidate += 1
+    for producer in project.producers:
+        base = variants[producer.id]
+        if base is not None:
+            # Every non-variant was numbered first, so this works even if the
+            # timewarp/ramp producer precedes its base in producer order.
+            result[producer.id] = result[base.id]
+    return result
+
+
+def _has_timeremap_link(producer) -> bool:
+    return any(link.mlt_service == "timeremap" for link in producer.links)
+
+
+def _audio_twin_ids(project: KdenliveProject) -> dict[str, str]:
+    """Map timewarp producers used on both an audio and a video track to a twin id.
+
+    Kdenlive decides a clip's stream state per MLT producer. A timewarp producer
+    reached from both track kinds loads with both streams disabled on its second
+    use, which renders black or silent. Native saves give each track its own
+    producer. Plain media needs no twin: Kdenlive clones those itself.
+    """
+    track_types = {track.id: track.track_type for track in project.tracks}
+    used_on: dict[str, set[str]] = {}
+    for playlist in project.playlists:
+        kind = "audio" if track_types.get(playlist.id, "video") == "audio" else "video"
+        for entry in playlist.entries:
+            if entry.producer_id:
+                used_on.setdefault(entry.producer_id, set()).add(kind)
+    return {
+        producer.id: f"{producer.id}{AUDIO_TWIN_SUFFIX}"
+        for producer in project.producers
+        if producer.properties.get("mlt_service") == "timewarp"
+        and used_on.get(producer.id) == {"audio", "video"}
+    }
+
+
+def _variant_base(
+    producer, project: KdenliveProject, *, warn_unresolved: bool = True
+):
+    """Find a modelled source producer for a timewarp or timeremap variant."""
+    service = producer.properties.get("mlt_service", "")
+    warp_resource = producer.properties.get("warp_resource", "")
+    timeremap = _has_timeremap_link(producer)
+    if service != "timewarp" and not timeremap:
+        return None
+
+    def normalized(value: str) -> str:
+        return value.replace("\\", "/")
+
+    def is_variant(candidate, seen: set[str] | None = None) -> bool:
+        if seen is None:
+            seen = set()
+        if candidate.id in seen:
+            return False
+        seen.add(candidate.id)
+        candidate_service = candidate.properties.get("mlt_service", "")
+        candidate_warp = candidate.properties.get("warp_resource", "")
+        candidate_timeremap = _has_timeremap_link(candidate)
+        if candidate_service == "timewarp" and candidate_warp:
+            return any(
+                other.id != candidate.id
+                and normalized(other.resource or other.properties.get("resource", ""))
+                == normalized(candidate_warp)
+                and not is_variant(other, seen.copy())
+                for other in project.producers
+            )
+        if candidate_timeremap:
+            return any(
+                other.id != candidate.id and not other.links
+                and normalized(other.resource or other.properties.get("resource", ""))
+                == normalized(candidate.resource or candidate.properties.get("resource", ""))
+                and not is_variant(other, seen.copy())
+                for other in project.producers
+            )
+        return False
+
+    if service == "timewarp":
+        candidates = [
+            item for item in project.producers
+            if item.id != producer.id and warp_resource
+            and normalized(item.resource or item.properties.get("resource", ""))
+            == normalized(warp_resource)
+            and not is_variant(item)
+        ]
+    else:
+        resource = normalized(producer.resource or producer.properties.get("resource", ""))
+        candidates = [
+            item for item in project.producers
+            if item.id != producer.id and not item.links
+            and normalized(item.resource or item.properties.get("resource", "")) == resource
+            and not is_variant(item)
+        ]
+    if candidates:
+        return candidates[0]
+    if warn_unresolved:
+        logger.warning(
+            "Could not resolve %s variant producer '%s' to a modelled base; keeping it as a bin clip",
+            "timewarp" if service == "timewarp" else "timeremap",
+            producer.id,
+        )
+    return None
+
+
+def _opaque_bin_ids(project: KdenliveProject) -> dict[str, int]:
+    """Return kdenlive IDs carried by preserved native producers/chains."""
+    result: dict[str, int] = {}
+    for opaque in project.opaque_elements:
+        if opaque.tag not in ("producer", "chain"):
+            continue
+        try:
+            element = ET.fromstring(opaque.xml_string)
+        except ET.ParseError:
+            continue
+        identity = element.get("id")
+        value = _elem_props(element).get("kdenlive:id")
+        if identity and value is not None and (value.text or "").isdigit():
+            result[identity] = int(value.text)
+    return result
+
+
+def _effective_length(producer, project: KdenliveProject) -> int | None:
+    """Return a producer's declared or timeline-required length in frames."""
+    values: list[int] = []
+    stored = producer.properties.get("length", "")
+    if stored.isdigit():
+        values.append(int(stored))
+    uses = [entry.out_point + 1 for playlist in project.playlists
+            for entry in playlist.entries if entry.producer_id == producer.id]
+    if uses:
+        values.append(max(uses))
+    return max(values) if values else None
+
+
 def _content_out(project: KdenliveProject) -> int:
     """Return the last frame index of the longest content playlist.
 
@@ -233,6 +400,11 @@ def _extract_clip_filters(
     ``id()``s of the OpaqueElements that were relocated (so the generic opaque
     loop skips them).
     """
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.effect_identity import (
+        KNOWN_EFFECT_IDS,
+        normalize_effect_id,
+    )
+
     by_clip: dict[tuple[int, int], list[ET.Element]] = {}
     consumed: set[int] = set()
     for opaque in project.opaque_elements:
@@ -252,6 +424,39 @@ def _extract_clip_filters(
             continue
         felem.attrib.pop("track", None)
         felem.attrib.pop("clip_index", None)
+        id_prop = next(
+            (
+                prop for prop in felem.findall("property")
+                if prop.get("name") == "kdenlive_id"
+            ),
+            None,
+        )
+        if id_prop is not None:
+            kid = id_prop.text or ""
+            if kid not in KNOWN_EFFECT_IDS:
+                props = {
+                    prop.get("name", "")
+                    for prop in felem.findall("property")
+                }
+                service_prop = next(
+                    (
+                        prop.text or ""
+                        for prop in felem.findall("property")
+                        if prop.get("name") == "mlt_service"
+                    ),
+                    "",
+                )
+                service = service_prop or felem.get("mlt_service", "")
+                resolved = normalize_effect_id(service, kid, props)
+                if resolved is None:
+                    felem.remove(id_prop)
+                    logger.warning(
+                        "Removing unknown Kdenlive effect id %r from service %r",
+                        kid,
+                        service,
+                    )
+                else:
+                    id_prop.text = resolved
         by_clip.setdefault(key, []).append(felem)
         consumed.add(id(opaque))
     return by_clip, consumed
@@ -431,24 +636,6 @@ def serialize_project(
     # project never leaves a partial/broken document behind.
     _assert_serializable(project)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Snapshot any existing file
-    if output_path.exists():
-        workspace_root = output_path.parent
-        for _ in range(10):
-            if (workspace_root / "projects" / "working_copies").exists():
-                break
-            workspace_root = workspace_root.parent
-        try:
-            snapshot_manager.create(
-                workspace_root=workspace_root,
-                file_to_snapshot=output_path,
-                description=f"Pre-write snapshot of {output_path.name}",
-            )
-        except Exception as exc:
-            logger.warning("Could not create snapshot for %s: %s", output_path, exc)
-
     # ------------------------------------------------------------------
     # Build XML tree
     # ------------------------------------------------------------------
@@ -502,10 +689,17 @@ def serialize_project(
     # and project tractor so a render/`-consumer null` stops at the content.
     content_out = _content_out(project)
     seq_uuid = _project_uuid(project.title)
-    profile_name = (
-        f"{project.profile.width}x{project.profile.height}"
-        f"_fps{int(round(project.profile.fps))}"
+    canonical = canonical_profile_name(
+        project.profile.width, project.profile.height, fps_num, fps_den
     )
+    if canonical is not None:
+        profile_name, profile_description = canonical
+        profile_elem.set("description", profile_description)
+    else:
+        profile_name = (
+            f"{project.profile.width}x{project.profile.height}"
+            f"_fps{int(round(project.profile.fps))}"
+        )
 
     # ------------------------------------------------------------------
     # Background (black) producer -- id "producer_black", carrying
@@ -530,7 +724,16 @@ def serialize_project(
     # carry uuids, else loadBinPlaylist routes them into the sequence branch and
     # skips them as malformed sequences).
     # ------------------------------------------------------------------
-    for kdenlive_id, producer in enumerate(project.producers, start=2):
+    bin_ids = _assign_bin_ids(project)
+    audio_twins = _audio_twin_ids(project)
+    variant_ids = {
+        producer.id for producer in project.producers
+        if _variant_base(producer, project, warn_unresolved=False) is not None
+    }
+    producer_lengths = {p.id: _effective_length(p, project) for p in project.producers}
+    opaque_bin_ids = _opaque_bin_ids(project)
+    for producer in project.producers:
+        kdenlive_id = bin_ids[producer.id]
         # A producer carrying MLT links serializes as a <chain> (links may only
         # live inside a chain); otherwise a plain <producer>.  The chain's `out`
         # attribute bounds the (possibly time-remapped) output length.
@@ -568,9 +771,14 @@ def serialize_project(
                 continue
             if name in _MANAGED_PROPS:
                 continue  # dropped (uuids) or regenerated (id/clip_type/folderid)
+            if name == "length" and producer_lengths[producer.id] is not None:
+                continue
             prop = ET.SubElement(p_elem, "property")
             prop.set("name", name)
             prop.text = value
+        effective_length = producer_lengths[producer.id]
+        if effective_length is not None:
+            _set_prop(p_elem, "length", str(effective_length))
         # Serializer-managed kdenlive metadata (regenerated; NO uuid/control_uuid)
         _set_prop(p_elem, "kdenlive:id", str(kdenlive_id))
         _set_prop(
@@ -591,6 +799,10 @@ def serialize_project(
                 lprop = ET.SubElement(link_elem, "property")
                 lprop.set("name", name)
                 lprop.text = value
+        if producer.id in audio_twins:
+            twin_elem = copy.deepcopy(p_elem)
+            twin_elem.set("id", audio_twins[producer.id])
+            root.append(twin_elem)
 
     # ------------------------------------------------------------------
     # Per-track lanes + track-tractors (E-shape / empty_from_user ground truth).
@@ -613,13 +825,27 @@ def serialize_project(
         # Clips lane
         pl_elem = ET.SubElement(root, "playlist")
         pl_elem.set("id", playlist.id)
+        # How Kdenlive tells an audio track from a video one: without it the
+        # track loads as video and kdenlive --render drops the clip's audio.
+        # Ground truth: cross_dissolve_native.kdenlive.
+        if track_type == "audio":
+            _set_prop(pl_elem, "kdenlive:audio_track", "1")
         real_index = 0
         for entry in playlist.entries:
             if entry.producer_id:
                 e_elem = ET.SubElement(pl_elem, "entry")
-                e_elem.set("producer", entry.producer_id)
+                e_elem.set(
+                    "producer",
+                    audio_twins.get(entry.producer_id, entry.producer_id)
+                    if track_type == "audio" else entry.producer_id,
+                )
                 e_elem.set("in", str(entry.in_point))
                 e_elem.set("out", str(entry.out_point))
+                clip_id = bin_ids.get(
+                    entry.producer_id, opaque_bin_ids.get(entry.producer_id)
+                )
+                if clip_id is not None:
+                    _set_prop(e_elem, "kdenlive:id", str(clip_id))
                 for felem in clip_filters.get((track_index, real_index), []):
                     e_elem.append(felem)
                 real_index += 1
@@ -634,6 +860,8 @@ def serialize_project(
         b_id = f"{playlist.id}_kdpair"
         b_elem = ET.SubElement(root, "playlist")
         b_elem.set("id", b_id)
+        if track_type == "audio":
+            _set_prop(b_elem, "kdenlive:audio_track", "1")
 
         # Track-tractor wrapping both lanes
         tt_id = f"tractor_{playlist.id}"
@@ -641,6 +869,8 @@ def serialize_project(
         tt.set("id", tt_id)
         tt.set("in", "0")
         tt.set("out", str(content_out))
+        if track_type == "audio":
+            _set_prop(tt, "kdenlive:audio_track", "1")
         _set_prop(tt, "kdenlive:trackheight", "62")
         _set_prop(tt, "kdenlive:timeline_active", "1")
         # The track label Kdenlive shows in the timeline head.  Emitted only
@@ -687,7 +917,7 @@ def serialize_project(
     # ------------------------------------------------------------------
     has_audio = any(tt[1] == "audio" for tt in track_tractors)
     has_video = any(tt[1] == "video" for tt in track_tractors)
-    seq_kid = len(project.producers) + 2
+    seq_kid = MAIN_SEQUENCE_ID
     tractor_elem = ET.SubElement(root, "tractor")
     tractor_elem.set("id", seq_uuid)
     tractor_elem.set("in", "0")
@@ -709,7 +939,7 @@ def serialize_project(
     _set_prop(tractor_elem, "kdenlive:producer_type", "17")
     _set_prop(tractor_elem, "kdenlive:id", str(seq_kid))
     _set_prop(tractor_elem, "kdenlive:file_size", "0")
-    _set_prop(tractor_elem, "kdenlive:folderid", "2")
+    _set_prop(tractor_elem, "kdenlive:folderid", str(SEQUENCE_FOLDER_ID))
     _set_prop(tractor_elem, "kdenlive:sequenceproperties.activeTrack",
               str(len(track_tractors)) if track_tractors else "0")
     _set_prop(tractor_elem, "kdenlive:sequenceproperties.groups", "[\n]\n")
@@ -724,15 +954,18 @@ def serialize_project(
         if clips_id in hide_by_track and hide_by_track[clips_id]:
             st.set("hide", hide_by_track[clips_id])
 
-    # Always-active compositing transitions (regenerated; internal_added=237).
-    # Crossfade overlay tracks (_xfade) deliberately get NO always_active
-    # compositor -- their compositing is driven by an explicit luma mix.
-    for b_index, (_tt_id, ttype, _clips_id, is_xfade) in enumerate(
+    # Always-active compositing transitions (regenerated; internal_added=237),
+    # one per track -- crossfade overlay tracks (_xfade) included, as in a
+    # Kdenlive-saved dissolve.  User transitions are planted before the first
+    # video compositor (opaque re-insertion below): a dissolve written after
+    # them is composited over and never reaches the output.
+    first_video_compositor: ET.Element | None = None
+    for b_index, (_tt_id, ttype, _clips_id, _xf) in enumerate(
         track_tractors, start=1
     ):
-        if is_xfade:
-            continue
         trans_elem = ET.SubElement(tractor_elem, "transition")
+        if ttype != "audio" and first_video_compositor is None:
+            first_video_compositor = trans_elem
         _set_prop(trans_elem, "a_track", "0")
         _set_prop(trans_elem, "b_track", str(b_index))
         if ttype == "audio":
@@ -800,8 +1033,8 @@ def serialize_project(
     # ------------------------------------------------------------------
     main_bin = ET.SubElement(root, "playlist")
     main_bin.set("id", "main_bin")
-    _set_prop(main_bin, "kdenlive:folder.-1.2", "Sequences")
-    _set_prop(main_bin, "kdenlive:sequenceFolder", "2")
+    _set_prop(main_bin, f"kdenlive:folder.-1.{SEQUENCE_FOLDER_ID}", "Sequences")
+    _set_prop(main_bin, "kdenlive:sequenceFolder", str(SEQUENCE_FOLDER_ID))
     _set_prop(main_bin, "kdenlive:docproperties.version", "1.1")
     _set_prop(main_bin, "kdenlive:docproperties.profile", profile_name)
     _set_prop(main_bin, "kdenlive:docproperties.uuid", seq_uuid)
@@ -834,10 +1067,46 @@ def serialize_project(
         _set_prop(main_bin, f"kdenlive:docproperties.{suffix}", str(value))
     _set_prop(main_bin, "xml_retain", "1")
     for producer in project.producers:
+        if producer.id in variant_ids:
+            continue
         entry = ET.SubElement(main_bin, "entry")
         entry.set("producer", producer.id)
         entry.set("in", "0")
-        entry.set("out", "0")
+        length = producer_lengths[producer.id]
+        if length is None:
+            logger.debug("Producer '%s' has unknown length; main_bin out remains 0", producer.id)
+            entry.set("out", "0")
+        else:
+            entry.set("out", str(length - 1))
+    model_producer_ids = {producer.id for producer in project.producers}
+    timeline_producer_ids = {
+        entry.producer_id for playlist in project.playlists
+        for entry in playlist.entries if entry.producer_id
+    }
+    for opaque in project.opaque_elements:
+        if opaque.tag not in ("producer", "chain"):
+            continue
+        try:
+            opaque_producer = ET.fromstring(opaque.xml_string)
+        except ET.ParseError:
+            continue
+        opaque_id = opaque_producer.get("id", "")
+        opaque_props = _elem_props(opaque_producer)
+        opaque_kid = opaque_props.get("kdenlive:id")
+        if (not opaque_id or opaque_id in model_producer_ids
+                or opaque_id not in timeline_producer_ids
+                or opaque_kid is None or not (opaque_kid.text or "").isdigit()):
+            continue
+        entry = ET.SubElement(main_bin, "entry")
+        entry.set("producer", opaque_id)
+        entry.set("in", "0")
+        stored_length = opaque_props.get("length")
+        if stored_length is not None and (stored_length.text or "").isdigit():
+            entry.set("out", str(int(stored_length.text) - 1))
+        else:
+            uses = [use.out_point for playlist in project.playlists
+                    for use in playlist.entries if use.producer_id == opaque_id]
+            entry.set("out", str(max(uses)) if uses else "0")
     # Sequence clip entry (registers the sequence in the bin).
     seq_entry = ET.SubElement(main_bin, "entry")
     seq_entry.set("producer", seq_uuid)
@@ -885,10 +1154,36 @@ def serialize_project(
                 "Could not re-insert opaque element <%s>: %s", opaque.tag, exc
             )
             continue
+        if elem.tag == "playlist" and elem.get("id") != "main_bin":
+            for entry in elem.findall("entry"):
+                producer_ref = entry.get("producer", "")
+                entry_id = bin_ids.get(producer_ref, opaque_bin_ids.get(producer_ref))
+                id_props = [
+                    child for child in entry.findall("property")
+                    if child.get("name") == "kdenlive:id"
+                ]
+                for duplicate in id_props[1:]:
+                    entry.remove(duplicate)
+                if entry_id is None:
+                    for old_prop in id_props:
+                        entry.remove(old_prop)
+                elif id_props:
+                    id_props[0].text = str(entry_id)
+                    entry.remove(id_props[0])
+                    entry.insert(0, id_props[0])
+                else:
+                    id_prop = ET.Element("property", {"name": "kdenlive:id"})
+                    id_prop.text = str(entry_id)
+                    entry.insert(0, id_prop)
         if elem.tag == "transition":
             _normalize_transition_id(elem)
         if opaque.position_hint == "tractor" and tractor_elem is not None:
-            tractor_elem.append(elem)
+            if elem.tag == "transition" and first_video_compositor is not None:
+                tractor_elem.insert(
+                    list(tractor_elem).index(first_video_compositor), elem
+                )
+            else:
+                tractor_elem.append(elem)
         else:
             root.append(elem)
 
@@ -899,27 +1194,70 @@ def serialize_project(
     except ET.ParseError as exc:
         raise ValueError(f"Serialized XML is not well-formed: {exc}") from exc
 
-    # Write file atomically: serialise to a sibling temp file, then os.replace()
-    # it into place.  A crash or I/O error mid-write therefore never truncates or
-    # corrupts an existing project at *output_path* -- combined with the
-    # well-formedness check above this guarantees the target is only ever
-    # replaced by a fully-written, valid document.
+    # Check the actual tree, including opaque elements reinserted above.
+    from .validator import validate_serialized_xml
+
+    report = validate_serialized_xml(root)
+    if report.items:
+        raise ProjectSerializeError("; ".join(
+            f"{item.location}: {item.message}" for item in report.items
+        ))
+
+    # The shared writer validates staged bytes, snapshots before replacement,
+    # and holds a process/thread lock throughout the commit.
+    _warn_unregistered_services(root)
     tree = ET.ElementTree(root)
     ET.indent(tree, space="  ")
-    tmp_path = output_path.with_name(output_path.name + ".tmp")
-    try:
-        with tmp_path.open("wb") as fh:
-            fh.write(b'<?xml version="1.0" encoding="utf-8"?>\n')
-            tree.write(fh, encoding="utf-8", xml_declaration=False)
-        os.replace(tmp_path, output_path)
-    except BaseException:
-        try:
-            tmp_path.unlink()
-        except OSError:
-            pass
-        raise
+    data = b'<?xml version="1.0" encoding="utf-8"?>\n' + ET.tostring(root, encoding="utf-8")
+    resolved_output = output_path.resolve()
+    workspace_root = next(
+        (parent for parent in resolved_output.parents
+         if (parent / "workspace.yaml").exists()
+         or (parent / "projects" / "working_copies").exists()),
+        resolved_output.parent,
+    )
+
+    def validate_staged(path: Path) -> None:
+        staged_report = validate_serialized_xml(ET.parse(path).getroot())
+        if staged_report.items:
+            raise ProjectSerializeError("; ".join(
+                f"{item.location}: {item.message}" for item in staged_report.items
+            ))
+
+    atomic_write_bytes(output_path, data, workspace_root=workspace_root,
+                       validator=validate_staged)
 
     logger.info("Wrote Kdenlive project to %s", output_path)
+    if os.environ.get("WVB_LOAD_CHECK_ON_WRITE") == "1":
+        _log_load_check(output_path, project)
+
+
+def _warn_unregistered_services(root: ET.Element) -> None:
+    """Log services a registry already in memory does not know. Never loads one, never raises."""
+    from workshop_video_brain.edit_mcp.adapters.mlt.registry import loaded_registry
+
+    registry = loaded_registry()
+    if registry is None:
+        return
+    for tag, kind in (("filter", "filters"), ("transition", "transitions")):
+        for element in root.iter(tag):
+            service = element.get("mlt_service") or next(
+                (prop.text for prop in element.findall("property") if prop.get("name") == "mlt_service"), None
+            )
+            if service and not registry.has(kind, service):
+                logger.warning("MLT on this host has no %s named '%s'.", kind.rstrip("s"), service)
+
+
+def _log_load_check(output_path: Path, project: KdenliveProject) -> None:
+    """Log what MLT makes of a file just written. The write already succeeded, so never raise."""
+    try:
+        from workshop_video_brain.edit_mcp.adapters.mlt.engine import load_check
+
+        for item in load_check(output_path, project).items:
+            if str(item.severity) != "info":
+                logger.warning("Load check on %s: %s", output_path, item.message)
+    except Exception as exc:  # noqa: BLE001 -- includes subprocess.TimeoutExpired
+        logger.warning("Load check on %s could not run: %s", output_path, exc)
 
 
 def serialize_versioned(
@@ -932,9 +1270,13 @@ def serialize_versioned(
     Path: ``projects/working_copies/{title_slug}_v{N}.kdenlive``
     Returns the path that was written.
     """
-    working_copies = workspace_root / "projects" / "working_copies"
-    working_copies.mkdir(parents=True, exist_ok=True)
-    version = _next_version(working_copies, title_slug)
-    output_path = working_copies / f"{title_slug}_v{version}.kdenlive"
-    serialize_project(project, output_path)
-    return output_path
+    working_copies = Path(workspace_root) / "projects" / "working_copies"
+    if not title_slug or Path(title_slug).name != title_slug or title_slug in (".", ".."):
+        raise ValueError("title_slug must be a filename stem")
+    assert_not_protected(working_copies, "project directory")
+    with locked_path(working_copies):
+        working_copies.mkdir(parents=True, exist_ok=True)
+        version = _next_version(working_copies, title_slug)
+        output_path = working_copies / f"{title_slug}_v{version}.kdenlive"
+        serialize_project(project, output_path)
+        return output_path

@@ -19,6 +19,7 @@ Kdenlive GUI, though they round-trip through our own parser/serializer.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from workshop_video_brain.core.models.kdenlive import KdenliveProject
 from workshop_video_brain.core.models.timeline import AddGuide
@@ -100,6 +101,42 @@ def add_guide(
         category=category,
     )
     return patch_project(project, [intent])
+
+
+def cut_positions_on_timeline(
+    project: KdenliveProject,
+    source_path: Path,
+    cuts_seconds: list[float],
+) -> list[int]:
+    """Map source-time cuts to timeline frames wherever *source_path* is used.
+
+    Every entry, on every track, whose producer resolves to the file counts, so
+    a source placed twice yields a position per placement. A speed-changed use
+    goes through a ``timewarp`` producer whose resource is not the bare file;
+    it is deliberately not matched, because its frames are not source frames.
+    Returns sorted, de-duplicated frames; ``[]`` if the source is not placed.
+    """
+    fps = project_fps(project)
+    wanted = Path(source_path).resolve()
+    matching = {
+        producer.id
+        for producer in project.producers
+        if any(
+            value and Path(value).resolve() == wanted
+            for value in (producer.resource, producer.properties.get("resource", ""))
+        )
+    }
+    cut_frames = [seconds_to_frames(cut, fps) for cut in cuts_seconds]
+    positions: set[int] = set()
+    for playlist in project.playlists:
+        entry_start = 0
+        for entry in playlist.entries:
+            if entry.producer_id in matching:
+                for cut in cut_frames:
+                    if entry.in_point <= cut <= entry.out_point:
+                        positions.add(entry_start + cut - entry.in_point)
+            entry_start += max(0, entry.out_point - entry.in_point + 1)
+    return sorted(positions)
 
 
 def list_guides(project: KdenliveProject) -> list[dict]:

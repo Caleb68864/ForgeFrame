@@ -1,137 +1,219 @@
 """Scene-cut detection pipeline (``clips_detect_scenes``).
 
-Runs FFmpeg's ``select='gt(scene,threshold)'`` in analysis mode (``-f null -``)
-and prints the per-frame ``scene`` score for the frames that clear the
-threshold, returning a list of ``{time, score}`` shot boundaries. An agent (or
-``media_segment_at_silence``) can then split the recording, and each shot lands
-in the b-roll index as its own entry.
+Two engines return the same ``[(time, score)]`` shape:
 
-The ``scene`` value is on the familiar 0..1 scale (0 = identical to previous
-frame, 1 = completely different), which matches the ``threshold`` contract.
-FFmpeg's ``metadata=print`` writes, per selected frame::
+* ``ffmpeg`` -- the single ffmpeg scene scorer,
+  :func:`workshop_video_brain.edit_mcp.adapters.ffmpeg.scene.scan_scene_cuts`.
+  Its ``scene`` value is on the familiar 0..1 scale (0 = identical to previous
+  frame, 1 = completely different), which matches the ``threshold`` contract.
+* ``pyscenedetect`` -- the optional ``scene-detect`` extra
+  (``adapters/scenedetect``). Its score is relative to that engine and is not
+  comparable to ffmpeg's.
 
-    frame:0    pts:20480   pts_time:2
-    lavfi.scene_score=0.657581
+An agent (or ``media_segment_at_silence``) can then split the recording, and
+each shot lands in the b-roll index as its own entry.
 """
 from __future__ import annotations
 
 import logging
-import re
-import subprocess
-import tempfile
 from pathlib import Path
 
-from workshop_video_brain.edit_mcp.pipelines._common import escape_filter_path
-from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
-    ANALYSIS_TIMEOUT_SECONDS as _ANALYSIS_TIMEOUT_SECONDS,
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import FFmpegNotFound
+from workshop_video_brain.edit_mcp.adapters.ffmpeg.scene import (
+    SceneScanError,
+    build_scan_command,
+    build_select_filter,
+    parse_scene_scores as _parse_hits,
+    scan_scene_cuts,
 )
+from workshop_video_brain.edit_mcp.adapters.scenedetect import engine as pyscenedetect_engine
+from workshop_video_brain.edit_mcp.adapters.scenedetect.engine import (
+    DETECTORS,
+    SceneDetectError,
+    SceneDetectUnavailable,
+)
+from workshop_video_brain.edit_mcp.pipelines.ai_mask import EngineUnavailable
 
 logger = logging.getLogger(__name__)
 
-_TIME_RE = re.compile(r"pts_time:(-?\d+\.?\d*)")
-_SCORE_RE = re.compile(r"lavfi\.scene_score=(-?\d+\.?\d*)")
+__all__ = [
+    "DETECTORS",
+    "ENGINES",
+    "EngineUnavailable",
+    "SceneDetectError",
+    "build_scan_command",
+    "build_select_filter",
+    "detect_scenes",
+    "engine_available",
+    "parse_scene_scores",
+    "resolve_engine",
+    "scan_cuts",
+    "scene_change_scan",
+]
+
+# ffmpeg is always "available" here: its binary is checked at run time and a
+# missing one raises FFmpegNotFound, the same as before engines existed.
+ENGINES: dict[str, dict[str, str]] = {
+    "ffmpeg": {"module": "", "pip": "install ffmpeg on PATH"},
+    "pyscenedetect": {"module": "scenedetect", "pip": "uv pip install -e '.[scene-detect]'"},
+}
+
+# Preference order for ``engine="auto"``. Always ends at an available engine.
+_AUTO_ORDER: tuple[str, ...] = ("pyscenedetect", "ffmpeg")
 
 
-def build_select_filter(threshold: float, stats_file: Path) -> str:
-    """Build the ``select``/``metadata`` scene-scoring filter string.
+def engine_available(name: str) -> bool:
+    """Return True if engine *name* can be attempted on this host."""
+    if name == "ffmpeg":
+        return True
+    if name == "pyscenedetect":
+        return pyscenedetect_engine.is_available()
+    return False
 
-    *stats_file* is filtergraph-escaped: an unescaped Windows drive colon ends
-    the ``file=`` option at ``C``, so ffmpeg errors out and the stats file is
-    never written -- and the caller's ``if stats_file.exists()`` guard then
-    degrades that into a silently empty scene list.
+
+def resolve_engine(requested: str = "auto") -> str:
+    """Resolve an engine name.
+
+    ``"auto"`` prefers PySceneDetect and falls back to ffmpeg. Raises
+    ``ValueError`` for an unknown name and :class:`EngineUnavailable` (with an
+    install hint) for a known engine whose package is missing.
     """
-    t = max(0.0, min(1.0, float(threshold)))
-    return (
-        f"select='gt(scene\\,{t:g})',"
-        f"metadata=print:file={escape_filter_path(stats_file)}"
-    )
+    name = (requested or "auto").strip().lower()
+    if name == "auto":
+        return next(candidate for candidate in _AUTO_ORDER if engine_available(candidate))
+    if name not in ENGINES:
+        raise ValueError(f"Unknown engine '{requested}'. Known: {', '.join(sorted(ENGINES))}, auto.")
+    if not engine_available(name):
+        raise EngineUnavailable(
+            f"Engine '{name}' is selected but not installed. Install it: {ENGINES[name]['pip']}"
+        )
+    return name
 
 
-def build_scan_command(source: Path, threshold: float, stats_file: Path) -> list[str]:
-    """Build the analysis-only scene-detect command."""
-    return [
-        "ffmpeg", "-i", str(source),
-        "-vf", build_select_filter(threshold, stats_file),
-        "-an", "-f", "null", "-",
-    ]
+def scan_cuts(
+    source: Path,
+    *,
+    engine: str = "ffmpeg",
+    threshold: float = 0.4,
+    detector: str = "content",
+    detector_threshold: float | None = None,
+    min_scene_seconds: float = 0.5,
+    start_seconds: float = 0.0,
+    end_seconds: float | None = None,
+) -> tuple[str, list[tuple[float, float]]]:
+    """Return ``(engine_used, [(cut_seconds, score)])``.
+
+    ``threshold`` is ffmpeg's 0..1 knob (ignored by pyscenedetect);
+    ``detector``, ``detector_threshold`` and ``min_scene_seconds`` belong to
+    pyscenedetect (ignored by ffmpeg). Unknown engine or detector names raise
+    ``ValueError``.
+    """
+    if detector not in pyscenedetect_engine.DETECTORS:
+        raise ValueError(
+            f"Unknown detector '{detector}'. Known: {', '.join(pyscenedetect_engine.DETECTORS)}."
+        )
+    engine_used = resolve_engine(engine)
+    if engine_used == "ffmpeg":
+        return engine_used, scan_scene_cuts(Path(source), threshold, start_seconds, end_seconds)
+    try:
+        hits = pyscenedetect_engine.scan_cuts(
+            Path(source),
+            detector=detector,
+            detector_threshold=detector_threshold,
+            min_scene_seconds=min_scene_seconds,
+            start_seconds=start_seconds,
+            end_seconds=end_seconds,
+        )
+    except SceneDetectUnavailable as exc:
+        raise EngineUnavailable(str(exc)) from exc
+    return engine_used, hits
+
+
+def scene_change_scan(
+    engine: str = "ffmpeg",
+    detector: str = "content",
+    detector_threshold: float | None = None,
+):
+    """Return a ``detect_scene_changes(scan=...)`` hook, or None for plain ffmpeg.
+
+    Resolves the engine now, so a bad name or a missing package surfaces before
+    any decoding. The adapter takes the hook because it may not import this layer.
+    """
+    engine_used = resolve_engine(engine)
+    if engine_used == "ffmpeg":
+        return None
+
+    def scan(path, threshold, start, end):
+        return scan_cuts(path, engine=engine_used, threshold=threshold, detector=detector,
+                         detector_threshold=detector_threshold,
+                         start_seconds=start, end_seconds=end)[1]
+
+    return scan
 
 
 def parse_scene_scores(stats_text: str) -> list[dict]:
-    """Parse the metadata dump into ``[{time, score}]`` (score 0..1)."""
-    cuts: list[dict] = []
-    current_time: float | None = None
-    for line in stats_text.splitlines():
-        tm = _TIME_RE.search(line)
-        if tm:
-            current_time = float(tm.group(1))
-            continue
-        sm = _SCORE_RE.search(line)
-        if sm and current_time is not None:
-            cuts.append({
-                "time": round(current_time, 3),
-                "score": round(float(sm.group(1)), 4),
-            })
-            current_time = None
-    return cuts
+    """Parse ``metadata=print`` output into ``[{time, score}]`` (score 0..1)."""
+    return [_cut(t, score) for t, score in _parse_hits(stats_text)]
+
+
+def _cut(time: float, score: float) -> dict:
+    return {"time": round(time, 3), "score": round(score, 4)}
 
 
 def detect_scenes(
     source: Path,
     threshold: float = 0.4,
     dry_run: bool = False,
+    *,
+    engine: str = "ffmpeg",
+    detector: str = "content",
+    detector_threshold: float | None = None,
 ) -> dict:
     """Detect scene cuts in *source*; return cut points and metadata."""
     source = Path(source)
 
-    with tempfile.TemporaryDirectory(prefix="scenedet_") as tmp:
-        stats_file = Path(tmp) / "scenes.txt"
-        cmd = build_scan_command(source, threshold, stats_file)
+    def failure(message: str, error_type: str, engine_name: str = engine) -> dict:
+        return {
+            "success": False,
+            "source": str(source),
+            "threshold": threshold,
+            "engine": engine_name,
+            "error": message,
+            "error_type": error_type,
+        }
 
-        if dry_run:
-            return {"success": True, "source": str(source),
-                    "threshold": threshold, "command": cmd, "cuts": []}
-
+    if dry_run:
         try:
-            proc = subprocess.run(
-                cmd, capture_output=True, text=True, check=False,
-                timeout=_ANALYSIS_TIMEOUT_SECONDS,
-            )
-        except FileNotFoundError:
-            # ffmpeg binary itself missing -- an environment error, not "no cuts".
-            return {
-                "success": False,
-                "source": str(source),
-                "threshold": threshold,
-                "error": "ffmpeg binary not found on PATH.",
-                "error_type": "missing_binary",
-            }
-        stats_text = stats_file.read_text(encoding="utf-8") if stats_file.exists() else ""
+            engine_used = resolve_engine(engine)
+        except EngineUnavailable as exc:
+            return failure(str(exc), "missing_dependency")
+        command = build_scan_command(source, threshold) if engine_used == "ffmpeg" else None
+        return {"success": True, "source": str(source), "threshold": threshold,
+                "engine": engine_used, "command": command, "cuts": []}
 
-        # A nonzero ffmpeg exit means the source could not be decoded -- do NOT
-        # report a false success with zero cuts. Only treat rc==0 (or rc!=0 but
-        # scores were still emitted, which ffmpeg can do at EOF) as analysable.
-        if proc.returncode != 0 and not stats_text.strip():
-            return {
-                "success": False,
-                "source": str(source),
-                "threshold": threshold,
-                "error": (
-                    "scene detection failed to decode the source "
-                    f"(ffmpeg rc={proc.returncode}): {_stderr_tail(proc.stderr)}"
-                ),
-                "error_type": "media_unreadable",
-            }
+    try:
+        engine_used, hits = scan_cuts(
+            source,
+            engine=engine,
+            threshold=threshold,
+            detector=detector,
+            detector_threshold=detector_threshold,
+        )
+    except EngineUnavailable as exc:
+        return failure(str(exc), "missing_dependency")
+    except FFmpegNotFound:
+        # ffmpeg binary itself missing -- an environment error, not "no cuts".
+        return failure("ffmpeg binary not found on PATH.", "missing_binary")
+    except (SceneScanError, SceneDetectError) as exc:
+        # Do NOT report a false success with zero cuts for an undecodable source.
+        return failure(str(exc), "media_unreadable")
 
-    cuts = parse_scene_scores(stats_text)
+    cuts = [_cut(t, score) for t, score in hits]
     return {
         "success": True,
         "source": str(source),
         "threshold": threshold,
+        "engine": engine_used,
         "cut_count": len(cuts),
         "cuts": cuts,
     }
-
-
-def _stderr_tail(stderr: str, max_lines: int = 6) -> str:
-    lines = [ln for ln in (stderr or "").splitlines() if ln.strip()]
-    return "\n".join(lines[-max_lines:])

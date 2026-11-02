@@ -195,19 +195,32 @@ class TestQCScan:
 # ---------------------------------------------------------------------------
 
 class TestSceneDetect:
-    def test_select_filter_uses_threshold(self, tmp_path):
-        f = scene_detect.build_select_filter(0.4, tmp_path / "s.txt")
+    def test_select_filter_uses_threshold(self):
+        f = scene_detect.build_select_filter(0.4)
         assert "select='gt(scene\\,0.4)'" in f
-        assert "metadata=print:file=" in f
+        # Scores go to stderr: no stats-file path ever enters the filtergraph.
+        assert f.endswith("metadata=print")
 
-    def test_select_filter_clamps(self, tmp_path):
-        assert "gt(scene\\,1)" in scene_detect.build_select_filter(5.0, tmp_path / "s.txt")
-        assert "gt(scene\\,0)" in scene_detect.build_select_filter(-1.0, tmp_path / "s.txt")
+    def test_select_filter_clamps(self):
+        assert "gt(scene\\,1)" in scene_detect.build_select_filter(5.0)
+        assert "gt(scene\\,0)" in scene_detect.build_select_filter(-1.0)
 
     def test_scan_command(self, tmp_path):
-        cmd = scene_detect.build_scan_command(tmp_path / "s.mp4", 0.4, tmp_path / "s.txt")
+        cmd = scene_detect.build_scan_command(tmp_path / "s.mp4", 0.4)
         assert any("select=" in c for c in cmd)
+        assert "-ss" not in cmd and "-t" not in cmd
         assert cmd[-3:] == ["-f", "null", "-"]
+
+    def test_scan_command_range(self, tmp_path):
+        cmd = scene_detect.build_scan_command(tmp_path / "s.mp4", 0.4, 2.0, 3.5)
+        assert cmd[cmd.index("-ss") + 1] == "2.0"
+        assert cmd[cmd.index("-t") + 1] == "3.5"
+        assert cmd.index("-ss") < cmd.index("-i") < cmd.index("-t")
+
+    def test_parse_scene_scores_with_log_prefixes(self):
+        s = ("[Parsed_metadata_1 @ 0x7f] frame:0    pts:1000000 pts_time:1\n"
+             "[Parsed_metadata_1 @ 0x7f] lavfi.scene_score=1.000000\n")
+        assert scene_detect.parse_scene_scores(s) == [{"time": 1.0, "score": 1.0}]
 
     def test_parse_scene_scores(self):
         s = ("frame:0    pts:20480   pts_time:2\n"

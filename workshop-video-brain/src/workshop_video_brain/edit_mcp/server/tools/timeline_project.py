@@ -220,11 +220,13 @@ def project_create_working_copy(workspace_path: str) -> dict:
 
 @mcp.tool()
 @tool_guard
-def project_validate(workspace_path: str) -> dict:
+def project_validate(workspace_path: str, load_check: bool = True) -> dict:
     """Validate the latest .kdenlive working copy project file.
 
     Args:
         workspace_path: Path to the workspace root directory.
+        load_check: Also load the file with the real MLT engine and compare what
+            it builds with what we parsed. Falls back to melt without the bindings.
 
     Returns:
         Validation report with summary and list of issues.
@@ -253,7 +255,17 @@ def project_validate(workspace_path: str) -> dict:
         latest = latest_project(kdenlive_files)
         project = parse_project(latest)
         report = validate_project(project, workspace_root=ws_path)
+        load_check_payload = {}
+        if load_check:
+            from workshop_video_brain.edit_mcp.adapters.kdenlive.validator import summarize_items
+            from workshop_video_brain.edit_mcp.adapters.mlt.engine import load_check as run_load_check
+
+            checked = run_load_check(latest, project)
+            report.items.extend(checked.items)
+            report.summary = summarize_items(report.items)
+            load_check_payload = {"load_check": {"engine": checked.engine, "reason": checked.reason}}
         return _ok({
+            **load_check_payload,
             "project_file": str(latest),
             "summary": report.summary,
             "issue_count": len(report.items),

@@ -14,6 +14,9 @@ from workshop_video_brain.edit_mcp.server.errors import (
     tool_guard,
     missing_file,
     missing_binary,
+    missing_dependency,
+    media_unreadable,
+    invalid_input,
     from_exception,
 )
 from workshop_video_brain.edit_mcp.server.tools_helpers import _ok
@@ -179,6 +182,9 @@ def research_detect_scenes(
     end_seconds: float | None = None,
     threshold: float = 0.30,
     minimum_gap_seconds: float = 1.0,
+    engine: str = "ffmpeg",
+    detector: str = "content",
+    detector_threshold: float | None = None,
 ) -> dict:
     """Detect scene changes in a video, optionally within a time range.
 
@@ -188,6 +194,10 @@ def research_detect_scenes(
         end_seconds: Exclusive end of the range to analyze.
         threshold: ffmpeg ``scene`` filter score threshold (0.0-1.0).
         minimum_gap_seconds: Minimum spacing enforced between detections.
+        engine: "ffmpeg" (default), "pyscenedetect", or "auto", which prefers
+            PySceneDetect when the scene-detect extra is installed.
+        detector: PySceneDetect detector: "content", "adaptive" or "threshold".
+        detector_threshold: PySceneDetect's native threshold (library default if omitted).
 
     Returns:
         List of scene-change dicts (timestamp_seconds, score), possibly empty.
@@ -197,15 +207,26 @@ def research_detect_scenes(
         return missing_file(video_path, "video_path")
 
     from workshop_video_brain.edit_mcp.adapters.ffmpeg.scene import detect_scene_changes
+    from workshop_video_brain.edit_mcp.pipelines import scene_detect
 
     try:
+        engine_used = scene_detect.resolve_engine(engine)
+        if detector not in scene_detect.DETECTORS:
+            raise ValueError(f"Unknown detector '{detector}'. Known: {', '.join(scene_detect.DETECTORS)}.")
         changes = detect_scene_changes(
             path,
             start_seconds=start_seconds,
             end_seconds=end_seconds,
             threshold=threshold,
             minimum_gap_seconds=minimum_gap_seconds,
+            scan=scene_detect.scene_change_scan(engine_used, detector, detector_threshold),
         )
+    except scene_detect.EngineUnavailable:
+        return missing_dependency("scenedetect", scene_detect.ENGINES["pyscenedetect"]["pip"])
+    except scene_detect.SceneDetectError as exc:
+        return media_unreadable(video_path, str(exc))
+    except ValueError as exc:
+        return invalid_input(str(exc), suggestion="Pass engine as auto, ffmpeg or pyscenedetect, and detector as content, adaptive or threshold.")
     except FFmpegNotFound as exc:
         return missing_binary("ffmpeg", str(exc))
     except FFmpegTimeout as exc:
@@ -214,4 +235,5 @@ def research_detect_scenes(
     return _ok({
         "scenes": [c.model_dump(mode="json") for c in changes],
         "count": len(changes),
+        "engine": engine_used,
     })

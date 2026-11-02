@@ -313,7 +313,8 @@ class TestExecuteRenderMediaPrecondition:
             Path(job.output_path).write_bytes(b"RENDERED")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-        with patch(f"{EXECUTOR_MOD}.subprocess.run", side_effect=_fake_render) as run:
+        with patch(f"{EXECUTOR_MOD}.verify_render_output", return_value=(1.0, 8)), \
+                patch(f"{EXECUTOR_MOD}.subprocess.run", side_effect=_fake_render) as run:
             result = execute_render(job, profile)
 
         assert result.status == JobStatus.succeeded, result.status
@@ -331,7 +332,8 @@ class TestExecuteRenderMediaPrecondition:
         )
         job = job_for(proj)
 
-        with patch(f"{EXECUTOR_MOD}.subprocess.run") as run:
+        with patch(f"{EXECUTOR_MOD}.verify_render_output", return_value=(1.0, 8)), \
+                patch(f"{EXECUTOR_MOD}.subprocess.run") as run:
             run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             result = execute_render(job, profile)
 

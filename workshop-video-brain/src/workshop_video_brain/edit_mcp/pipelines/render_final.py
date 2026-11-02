@@ -10,6 +10,7 @@ import logging
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
+from uuid import uuid4
 from pathlib import Path
 
 from workshop_video_brain.edit_mcp.adapters.render.media_check import (
@@ -50,17 +51,8 @@ def check_codec_available(codec_name: str) -> bool:
     Returns:
         True if the encoder is available, False otherwise.
     """
-    try:
-        result = subprocess.run(
-            ["ffmpeg", "-codecs"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        return codec_name in result.stdout
-    except Exception:
-        logger.warning("Could not check codec availability", exc_info=True)
-        return False
+    from workshop_video_brain.edit_mcp.adapters.render.executor import check_codec_available as check
+    return check(codec_name)
 
 
 def render_final(
@@ -128,52 +120,33 @@ def render_final(
     renders_dir.mkdir(parents=True, exist_ok=True)
 
     base_name = output_name or profile_name
+    if Path(base_name).name != base_name or base_name in (".", ".."):
+        raise ValueError("output_name must be a filename without directories")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     ext = _extension_for_profile(profile)
-    output_path = renders_dir / f"{base_name}_{timestamp}{ext}"
+    output_path = renders_dir / f"{base_name}_{timestamp}_{uuid4().hex[:8]}{ext}"
 
-    # 5. Build and execute FFmpeg command
-    cmd = _build_render_command(project_path, output_path, profile)
-    logger.info("Render command: %s", " ".join(str(c) for c in cmd))
+    # Preview and final share execution, originals swapping, and artifact tracking.
+    from workshop_video_brain.edit_mcp.pipelines.render_pipeline import run_render
 
-    binary = cmd[0] if cmd else "ffmpeg"
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=_RENDER_TIMEOUT_SECONDS,
-        )
-    except FileNotFoundError as exc:
-        raise RuntimeError(
-            f"Render binary {binary!r} not found on PATH. Install it "
-            f"(e.g. 'apt install ffmpeg' / 'brew install ffmpeg') and retry."
-        ) from exc
-    except subprocess.TimeoutExpired as exc:
-        raise TimeoutError(
-            f"Render timed out after {_RENDER_TIMEOUT_SECONDS:.0f}s for "
-            f"{output_path.name} (project {project_path.name})."
-        ) from exc
-
-    if result.returncode != 0:
-        # Surface the stderr TAIL -- the last lines carry the actual ffmpeg error.
-        tail = "\n".join(
-            ln for ln in result.stderr.splitlines() if ln.strip()
-        )[-800:]
-        raise RuntimeError(
-            f"Render failed (exit {result.returncode}) for {output_path.name}. "
-            f"stderr tail:\n{tail}"
-        )
-
-    # 6. Gather result metadata
-    file_size = output_path.stat().st_size if output_path.exists() else 0
-    duration = _probe_duration(output_path) if output_path.exists() else 0.0
+    job = run_render(
+        workspace_root, project_path, profile_name, mode="final",
+        loaded_profile=profile, output_path=output_path,
+        timeout_seconds=int(_RENDER_TIMEOUT_SECONDS),
+    )
+    if job.status != "succeeded":
+        message = job.error_message or f"Render failed; see {job.log_path}"
+        if job.error_type == "timeout":
+            raise TimeoutError(message)
+        if job.error_type == "missing_file":
+            raise FileNotFoundError(message)
+        raise RuntimeError(message)
 
     return RenderResult(
         output_path=output_path,
         profile_used=profile_name,
-        duration_seconds=duration,
-        file_size_bytes=file_size,
+        duration_seconds=job.duration_seconds,
+        file_size_bytes=job.file_size_bytes,
         codec_info=f"{profile.video_codec} / {profile.audio_codec}",
     )
 
@@ -205,11 +178,7 @@ def _find_latest_project(workspace_root: Path) -> Path:
 
 def _extension_for_profile(profile: RenderProfile) -> str:
     """Determine file extension from profile codec."""
-    codec = profile.video_codec.lower()
-    if "prores" in codec or "dnxh" in codec:
-        return ".mov"
-    return ".mp4"
-
+    return f".{profile.output_extension}"
 
 def _build_render_command(
     project_file: Path,
@@ -238,28 +207,8 @@ def _build_ffmpeg_render_command(
     profile: RenderProfile,
 ) -> list[str]:
     """Build an ffmpeg re-encode command for a direct-media input."""
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i", str(project_file),
-        "-vf", f"scale={profile.width}:{profile.height}",
-        "-r", str(profile.fps),
-        "-c:v", profile.video_codec,
-        "-b:v", profile.video_bitrate,
-        "-c:a", profile.audio_codec,
-        "-b:a", profile.audio_bitrate,
-    ]
-
-    # Fast-start for streaming-friendly output
-    if getattr(profile, "fast_start", False):
-        movflags = getattr(profile, "movflags", "+faststart") or "+faststart"
-        cmd.extend(["-movflags", movflags])
-
-    # Extra args from profile
-    cmd.extend(getattr(profile, "extra_args", []))
-
-    cmd.append(str(output_path))
-    return cmd
+    from workshop_video_brain.edit_mcp.adapters.render.executor import _build_ffmpeg_command
+    return _build_ffmpeg_command(Path(project_file), str(output_path), profile)
 
 
 def _probe_duration(path: Path) -> float:

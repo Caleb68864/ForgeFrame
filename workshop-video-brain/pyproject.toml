@@ -17,6 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+research = ["numpy>=1.26", "Pillow>=10.0", "pytesseract>=0.3"]
 # Local AI mask generation (producing matte videos for Shape Alpha / mask_set).
 # Default engine is the LIGHTEST viable one: rembg on onnxruntime -- CPU-friendly,
 # NO torch (~20 MB runtime + a 4-176 MB model auto-downloaded on first use).
@@ -42,6 +43,21 @@ ai-mask-heavy = [
 # Install: `uv pip install -e '.[motion-track]'`.
 motion-track = [
     "opencv-contrib-python-headless>=4.8",
+]
+# Optional second scene-detection engine (PySceneDetect); ffmpeg stays the default.
+# 0.6.x, not 0.7: 0.7 requires the GUI opencv-python (libGL) and dropped this extra.
+# Installs opencv-python-headless beside motion-track's contrib build. Both own
+# cv2/; the pair was checked at opencv 5.0.0.93 and imports fine with trackers
+# present, but the wheels do overwrite each other's files if their versions differ.
+# Install: `uv pip install -e '.[scene-detect]'`.
+scene-detect = [
+    "scenedetect[opencv-headless]>=0.6.7,<0.7",
+]
+# Optional silence-cut engine; ffmpeg is the no-dependency fallback. A thin launcher
+# that downloads its native binary from GitHub on first run (x86_64 only on Linux).
+# Install: `uv pip install -e '.[auto-editor]'`, then run `auto-editor --version` once.
+auto-editor = [
+    "auto-editor>=29",
 ]
 
 [project.scripts]

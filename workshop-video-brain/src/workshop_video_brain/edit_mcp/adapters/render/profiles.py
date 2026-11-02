@@ -27,9 +27,10 @@ profiles raised ``FileNotFoundError``.
 from __future__ import annotations
 
 from pathlib import Path
+from fractions import Fraction
 
 import yaml
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from workshop_video_brain.core.models._base import SerializableMixin
 from workshop_video_brain.core.template_paths import (
@@ -75,7 +76,9 @@ class RenderProfile(SerializableMixin):
     name: str
     width: int = 1920
     height: int = 1080
-    fps: float = 25.0
+    fps: float = Field(default=25.0, gt=0)
+    frame_rate_num: int | None = Field(default=None, gt=0)
+    frame_rate_den: int | None = Field(default=None, gt=0)
     video_codec: str = "libx264"
     video_bitrate: str = "8M"
     audio_codec: str = "aac"
@@ -102,6 +105,41 @@ class RenderProfile(SerializableMixin):
     #   often pair badly with the default AAC audio codec, and cutout/logo
     #   exports rarely need audio.
     disable_audio: bool = False
+
+    @model_validator(mode="after")
+    def validate_frame_rate(self) -> "RenderProfile":
+        if (self.frame_rate_num is None) != (self.frame_rate_den is None):
+            raise ValueError("frame_rate_num and frame_rate_den must be provided together")
+        return self
+
+    @property
+    def frame_rate(self) -> Fraction:
+        """Exact rate; explicit rational fields take precedence over legacy fps."""
+        if self.frame_rate_num is not None or self.frame_rate_den is not None:
+            if self.frame_rate_num is None or self.frame_rate_den is None:
+                raise ValueError("frame_rate_num and frame_rate_den must be provided together")
+            return Fraction(self.frame_rate_num, self.frame_rate_den)
+        for numerator in (24000, 30000, 60000, 120000):
+            rate = Fraction(numerator, 1001)
+            if abs(self.fps - float(rate)) < 0.001:
+                return rate
+        return Fraction(str(self.fps)).limit_denominator(1000000)
+
+    @property
+    def output_extension(self) -> str:
+        if self.container:
+            value = self.container.lstrip(".").lower()
+            if not value.isalnum():
+                raise ValueError("Render container must be a file extension")
+            return value
+        return "mov" if "prores" in self.video_codec or "dnxh" in self.video_codec else "mp4"
+
+    @property
+    def muxer(self) -> str:
+        """FFmpeg/MLT format names can differ from filename extensions."""
+        return {"mkv": "matroska", "m4v": "ipod", "ts": "mpegts"}.get(
+            self.output_extension, self.output_extension,
+        )
 
 
 def load_profile(

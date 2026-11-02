@@ -157,6 +157,10 @@ Detailed notes (one concept per page) live in `vault/wiki/`:
 - `kdenlive-lumakey-threshold-tuning.md` — lumakey threshold must straddle a luma boundary actually present in the source clip
 - `kdenlive-smoke-test-visible-values.md` — smoke parameter values must produce an unambiguously visible effect, not just a technically-correct subtle one
 - `kdenlive-smoke-verification-checklist.md` — manual-review checklist for every smoke output (what to look for in Kdenlive 25.08.3)
+- `kdenlive-canonical-profile-names.md` — MLT profile names for standard formats, and where the table comes from
+- `kdenlive-av-clip-placement.md` — a clip with audio needs a video and an audio entry; the audio track needs `kdenlive:audio_track=1`, or `kdenlive --render` is silent
+- `melt-render-profile.md` — size a melt render with `-profile`; `width=`/`height=` pillarbox it and can hang it
+- `mlt-python-bindings-worker.md` — the out-of-process MLT worker, its load check, frame grabs and render progress
 - `golden-fixture-testing.md` — testing strategy without launching Kdenlive
 
 ### Hard rules (read before editing the serializer)
@@ -172,6 +176,7 @@ Detailed notes (one concept per page) live in `vault/wiki/`:
 9. **User clip `kdenlive:id` integers start at 4.** 2 is reserved for the "Sequences" bin folder, 3 for the project's main sequence; collisions corrupt the project.
 10. **Title cards use `mlt_service=kdenlivetitle`** with an `xmldata` property holding a `<kdenlivetitle>` document; `kdenlive:clip_type=2` (not 6); `font=` must name a font installed on the host (Windows: `Segoe UI`, Linux: `DejaVu Sans`).
 11. **Effect-prefix dispatch is not uniform.** Kdenlive's effect registry recognises *most* `avfilter.X` services but not all — `avfilter.crop`, `avfilter.curves`, and `avfilter.boxblur` are flagged as missing on load and removed. Substitute native MLT (`crop`, `box_blur`) or frei0r (`frei0r.curves`) equivalents. When in doubt, find the upstream `*.kdenlive` test fixture and copy the service id and full property set verbatim — do not assume an `avfilter.X` will work just because adjacent ones do.
+   Every clip filter also needs a registry `kdenlive_id` (the effect XML's `id=`, not its file name); a missing id is dropped and an unknown id aborts `kdenlive --render`.
 12. **`avfilter.huesaturation` has a silent gate**: `av.strength` defaults to 0 and gates ALL hue/saturation/intensity output. Set `av.strength=1` explicitly or the filter loads, the panel displays your values, and playback shows zero effect.
 13. **`frei0r.curves` reads numbered props 1-15 at render**, not the `kdenlive:curve` string. Setting only the props your curve string references (e.g. 8/9/10/11) flatlines the curve to white because the unset higher-numbered props are read as zeros. Copy ALL 15 numbered props verbatim from a working upstream reference.
 14. **When a media producer is reused at multiple in-points** (audio crossfade, speed ramps, multi-region selects), override `producer.properties["length"]` to cover the maximum out-point of any referencing entry. Otherwise Kdenlive silently drops the over-range entry on load.

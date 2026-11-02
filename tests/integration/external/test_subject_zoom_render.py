@@ -186,6 +186,12 @@ def test_opencv_fallback_tracks_known_path(moving_patch_clip):
     if importlib.util.find_spec("cv2") is None:
         pytest.skip("opencv not installed (motion-track extra) -- fallback test skipped")
 
+    # scene-detect and ai-mask install a cv2 without the contrib trackers.
+    import cv2
+
+    if not hasattr(cv2, "TrackerCSRT_create") and not hasattr(getattr(cv2, "legacy", None), "TrackerCSRT_create"):
+        pytest.skip("this cv2 has no trackers (needs opencv-contrib, the motion-track extra)")
+
     from workshop_video_brain.edit_mcp.pipelines import motion_track as mt
 
     kfs = mt.run_opencv_tracker(

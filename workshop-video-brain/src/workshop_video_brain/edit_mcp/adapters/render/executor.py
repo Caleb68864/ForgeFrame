@@ -6,13 +6,19 @@ returns an updated RenderJob with final status.
 from __future__ import annotations
 
 import logging
+import json
+import os
 import subprocess
+import tempfile
+import xml.etree.ElementTree as ET
+from math import gcd
 from pathlib import Path
 
 from workshop_video_brain.core.models.enums import JobStatus
 from workshop_video_brain.core.models.project import RenderJob
 from workshop_video_brain.edit_mcp.adapters.render.profiles import RenderProfile
 from workshop_video_brain.edit_mcp.adapters.render.jobs import update_job_status
+from workshop_video_brain.edit_mcp.adapters.render.progress import ProgressCallback, RenderProgress
 from workshop_video_brain.edit_mcp.adapters.render.media_check import (
     missing_media,
     missing_media_message,
@@ -27,7 +33,7 @@ DEFAULT_TIMEOUT_SECONDS = 1800
 def check_codec_available(codec_name: str) -> bool:
     """Check if an FFmpeg encoder is available on this system.
 
-    Runs ``ffmpeg -codecs`` and searches for the codec name in the output.
+    Runs ``ffmpeg -encoders`` and searches for the encoder name in the output.
 
     Args:
         codec_name: Encoder name, e.g. "libx264", "prores_ks", "dnxhd".
@@ -37,7 +43,7 @@ def check_codec_available(codec_name: str) -> bool:
     """
     try:
         result = subprocess.run(
-            ["ffmpeg", "-codecs"],
+            ["ffmpeg", "-encoders"],
             capture_output=True,
             text=True,
             timeout=10,
@@ -48,7 +54,7 @@ def check_codec_available(codec_name: str) -> bool:
             parts = line.split()
             if len(parts) >= 2:
                 # The codec name is typically the second token after the flags
-                if codec_name in parts:
+                if codec_name in parts or f"{codec_name})" in parts:
                     return True
         return False
     except FileNotFoundError:
@@ -58,7 +64,7 @@ def check_codec_available(codec_name: str) -> bool:
         return False
     except subprocess.TimeoutExpired:
         logger.warning(
-            "Cannot check codec '%s': ffmpeg -codecs timed out", codec_name
+            "Cannot check codec '%s': ffmpeg -encoders timed out", codec_name
         )
         return False
     except OSError as exc:  # noqa: BLE001 -- best-effort availability probe
@@ -73,11 +79,12 @@ def execute_render(
     profile: RenderProfile,
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
     _command_override: list[str] | None = None,
+    on_progress: ProgressCallback | None = None,
 ) -> RenderJob:
     """Execute a render job.
 
-    Attempts to render using melt first, falls back to ffmpeg if melt is not
-    available. Captures stdout/stderr to the job's log file.
+    Uses melt for Kdenlive XML and FFmpeg for direct media inputs. Captures
+    stdout/stderr to the job's log file.
 
     Args:
         job: RenderJob with project_path, output_path, and log_path set.
@@ -85,12 +92,19 @@ def execute_render(
         timeout_seconds: Maximum time to allow for the render process.
         _command_override: Internal test hook — provide a custom command list
                            to avoid spawning real processes in tests.
+        on_progress: Called with frame positions as they are rendered. Only the
+                     bindings engine (``WVB_RENDER_ENGINE``) reports them.
 
     Returns:
         Updated RenderJob with final status (succeeded or failed).
     """
     # Mark as running
     running_job = update_job_status(job, JobStatus.running)
+    from workshop_video_brain.core.utils.paths import assert_not_protected
+    if running_job.output_path:
+        assert_not_protected(running_job.output_path, "render output")
+    if running_job.log_path:
+        assert_not_protected(running_job.log_path, "render log")
 
     log_path = Path(running_job.log_path) if running_job.log_path else None
     if log_path:
@@ -136,13 +150,23 @@ def execute_render(
 
     logger.info("Render command: %s", " ".join(cmd))
 
+    use_bindings = _command_override is None and _select_render_engine(Path(running_job.project_path)) == "mlt"
+    melt_profile = None
+    if _command_override is None and not use_bindings and cmd[0] == "melt":
+        melt_profile = _write_melt_profile(Path(running_job.project_path), profile.width, profile.height)
+        if melt_profile is not None:
+            cmd = _with_melt_profile(cmd, melt_profile)
+
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-        )
+        if use_bindings:
+            result = _render_with_bindings(running_job, cmd, timeout_seconds, on_progress)
+        else:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+            )
 
         # Write log file
         if log_path:
@@ -155,15 +179,26 @@ def execute_render(
             )
 
         if result.returncode == 0:
+            duration, size = 0.0, 0
+            if _command_override is None:
+                try:
+                    duration, size = verify_render_output(Path(running_job.output_path))
+                except (OSError, ValueError, RuntimeError) as exc:
+                    if log_path:
+                        with log_path.open("a", encoding="utf-8") as log:
+                            log.write(f"\nOutput verification failed: {exc}\n")
+                    return _fail(str(exc), "invalid_output")
             logger.info("Render succeeded: %s", running_job.output_path)
-            return update_job_status(running_job, JobStatus.succeeded)
+            return update_job_status(running_job, JobStatus.succeeded).model_copy(
+                update={"duration_seconds": duration, "file_size_bytes": size},
+            )
         else:
             logger.error(
                 "Render failed (exit %d): ...%s",
                 result.returncode,
                 result.stderr[-500:],
             )
-            return _fail()
+            return _fail(f"Render failed (exit {result.returncode}): {result.stderr[-800:]}", "render_failed")
 
     except subprocess.TimeoutExpired:
         msg = f"Render timed out after {timeout_seconds}s."
@@ -174,7 +209,7 @@ def execute_render(
                 f"TIMEOUT after {timeout_seconds}s\n",
                 encoding="utf-8",
             )
-        return _fail()
+        return _fail(msg, "timeout")
 
     except FileNotFoundError as exc:
         binary = cmd[0] if cmd else "render binary"
@@ -190,7 +225,7 @@ def execute_render(
                 f"ERROR: {msg}\n",
                 encoding="utf-8",
             )
-        return _fail()
+        return _fail(msg, "missing_binary")
 
     except Exception as exc:
         logger.exception("Unexpected render error: %s", exc)
@@ -200,7 +235,11 @@ def execute_render(
                 f"UNEXPECTED ERROR: {exc}\n",
                 encoding="utf-8",
             )
-        return _fail()
+        return _fail(str(exc), "render_failed")
+
+    finally:
+        if melt_profile is not None:
+            melt_profile.unlink(missing_ok=True)
 
 
 def _discard_partial_output(out_path: Path | None, output_preexisted: bool) -> None:
@@ -220,6 +259,84 @@ def _discard_partial_output(out_path: Path | None, output_preexisted: bool) -> N
             )
     except OSError as exc:  # pragma: no cover - defensive
         logger.warning("Could not remove partial render output %s: %s", out_path, exc)
+
+
+def _write_melt_profile(project_path: Path, width: int, height: int) -> Path | None:
+    """Write a temporary MLT profile: the render's size at the project's frame rate.
+
+    ``melt -profile`` is the only way to size a render correctly. ``width=`` and
+    ``height=`` consumer properties make melt render through its default profile,
+    which pillarboxes the picture and shifts its colours. Combined with a project
+    rate other than 25 fps they hang it outright, and melt has no real frame rate
+    conversion, so the render keeps the project's rate.
+    Returns None for a project with no readable ``<profile>``.
+    """
+    try:
+        source = ET.parse(project_path).getroot().find("profile")
+        rate_num, rate_den = int(source.get("frame_rate_num")), int(source.get("frame_rate_den"))
+    except (ET.ParseError, OSError, AttributeError, TypeError, ValueError):
+        return None
+    divisor = gcd(width, height) or 1
+    handle, name = tempfile.mkstemp(prefix="wvb-render-", suffix=".mltprofile")
+    with os.fdopen(handle, "w", encoding="utf-8") as profile_file:
+        profile_file.write(
+            f"description=ForgeFrame render\nframe_rate_num={rate_num}\nframe_rate_den={rate_den}\n"
+            f"width={width}\nheight={height}\nprogressive=1\nsample_aspect_num=1\nsample_aspect_den=1\n"
+            f"display_aspect_num={width // divisor}\ndisplay_aspect_den={height // divisor}\n"
+            f"colorspace={source.get('colorspace') or '709'}\n"
+        )
+    return Path(name)
+
+
+def _with_melt_profile(cmd: list[str], profile_path: Path) -> list[str]:
+    """Replace a melt command's size and rate properties with ``-profile``."""
+    dropped = ("width=", "height=", "frame_rate_num=", "frame_rate_den=")
+    kept = [token for token in cmd[1:] if not token.startswith(dropped)]
+    return [cmd[0], "-profile", str(profile_path), *kept]
+
+
+def _select_render_engine(project_path: Path) -> str:
+    """Pick the engine for a project: ``mlt`` only when asked for, and only for .kdenlive."""
+    from workshop_video_brain.edit_mcp.adapters.mlt import engine
+
+    requested = os.environ.get("WVB_RENDER_ENGINE", "melt").strip().lower()
+    if project_path.suffix.lower() != ".kdenlive":
+        return "melt"
+    if requested == "mlt" or (requested == "auto" and engine.find_mlt_python() is not None):
+        return "mlt"
+    return "melt"
+
+
+def _melt_consumer_props(cmd: list[str]) -> dict[str, str]:
+    """The ``key=value`` consumer properties of a melt command, so both engines get the same."""
+    start = next(index for index, token in enumerate(cmd) if token.startswith("avformat:")) + 1
+    return dict(token.split("=", 1) for token in cmd[start:] if "=" in token)
+
+
+def _render_with_bindings(
+    job: RenderJob,
+    cmd: list[str],
+    timeout_seconds: int,
+    on_progress: ProgressCallback | None,
+) -> subprocess.CompletedProcess:
+    """Render through the MLT worker, shaped like the melt call it stands in for."""
+    from workshop_video_brain.edit_mcp.adapters.mlt import engine
+
+    def forward(event: dict) -> None:
+        if on_progress is None or event.get("event") != "progress":
+            return
+        frame, total = int(event.get("frame", 0)), int(event.get("total", 0))
+        percent = min(100.0, 100.0 * (frame + 1) / total) if total else 0.0
+        on_progress(RenderProgress(frame=frame, total_frames=total, percent=percent, engine="mlt"))
+
+    args = {"path": str(job.project_path), "out": str(job.output_path), "props": _melt_consumer_props(cmd)}
+    try:
+        _result, stderr = engine.run_streaming_worker("render", args, timeout=timeout_seconds, on_event=forward)
+    except engine.MltWorkerError as exc:
+        return subprocess.CompletedProcess(cmd, 1, "", f"{exc}\n{exc.stderr_tail}")
+    except engine.MltUnavailable as exc:
+        return subprocess.CompletedProcess(cmd, 1, "", str(exc))
+    return subprocess.CompletedProcess(cmd, 0, "", stderr)
 
 
 def _build_command(job: RenderJob, profile: RenderProfile) -> list[str]:
@@ -280,9 +397,14 @@ def _build_melt_command(
     cmd.extend([
         f"width={profile.width}",
         f"height={profile.height}",
-        f"frame_rate_num={int(profile.fps)}",
-        "frame_rate_den=1",
+        f"frame_rate_num={profile.frame_rate.numerator}",
+        f"frame_rate_den={profile.frame_rate.denominator}",
     ])
+
+    if profile.container:
+        cmd.append(f"f={profile.muxer}")
+    if profile.fast_start or profile.movflags:
+        cmd.append(f"movflags={profile.movflags or '+faststart'}")
 
     # Extra raw consumer properties (container format, encoder profile, ...).
     cmd.extend(profile.melt_args)
@@ -304,7 +426,7 @@ def _build_ffmpeg_command(
         "-vf",
         f"scale={profile.width}:{profile.height}",
         "-r",
-        str(profile.fps),
+        str(profile.frame_rate),
         "-c:v",
         profile.video_codec,
         "-b:v",
@@ -315,8 +437,39 @@ def _build_ffmpeg_command(
         profile.audio_bitrate,
     ]
 
+    if profile.disable_audio:
+        audio_index = cmd.index("-c:a")
+        del cmd[audio_index:audio_index + 4]
+        cmd.append("-an")
+    if profile.pix_fmt:
+        cmd.extend(["-pix_fmt", profile.pix_fmt])
+    if profile.fast_start or profile.movflags:
+        cmd.extend(["-movflags", profile.movflags or "+faststart"])
+    if profile.container:
+        cmd.extend(["-f", profile.muxer])
     # Append extra args from the profile
     cmd.extend(profile.extra_args)
     cmd.append(output_path)
 
     return cmd
+
+
+def verify_render_output(path: Path) -> tuple[float, int]:
+    """Require a nonempty, probeable artifact with a positive duration."""
+    size = path.stat().st_size
+    if size <= 0:
+        raise ValueError(f"Render output is empty: {path}")
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", str(path)],
+        capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode:
+        raise RuntimeError(f"Cannot probe render output: {result.stderr[-800:]}")
+    try:
+        data = json.loads(result.stdout)
+        duration = float(data.get("format", {}).get("duration", 0))
+        if not data.get("streams") or not 0 < duration < float("inf"):
+            raise ValueError("Render output has no streams or positive finite duration")
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("Invalid ffprobe metadata for render output") from exc
+    return duration, size

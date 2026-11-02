@@ -53,3 +53,5 @@ nothing visually until the user manually drags the strength slider.
 
 - [[kdenlive-color-producer-pattern]]
 - [[kdenlive-test-suite-coverage-audit]]
+
+See also [mlt-service-registry-vs-kdenlive-registry](mlt-service-registry-vs-kdenlive-registry.md): MLT's registry contains these services, so it cannot catch this.

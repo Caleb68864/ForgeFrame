@@ -82,31 +82,36 @@ def clip_insert(
         latest = latest_project(kdenlive_files)
         project = parse_project(latest)
 
-        fps = project.profile.fps or 25.0
+        project_fps = project.profile.fps or 25.0
 
         # Probe media for duration/fps via the canonical ffprobe adapter
         # (best-effort: a missing binary or unreadable file falls back to the
         # project fps and a single-frame out-point, as before).
         duration_seconds: float | None = None
+        has_audio = False
         try:
             from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
             asset = probe_media(media_file)
+            has_audio = asset.channels > 0 or bool(asset.audio_codec)
             if asset.duration > 0:
                 duration_seconds = asset.duration
-            if asset.fps > 0:
-                fps = asset.fps
         except Exception:  # noqa: BLE001 -- documented best-effort probe
             pass
 
+        producer_length = (
+            seconds_to_frames(duration_seconds, project_fps)
+            if duration_seconds is not None else 0
+        )
+
         # Convert seconds to frames (half-up, canonical helper)
-        in_frame = seconds_to_frames(in_seconds, fps)
+        in_frame = seconds_to_frames(in_seconds, project_fps)
         if out_seconds < 0:
             if duration_seconds is not None:
-                out_frame = seconds_to_frames(duration_seconds, fps) - 1
+                out_frame = seconds_to_frames(duration_seconds, project_fps) - 1
             else:
                 out_frame = in_frame  # fallback: single frame
         else:
-            out_frame = seconds_to_frames(out_seconds, fps)
+            out_frame = seconds_to_frames(out_seconds, project_fps)
 
         # Find first video playlist to insert into
         audio_playlist_ids = {t.id for t in project.tracks if t.track_type == "audio"}
@@ -133,9 +138,66 @@ def clip_insert(
             out_point=out_frame,
             position=position,
             source_path=str(media_file),
+            producer_length=producer_length,
         )
+        audio_playlist = next(
+            (playlist for playlist in project.playlists
+             if any(track.id == playlist.id and track.track_type == "audio" for track in project.tracks)),
+            None,
+        )
+        audio_placed = False
+        intents = [intent]
+        if has_audio and audio_playlist is not None:
+            audio_position = -1
+            audio_alignment = video_playlist.id
+            can_align_append = True
+            if position < 0:
+                video_length = sum(max(0, e.out_point - e.in_point + 1) for e in video_playlist.entries)
+                audio_length = sum(max(0, e.out_point - e.in_point + 1) for e in audio_playlist.entries)
+                if audio_length > video_length:
+                    can_align_append = False
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "clip_insert: audio playlist ends at frame %d after video frame %d; placing video only",
+                        audio_length, video_length,
+                    )
+            if position >= 0:
+                video_entries = video_playlist.entries
+                insertion_index = min(position, len(video_entries))
+                start_frame = sum(max(0, e.out_point - e.in_point + 1) for e in video_entries[:insertion_index])
+                cursor = 0
+                audio_position = -1
+                for index, entry in enumerate(audio_playlist.entries):
+                    if cursor == start_frame:
+                        audio_position = index
+                        break
+                    cursor += max(0, entry.out_point - entry.in_point + 1)
+                if cursor == start_frame and audio_position < 0:
+                    audio_position = len(audio_playlist.entries)
+                if audio_position < 0:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "clip_insert: no audio entry begins at video insertion frame %d; placing video only",
+                        start_frame,
+                    )
+                else:
+                    audio_alignment = ""
+            if (position < 0 and can_align_append) or audio_position >= 0:
+                audio_intent = AddClip(
+                    producer_id=producer_id,
+                    track_ref=audio_playlist.id,
+                    track_id=audio_playlist.id,
+                    in_point=in_frame,
+                    out_point=out_frame,
+                    position=audio_position,
+                    source_path=str(media_file),
+                    producer_length=producer_length,
+                    align_with_track=audio_alignment,
+                )
+                intents.append(audio_intent)
+                audio_placed = True
 
-        patched, report = patch_project(project, [intent], with_report=True)
+        patched, report = patch_project(project, intents, with_report=True)
         if report.all_skipped:
             return err(
                 "clip_insert applied no changes: "
@@ -151,7 +213,10 @@ def clip_insert(
             "producer_id": producer_id,
             "in_frame": in_frame,
             "out_frame": out_frame,
+            "producer_length": producer_length,
             "playlist_id": video_playlist.id,
+            "audio_playlist_id": audio_playlist.id if audio_playlist else "",
+            "audio_placed": audio_placed,
             "position": position,
             "skipped_intents": report.skipped,
         })

@@ -2691,5 +2691,14 @@ def catalog_regenerate_wrappers(output: str | None, force: bool) -> None:
     click.echo(f"Wrote {out}: {len(effects)} wrapper modules")
 
 
+from workshop_video_brain.app.jobs_cli import register_commands as _register_jobs
+from workshop_video_brain.app.discovery_cli import register_commands as _register_discovery
+from workshop_video_brain.app.workflow_cli import register_commands as _register_workflow
+
+_register_jobs(main)
+_register_discovery(main)
+_register_workflow(main)
+
+
 if __name__ == "__main__":
     main()

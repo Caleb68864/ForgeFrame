@@ -54,7 +54,7 @@ jobs:
       - name: Install melt / ffmpeg / frei0r / xvfb
         run: |
           sudo apt-get update
-          sudo apt-get install -y melt ffmpeg frei0r-plugins xvfb
+          sudo apt-get install -y melt ffmpeg frei0r-plugins xvfb python3-mlt
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
@@ -67,4 +67,17 @@ jobs:
       # silently skips -- the whole point of the external tier in CI.
       - name: Install ai-mask extra (rembg)
         run: uv pip install rembg onnxruntime
+      # PySceneDetect's engine tests are skipif-gated on the scene-detect extra.
+      # Its headless cv2 is the same wheel rembg pulls, so install order is free.
+      - name: Install scene-detect extra
+        run: |
+          uv pip install 'scenedetect[opencv-headless]>=0.6.7,<0.7'
+          uv run python -c "import cv2, scenedetect"
+      # The second command fetches auto-editor's native binary, so it needs network.
+      - name: Install auto-editor extra
+        run: |
+          uv pip install 'auto-editor>=29'
+          uv run auto-editor --version
       - run: xvfb-run -a uv run pytest tests/ -q -rfEs
+        env:
+          WVB_MLT_PYTHON: /usr/bin/python3

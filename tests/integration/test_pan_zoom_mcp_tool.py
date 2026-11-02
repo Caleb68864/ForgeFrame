@@ -95,7 +95,7 @@ def test_preset_zoom_in_writes_keyframed_transform_filter(tmp_path):
     assert data["end_rect"] == [384.0, 216.0, 1152.0, 648.0]
     assert data["duration_frames"] == 300
     assert data["mlt_service"] == "affine"
-    assert data["kdenlive_id"] == "transform"
+    assert data["kdenlive_id"] == "pan_zoom"
     # affine reads transition.rect (a bare `rect` is a no-op on this MLT build).
     assert data["property"] == "transition.rect"
     assert "i=" in data["keyframes_written"]  # cubic_in_out operator
@@ -108,11 +108,12 @@ def test_preset_zoom_in_writes_keyframed_transform_filter(tmp_path):
         f
         for e in root.iter("entry")
         for f in e.findall("filter")
-        if _props(f).get("kdenlive_id") == "transform"
+        if "affine" in (f.get("mlt_service"), _props(f).get("mlt_service"))
     ]
-    # fixture already had one transform filter; the tool adds a second.
+    # fixture already had one affine filter; the tool adds a second.
     assert len(nested_transforms) == 2
     new = nested_transforms[-1]
+    assert _props(new)["kdenlive_id"] == "pan_zoom"
     # The tool now writes the render-correct `transition.rect` property.
     parsed = parse_keyframe_string("rect", _props(new)["transition.rect"], fps=30.0)
     assert [k.frame for k in parsed] == [0, 300]

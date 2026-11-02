@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from workshop_video_brain.core.models.markers import Marker, MarkerConfig
 from workshop_video_brain.core.models.media import MediaAsset
 from workshop_video_brain.edit_mcp.pipelines._common import seconds_to_frames
+from workshop_video_brain.edit_mcp.pipelines.project_profile import profile_from_media
 from workshop_video_brain.core.models.kdenlive import (
     Guide,
     KdenliveProject,
@@ -122,6 +123,7 @@ def build_selects_timeline(
     selects: list[SelectsEntry],
     assets: list[MediaAsset],
     workspace_root: Path,
+    profile: ProjectProfile | None = None,
 ) -> Path:
     """Build a Kdenlive project containing only selected segments.
 
@@ -136,10 +138,15 @@ def build_selects_timeline(
     workspace_root = Path(workspace_root)
     asset_map = _build_asset_map(assets)
 
+    if profile is None:
+        profile = profile_from_media(
+            (asset_map[e.clip_ref].path if e.clip_ref in asset_map else e.clip_ref) for e in selects
+        )
+
     project = KdenliveProject(
         version="7",
         title="Selects Timeline",
-        profile=ProjectProfile(width=1920, height=1080, fps=25.0, colorspace="709"),
+        profile=profile,
     )
 
     video_track = Track(id="playlist_video", track_type="video", name="Video")
@@ -199,3 +206,64 @@ def build_selects_timeline(
 
     title_slug = slugify("selects_timeline") or "selects_timeline"
     return serialize_versioned(project, workspace_root, title_slug)
+
+
+def build_ranges_project(
+    source: Path,
+    ranges: list[tuple[float, float]],
+    *,
+    profile: ProjectProfile | None = None,
+    has_audio: bool = True,
+    title: str = "Jump Cut",
+    guides: list[Guide] | None = None,
+    source_frames: int = 0,
+) -> KdenliveProject:
+    """Build a project playing half-open ``[start, end)`` source ranges back to back.
+
+    Audio entries mirror the video entries, so each pair starts on the same
+    timeline frame. ``source_frames`` is the source's total length, if known; the
+    producer's length covers it and every out-point (hard rule 14).
+    """
+    if profile is None:
+        profile = profile_from_media([source])
+    fps = profile.fps
+    resource = Path(source).as_posix()
+    producer = Producer(id="producer_0", resource=resource, properties={"resource": resource})
+
+    spans = []
+    for start, end in ranges:
+        in_point = seconds_to_frames(start, fps)
+        out_point = seconds_to_frames(end, fps) - 1
+        if out_point >= in_point:
+            spans.append((in_point, out_point))
+    producer.properties["length"] = str(max([source_frames, *(out + 1 for _in, out in spans)]))
+
+    def entries() -> list[PlaylistEntry]:
+        return [PlaylistEntry(producer_id=producer.id, in_point=i, out_point=o) for i, o in spans]
+
+    tracks = [Track(id="playlist_video", track_type="video", name="Video")]
+    playlists = [Playlist(id="playlist_video", entries=entries())]
+    if has_audio:
+        tracks.append(Track(id="playlist_audio", track_type="audio", name="Audio"))
+        playlists.append(Playlist(id="playlist_audio", entries=entries()))
+    return KdenliveProject(
+        version="7",
+        title=title,
+        profile=profile,
+        producers=[producer],
+        tracks=tracks,
+        playlists=playlists,
+        guides=list(guides or []),
+    )
+
+
+def cut_guides(project: KdenliveProject) -> list[Guide]:
+    """Guides on the **timeline** frames where two ranges meet, labelled ``cut N``."""
+    if not project.playlists:
+        return []
+    guides: list[Guide] = []
+    frame = 0
+    for number, entry in enumerate(project.playlists[0].entries[:-1], start=1):
+        frame += entry.out_point - entry.in_point + 1
+        guides.append(Guide(position=frame, label=f"cut {number}"))
+    return guides

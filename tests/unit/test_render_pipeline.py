@@ -116,14 +116,15 @@ class TestListRenders:
         registry = RenderArtifactRegistry(tmp_path)
         assert registry.list_renders() == []
 
-    def test_corrupt_yaml_returns_empty_list(self, tmp_path):
+    def test_corrupt_yaml_raises_without_discarding_registry(self, tmp_path):
         renders_dir = tmp_path / "renders"
         renders_dir.mkdir(parents=True)
         (renders_dir / "render_registry.yaml").write_text(
             "!!python/object:builtins.eval", encoding="utf-8"
         )
         registry = RenderArtifactRegistry(tmp_path)
-        assert registry.list_renders() == []
+        with pytest.raises(ValueError, match="Cannot read render registry"):
+            registry.list_renders()
 
     def test_corrupt_entry_skipped_valid_entry_returned(self, tmp_path):
         job_id = uuid.uuid4()
@@ -225,13 +226,19 @@ class TestListRendersConvenience:
 
 
 class TestRunRender:
+    @pytest.fixture(autouse=True)
+    def original_media_preparation(self, monkeypatch):
+        monkeypatch.setattr("workshop_video_brain.edit_mcp.pipelines.proxy_wiring.originals_render_copy",
+                            lambda path, dest: path)
+
     @patch(f"{RENDER_MOD}.execute_render")
     @patch(f"{RENDER_MOD}.create_render_job")
     @patch(f"{RENDER_MOD}.load_profile")
     def test_run_render_returns_completed_job(
         self, mock_load_profile, mock_create_job, mock_execute_render, tmp_path
     ):
-        mock_profile = MagicMock()
+        from workshop_video_brain.edit_mcp.adapters.render.profiles import RenderProfile
+        mock_profile = RenderProfile(name="preview")
         mock_load_profile.return_value = mock_profile
 
         job = make_render_job(tmp_path)
@@ -249,7 +256,8 @@ class TestRunRender:
     def test_run_render_registers_job_twice(
         self, mock_load_profile, mock_create_job, mock_execute_render, tmp_path
     ):
-        mock_load_profile.return_value = MagicMock()
+        from workshop_video_brain.edit_mcp.adapters.render.profiles import RenderProfile
+        mock_load_profile.return_value = RenderProfile(name="preview")
         job = make_render_job(tmp_path)
         mock_create_job.return_value = job
 
@@ -268,7 +276,8 @@ class TestRunRender:
     def test_run_render_calls_load_profile_with_correct_name(
         self, mock_load_profile, mock_create_job, mock_execute_render, tmp_path
     ):
-        mock_load_profile.return_value = MagicMock()
+        from workshop_video_brain.edit_mcp.adapters.render.profiles import RenderProfile
+        mock_load_profile.return_value = RenderProfile(name="preview")
         job = make_render_job(tmp_path)
         mock_create_job.return_value = job
         mock_execute_render.return_value = job
@@ -285,7 +294,8 @@ class TestRunRender:
     def test_run_render_calls_create_render_job_with_correct_args(
         self, mock_load_profile, mock_create_job, mock_execute_render, tmp_path
     ):
-        mock_load_profile.return_value = MagicMock()
+        from workshop_video_brain.edit_mcp.adapters.render.profiles import RenderProfile
+        mock_load_profile.return_value = RenderProfile(name="preview")
         job = make_render_job(tmp_path)
         mock_create_job.return_value = job
         mock_execute_render.return_value = job
@@ -303,7 +313,8 @@ class TestRunRender:
     def test_run_render_calls_execute_render(
         self, mock_load_profile, mock_create_job, mock_execute_render, tmp_path
     ):
-        mock_load_profile.return_value = MagicMock()
+        from workshop_video_brain.edit_mcp.adapters.render.profiles import RenderProfile
+        mock_load_profile.return_value = RenderProfile(name="preview")
         job = make_render_job(tmp_path)
         mock_create_job.return_value = job
         mock_execute_render.return_value = job
@@ -315,13 +326,16 @@ class TestRunRender:
     @patch(f"{RENDER_MOD}.execute_render")
     @patch(f"{RENDER_MOD}.create_render_job")
     @patch(f"{RENDER_MOD}.load_profile")
-    def test_run_render_propagates_executor_exception(
+    def test_run_render_records_executor_exception(
         self, mock_load_profile, mock_create_job, mock_execute_render, tmp_path
     ):
-        mock_load_profile.return_value = MagicMock()
+        from workshop_video_brain.edit_mcp.adapters.render.profiles import RenderProfile
+        mock_load_profile.return_value = RenderProfile(name="preview")
         job = make_render_job(tmp_path)
         mock_create_job.return_value = job
         mock_execute_render.side_effect = RuntimeError("executor failed")
 
-        with pytest.raises(RuntimeError, match="executor failed"):
-            run_render(tmp_path, tmp_path / "project.kdenlive", "preview")
+        result = run_render(tmp_path, tmp_path / "project.kdenlive", "preview")
+        assert result.status == "failed"
+        assert "executor failed" in result.error_message
+        assert list_renders(tmp_path)[0].status == "failed"

@@ -49,7 +49,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers import (
 )
 
 _MLT_SERVICE = "affine"
-_KDENLIVE_ID = "transform"
+_KDENLIVE_ID = "pan_zoom"
 # The MLT ``affine`` filter reads the keyframed rect from ``transition.rect``
 # (a *destination* placement rect, emitted by motion_track.region_to_transform_rect).
 # Verified against a real melt render in the §5 render-proof test.

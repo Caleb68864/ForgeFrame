@@ -1,6 +1,6 @@
 ---
 date: 2026-04-08
-updated: 2026-04-09
+updated: 2026-10-13
 topic: "ForgeFrame Feature Roadmap"
 author: Caleb Bennett
 status: active
@@ -80,6 +80,117 @@ Gaps identified by comparing ForgeFrame capabilities against the video-editing-g
 
 9. **Project Archive Tool** (`project_archive`)
    Bundle workspace + renders + project file into dated archive. Supports "months later" editability goal from the handbook.
+
+## Next Step: Kdenlive 26.08 Compatibility Fixes (2026-10-14)
+
+Do this first, before the media MCP expansion phases
+(`docs/plans/2026-10-13-media-mcp-expansion.md`). Evidence:
+`docs/testing/2026-10-13-kdenlive-2608-differential.md` -- rendering the
+`scripts/kdenlive_check_pack.py` projects with `kdenlive --render` (Kdenlive
+26.08.2, headless) vs `melt` shows Kdenlive silently dropping generated content.
+
+1. **Automate the differential.** **Done** (`5724bb7`, 21 cases, all passing 2026-11-02). A `requires_kdenlive` external test that
+   builds the check pack, renders each project with `xvfb-run -a kdenlive
+   --render` and with melt, and asserts matching frames/duration/audio
+   (PSNR threshold, non-silent audio). Add a `requires_kdenlive` mark to
+   `tests/_testkit.py`; optionally install Kdenlive in CI `full`.
+2. **Audio is lost on insert.** **Done 2026-10-14.** `clip_insert` now places
+   audio-bearing media on the first audio playlist at the same timeline frame,
+   and reports the target and placement status. Speed and dissolve edits keep
+   paired starts aligned; `audio_fade` targets the audio entry and emits
+   Kdenlive's native fade identity. **Completed 2026-11-02:** the render proof that
+   was blocked in October showed Kdenlive still silent (-91 dB). Audio tracks now
+   carry `kdenlive:audio_track=1`, and a speed clip gets one producer per track.
+   Kdenlive and melt both measure -24.1 dB and all 21 differential cases pass.
+   Other move/trim intents are still known sync gaps.
+3. **Effects dropped by Kdenlive.** **Done 2026-10-14; render-verified 2026-11-02 (PSNR 36.65, edge energy 0.72 -> 0.50).** A missing `kdenlive_id` makes Kdenlive drop a clip filter; an unknown id aborts `kdenlive --render`; the effect XML file name is not the registry id. The `effect_identity.normalize_effect_id` resolver and serializer safety net normalize known ids and remove unknown ones. See `vault/wiki/kdenlive-avfilter-and-effect-zones.md`.
+4. ~~**Dissolves dropped by Kdenlive.**~~ **Done 2026-10-14.** Not dropped but
+   hidden: the luma targeted the background (`a_track=0`) and was planted after
+   the track compositors, and the left clip was stretched past its media. Now
+   matches Kdenlive's own layout; Kdenlive and melt render the same dissolve.
+   See `vault/wiki/kdenlive-cross-dissolve-pattern.md`.
+5. ~~**Hard-rule violations in generated XML:** media and sequence IDs collide
+   with reserved IDs, media `main_bin` entries have `out="0"`, timeline entries
+   lack IDs, and speed variants appear in the bin.~~ **Done 2026-10-14.** IDs,
+   effective lengths, and timeline entry IDs now follow the native pattern.
+   Speed and timeremap variants share their source ID and stay out of `main_bin`.
+6. **GUI pass.** Open `kdenlive-check-pack/*.kdenlive` in Kdenlive 26.08, record
+   any load dialogs verbatim (`CHECKLIST.md`), save clean ones as native 26.08
+   reference fixtures, then rewrite the CLAUDE.md "Hard rules" (still 25.x
+   twin-chain wording) to the 26.x contract.
+7. **Adopt `kdenlive --verify-file`** (Kdenlive master: headless load +
+   `KdenliveDoc::checkConsistency()`) as a validator backend once it ships in a
+   release. Checked 2026-11-02: Kdenlive 26.08.2 lacks the flag, so this stays parked.
+
+Done when every check-pack step matches between Kdenlive and melt, audio is
+audible, and the GUI pass shows no dialogs.
+
+## Reliability and Guided Workflow (2026-10-13)
+
+Execute these priorities in order. Independent research and implementation may
+run in parallel; integrate dependencies in this order. Completion means the
+behavior is available through documented user entry points, not only helpers.
+
+1. **Unify preview and final rendering** — implemented, validated 2026-11-02. Use one executor and
+   artifact registry; preserve rational frame rates, honor profile containers,
+   verify output streams/duration, clean partial outputs, and render originals
+   rather than proxies for full-quality exports.
+2. **Validate serialized Kdenlive XML** — implemented, compatibility follow-up below. Check the emitted
+   document before writes, with actionable errors for identity, references,
+   producer ranges, track structure, and the supported document shapes.
+3. **Persistent jobs for long operations** — implemented, validated 2026-11-02. Return job IDs immediately
+   for render, proxy generation, and transcription; persist status/progress/logs,
+   support cancellation, and expose recovery after restart.
+4. **Central safe file writes** — implemented, validated 2026-11-02. Share resolved protected-path checks,
+   mandatory snapshots before project replacement, validation, atomic writes,
+   and concurrency protection across project/manifest/registry writes.
+5. **Capability discovery and installation** — implemented, validated 2026-11-02. Generate the tool/skill
+   catalog from implementation metadata, align both package extras, refresh
+   installation guidance, and add `wvb doctor` for binaries, encoders, effects,
+   optional engines, and model readiness.
+6. **Guided project workflow** — implemented, validated 2026-11-02. Report readiness, missing artifacts,
+   and the next action; offer a resumable footage → selects → assembly → preview
+   → review workflow that pins project versions and explains clip choices.
+
+### Implementation notes and follow-up
+
+- Both render paths now use the executor and artifact registry. Rational rates,
+  profile containers/muxers, original-media selection, output verification,
+  failed-output cleanup, and unique filenames are shared.
+- XML checks run against the final tree and staged file before replacement.
+  **Compatibility remains unresolved:** `AGENTS.md` requires Kdenlive 25.x twin
+  chains, but the existing serializer and `tests/unit/test_serializer_eshape.py`
+  describe the GUI-confirmed Kdenlive 26.04 E shape (single media producers and
+  different bin identity rules). This change preserves existing output and
+  validates rules appropriate to each detected shape; it does not establish
+  25.x conformance. Confirm the supported version and reconcile the contract
+  with native fixtures before a format migration.
+- `wvb jobs submit/list/status/cancel/retry` and equivalent MCP tools persist
+  detached render/proxy/transcription/workflow operations in SQLite. Currently
+  Linux/macOS only; one detached writer per workspace. Progress describes stages
+  and assets, rather than frame-level render percentages. Synchronous APIs remain
+  available and must not be used concurrently to mutate the same workspace.
+  Restarted workers are reconciled on job inspection; interrupted jobs require
+  explicit retry, and live orphan children prevent unsafe reuse of outputs.
+- Project writes, version allocation, manifests, restores, render registry, and
+  new workflow reports share resolved path guards and atomic write/lock support.
+  Existing project replacement aborts if snapshot creation fails.
+- `wvb doctor`, `wvb capabilities`, and corresponding MCP tools expose host
+  availability and registration metadata. All four extras match both package
+  roots and both dependency lockfiles have been regenerated.
+  `docs/capabilities.md` is generated; regenerate when tools/skills change.
+- `wvb project-status` and `wvb workflow --through review` expose resumable,
+  version-pinned first cuts with clip-selection explanations. The initial
+  workflow expects speech transcripts and script steps in `reports/script.json`;
+  silent footage still needs manual planning. Review prepares a checklist and
+  leaves editorial approval to the creator.
+
+Validation 2026-11-02: every CLI and job entry point was run on a synthetic
+workspace; see `docs/testing/2026-11-02-reliability-runtime-validation.md`.
+`tests/integration/test_reliability_cli.py` (8 cases) now covers the CLI, a real
+render job, and cancelling a running render with a real worker. Limits that remain:
+detached jobs are POSIX only, progress is per stage rather than per frame, and
+opening generated projects in the Kdenlive GUI is still outstanding (prompt 06).
 
 ## Skip For Now
 - **Tool-Aware Editing** -- Computer vision for tool detection. Requires CV models.

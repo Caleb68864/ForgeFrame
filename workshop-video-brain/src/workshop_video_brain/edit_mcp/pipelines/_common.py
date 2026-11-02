@@ -109,6 +109,12 @@ def make_filter_element_xml(
     (svc + kid + props); ``False`` matches the zoom-whip shape (kid + props only).
     """
     track, clip = clip_ref
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.effect_identity import (
+        normalize_effect_id,
+    )
+
+    prop_names = [name for name, _ in props]
+    resolved_id = normalize_effect_id(mlt_service, kdenlive_id, prop_names)
     root = ET.Element(
         "filter",
         {
@@ -120,8 +126,9 @@ def make_filter_element_xml(
     if include_service_prop:
         svc = ET.SubElement(root, "property", {"name": "mlt_service"})
         svc.text = mlt_service
-    kid = ET.SubElement(root, "property", {"name": "kdenlive_id"})
-    kid.text = kdenlive_id
+    if resolved_id is not None:
+        kid = ET.SubElement(root, "property", {"name": "kdenlive_id"})
+        kid.text = resolved_id
     for name, value in props:
         el = ET.SubElement(root, "property", {"name": name})
         el.text = str(value)
@@ -132,10 +139,6 @@ def _build_filter_xml(mlt_service: str, kdenlive_id: str, track: int, clip: int,
                       props: list[tuple[str, str]]) -> str:
     """Build a Kdenlive/MLT ``<filter>`` XML string with the usual attrs.
 
-    ``mlt_service`` / ``kdenlive_id`` are normalised to the installed-repository
-    (dot-form) asset ids via :func:`normalize_effect_id` so Kdenlive resolves
-    them without a "Fixed" pass.
-
     Richest of the three filter builders here (cf. :func:`make_filter_xml`,
     :func:`make_filter_element_xml`): it id-normalises then always emits both an
     ``mlt_service`` and a ``kdenlive_id`` property child.  Relocated verbatim
@@ -143,21 +146,18 @@ def _build_filter_xml(mlt_service: str, kdenlive_id: str, track: int, clip: int,
     there to keep the historical import surface intact.
     """
     import xml.etree.ElementTree as _ET
-    # Normalise to installed-repository (dot-form) asset ids so Kdenlive resolves
-    # the effect without a "Fixed" pass:
-    #   * avfilter.*/frei0r.*  -> kdenlive_id = mlt_service (dot form)
-    #   * the Transform effect (affine + kdenlive_id="transform" + 5-value rect)
-    #     is qtblend in modern Kdenlive (FIX-2b).  pan_zoom / motion tracking use
-    #     ``transition.rect`` (kdenlive_id != "transform") and are untouched.
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.effect_identity import (
+        normalize_effect_id,
+    )
+
     _prop_names = tuple(name for name, _ in props)
-    if mlt_service.startswith(("avfilter.", "frei0r.")):
-        kdenlive_id = mlt_service
-    elif (
+    if (
         mlt_service == "affine"
         and kdenlive_id == "transform"
         and "transition.rect" not in _prop_names
     ):
         mlt_service, kdenlive_id = "qtblend", "qtblend"
+    resolved_id = normalize_effect_id(mlt_service, kdenlive_id, _prop_names)
     root = _ET.Element(
         "filter",
         {
@@ -168,8 +168,9 @@ def _build_filter_xml(mlt_service: str, kdenlive_id: str, track: int, clip: int,
     )
     svc = _ET.SubElement(root, "property", {"name": "mlt_service"})
     svc.text = mlt_service
-    kid = _ET.SubElement(root, "property", {"name": "kdenlive_id"})
-    kid.text = kdenlive_id
+    if resolved_id is not None:
+        kid = _ET.SubElement(root, "property", {"name": "kdenlive_id"})
+        kid.text = resolved_id
     for name, value in props:
         prop = _ET.SubElement(root, "property", {"name": name})
         prop.text = value

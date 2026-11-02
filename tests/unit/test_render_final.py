@@ -47,24 +47,9 @@ def workspace_no_project(tmp_path: Path) -> Path:
 @pytest.fixture
 def mock_profile():
     """A mock RenderProfile."""
-    profile = MagicMock()
-    profile.name = "youtube-1080p"
-    profile.video_codec = "libx264"
-    profile.audio_codec = "aac"
-    profile.width = 1920
-    profile.height = 1080
-    profile.fps = 30.0
-    profile.video_bitrate = "8M"
-    profile.audio_bitrate = "192k"
-    profile.extra_args = []
-    profile.fast_start = True
-    profile.movflags = "+faststart"
-    # melt-consumer attributes (used when routing .kdenlive inputs through melt)
-    profile.mlt_image_format = None
-    profile.pix_fmt = None
-    profile.disable_audio = False
-    profile.melt_args = []
-    return profile
+    from workshop_video_brain.edit_mcp.adapters.render.profiles import RenderProfile
+    return RenderProfile(name="youtube-1080p", fps=30, fast_start=True,
+                         movflags="+faststart")
 
 
 @pytest.fixture
@@ -114,7 +99,7 @@ class TestRenderResult:
 class TestRenderFinal:
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.check_codec_available")
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.load_profile")
-    @patch("workshop_video_brain.edit_mcp.pipelines.render_final.subprocess")
+    @patch("workshop_video_brain.edit_mcp.adapters.render.executor.subprocess.run")
     def test_successful_render(
         self, mock_subprocess, mock_load_profile, mock_codec_check,
         workspace_with_project: Path, mock_profile,
@@ -122,7 +107,7 @@ class TestRenderFinal:
         """Successful render returns RenderResult with output path."""
         mock_load_profile.return_value = mock_profile
         mock_codec_check.return_value = True
-        mock_subprocess.run.return_value = MagicMock(returncode=0, stderr="")
+        mock_subprocess.return_value = MagicMock(returncode=0, stderr="")
 
         result = render_final(workspace_with_project, "youtube-1080p")
 
@@ -171,7 +156,7 @@ class TestRenderFinal:
 
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.check_codec_available")
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.load_profile")
-    @patch("workshop_video_brain.edit_mcp.pipelines.render_final.subprocess")
+    @patch("workshop_video_brain.edit_mcp.adapters.render.executor.subprocess.run")
     def test_custom_output_name(
         self, mock_subprocess, mock_load_profile, mock_codec_check,
         workspace_with_project: Path, mock_profile,
@@ -179,7 +164,7 @@ class TestRenderFinal:
         """Custom output_name should appear in the output filename."""
         mock_load_profile.return_value = mock_profile
         mock_codec_check.return_value = True
-        mock_subprocess.run.return_value = MagicMock(returncode=0, stderr="")
+        mock_subprocess.return_value = MagicMock(returncode=0, stderr="")
 
         result = render_final(
             workspace_with_project, "youtube-1080p", output_name="final_cut",
@@ -189,7 +174,7 @@ class TestRenderFinal:
 
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.check_codec_available")
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.load_profile")
-    @patch("workshop_video_brain.edit_mcp.pipelines.render_final.subprocess")
+    @patch("workshop_video_brain.edit_mcp.adapters.render.executor.subprocess.run")
     def test_ffmpeg_failure_raises(
         self, mock_subprocess, mock_load_profile, mock_codec_check,
         workspace_with_project: Path, mock_profile,
@@ -197,7 +182,7 @@ class TestRenderFinal:
         """Non-zero FFmpeg exit should raise RuntimeError."""
         mock_load_profile.return_value = mock_profile
         mock_codec_check.return_value = True
-        mock_subprocess.run.return_value = MagicMock(
+        mock_subprocess.return_value = MagicMock(
             returncode=1, stderr="Encoding error",
         )
 
@@ -206,7 +191,7 @@ class TestRenderFinal:
 
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.check_codec_available")
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.load_profile")
-    @patch("workshop_video_brain.edit_mcp.pipelines.render_final.subprocess")
+    @patch("workshop_video_brain.edit_mcp.adapters.render.executor.subprocess.run")
     def test_output_in_renders_dir(
         self, mock_subprocess, mock_load_profile, mock_codec_check,
         workspace_with_project: Path, mock_profile,
@@ -214,7 +199,7 @@ class TestRenderFinal:
         """Output path should be inside workspace/renders/."""
         mock_load_profile.return_value = mock_profile
         mock_codec_check.return_value = True
-        mock_subprocess.run.return_value = MagicMock(returncode=0, stderr="")
+        mock_subprocess.return_value = MagicMock(returncode=0, stderr="")
 
         result = render_final(workspace_with_project, "youtube-1080p")
 
@@ -222,7 +207,7 @@ class TestRenderFinal:
 
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.check_codec_available")
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.load_profile")
-    @patch("workshop_video_brain.edit_mcp.pipelines.render_final.subprocess")
+    @patch("workshop_video_brain.edit_mcp.adapters.render.executor.subprocess.run")
     def test_renders_dir_created_if_missing(
         self, mock_subprocess, mock_load_profile, mock_codec_check,
         workspace_with_project: Path, mock_profile,
@@ -235,7 +220,7 @@ class TestRenderFinal:
 
         mock_load_profile.return_value = mock_profile
         mock_codec_check.return_value = True
-        mock_subprocess.run.return_value = MagicMock(returncode=0, stderr="")
+        mock_subprocess.return_value = MagicMock(returncode=0, stderr="")
 
         result = render_final(workspace_with_project, "youtube-1080p")
         assert result.output_path.parent.exists()
@@ -248,7 +233,7 @@ class TestRenderFinal:
 class TestFFmpegCommand:
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.check_codec_available")
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.load_profile")
-    @patch("workshop_video_brain.edit_mcp.pipelines.render_final.subprocess")
+    @patch("workshop_video_brain.edit_mcp.adapters.render.executor.subprocess.run")
     def test_command_includes_profile_settings(
         self, mock_subprocess, mock_load_profile, mock_codec_check,
         workspace_with_project: Path, mock_profile,
@@ -256,18 +241,18 @@ class TestFFmpegCommand:
         """FFmpeg command should include codec, bitrate, resolution from profile."""
         mock_load_profile.return_value = mock_profile
         mock_codec_check.return_value = True
-        mock_subprocess.run.return_value = MagicMock(returncode=0, stderr="")
+        mock_subprocess.return_value = MagicMock(returncode=0, stderr="")
 
         render_final(workspace_with_project, "youtube-1080p")
 
-        call_args = mock_subprocess.run.call_args[0][0]
+        call_args = mock_subprocess.call_args[0][0]
         cmd_str = " ".join(str(a) for a in call_args)
         assert "libx264" in cmd_str
         assert "8M" in cmd_str
 
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.check_codec_available")
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.load_profile")
-    @patch("workshop_video_brain.edit_mcp.pipelines.render_final.subprocess")
+    @patch("workshop_video_brain.edit_mcp.adapters.render.executor.subprocess.run")
     def test_fast_start_flag(
         self, mock_subprocess, mock_load_profile, mock_codec_check,
         workspace_with_media: Path, mock_profile,
@@ -277,20 +262,20 @@ class TestFFmpegCommand:
         mock_profile.movflags = "+faststart"
         mock_load_profile.return_value = mock_profile
         mock_codec_check.return_value = True
-        mock_subprocess.run.return_value = MagicMock(returncode=0, stderr="")
+        mock_subprocess.return_value = MagicMock(returncode=0, stderr="")
 
         render_final(
             workspace_with_media, "youtube-1080p", project_file="clip.mp4",
         )
 
-        call_args = mock_subprocess.run.call_args[0][0]
+        call_args = mock_subprocess.call_args[0][0]
         cmd_str = " ".join(str(a) for a in call_args)
         assert cmd_str.startswith("ffmpeg")
         assert "faststart" in cmd_str
 
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.check_codec_available")
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.load_profile")
-    @patch("workshop_video_brain.edit_mcp.pipelines.render_final.subprocess")
+    @patch("workshop_video_brain.edit_mcp.adapters.render.executor.subprocess.run")
     def test_kdenlive_routes_through_melt(
         self, mock_subprocess, mock_load_profile, mock_codec_check,
         workspace_with_project: Path, mock_profile,
@@ -298,11 +283,11 @@ class TestFFmpegCommand:
         """.kdenlive inputs must render via melt, not `ffmpeg -i project.kdenlive`."""
         mock_load_profile.return_value = mock_profile
         mock_codec_check.return_value = True
-        mock_subprocess.run.return_value = MagicMock(returncode=0, stderr="")
+        mock_subprocess.return_value = MagicMock(returncode=0, stderr="")
 
         render_final(workspace_with_project, "youtube-1080p")
 
-        call_args = mock_subprocess.run.call_args[0][0]
+        call_args = mock_subprocess.call_args[0][0]
         assert call_args[0] == "melt"
         # ffmpeg-demuxing an MLT XML is the exact bug being fixed
         assert not (call_args[0] == "ffmpeg" and any(
@@ -311,7 +296,7 @@ class TestFFmpegCommand:
 
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.check_codec_available")
     @patch("workshop_video_brain.edit_mcp.pipelines.render_final.load_profile")
-    @patch("workshop_video_brain.edit_mcp.pipelines.render_final.subprocess")
+    @patch("workshop_video_brain.edit_mcp.adapters.render.executor.subprocess.run")
     def test_media_routes_through_ffmpeg(
         self, mock_subprocess, mock_load_profile, mock_codec_check,
         workspace_with_media: Path, mock_profile,
@@ -319,11 +304,29 @@ class TestFFmpegCommand:
         """Direct media inputs stay on the ffmpeg re-encode path."""
         mock_load_profile.return_value = mock_profile
         mock_codec_check.return_value = True
-        mock_subprocess.run.return_value = MagicMock(returncode=0, stderr="")
+        mock_subprocess.return_value = MagicMock(returncode=0, stderr="")
 
         render_final(
             workspace_with_media, "youtube-1080p", project_file="clip.mp4",
         )
 
-        call_args = mock_subprocess.run.call_args[0][0]
+        call_args = mock_subprocess.call_args[0][0]
         assert call_args[0] == "ffmpeg"
+
+
+@pytest.fixture(autouse=True)
+def output_verification_stub(monkeypatch):
+    # These are orchestration/command tests; real output probing has integration coverage.
+    monkeypatch.setattr("workshop_video_brain.edit_mcp.adapters.render.executor.verify_render_output",
+                        lambda path: (1.0, 1024))
+
+
+def test_custom_container_uses_shared_profile_extension(workspace_with_project, monkeypatch):
+    from workshop_video_brain.edit_mcp.adapters.render.profiles import RenderProfile
+    from workshop_video_brain.edit_mcp.pipelines import render_final as module
+    monkeypatch.setattr(module, 'load_profile', lambda name: RenderProfile(name=name, container='mkv'))
+    monkeypatch.setattr(module, 'check_codec_available', lambda codec: True)
+    with patch('workshop_video_brain.edit_mcp.adapters.render.executor.subprocess.run',
+               return_value=MagicMock(returncode=0, stdout='', stderr='')):
+        result = module.render_final(workspace_with_project, 'custom')
+    assert result.output_path.suffix == '.mkv'

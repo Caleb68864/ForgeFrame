@@ -63,6 +63,8 @@ def extract_audio(video_path: Path, output_path: Path) -> Path:
     """
     video_path = Path(video_path)
     output_path = Path(output_path)
+    from workshop_video_brain.core.utils.paths import assert_not_protected
+    output_path = assert_not_protected(output_path, "extracted audio")
 
     if not video_path.exists():
         raise FileNotFoundError(

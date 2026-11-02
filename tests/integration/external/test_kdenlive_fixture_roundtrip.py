@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
-from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
+from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import ProjectSerializeError, serialize_project
 
 from ._oracle import melt_accepts
 
@@ -35,6 +35,14 @@ def _fixtures() -> list[Path]:
 
 _FIXTURES = _fixtures()
 
+# Native opaque chains currently lose their bin registrations, and nested
+# sequence references are not rebuilt. The serializer must refuse to commit
+# these incomplete imports; see docs/testing/2026-10-13-native-import-validation.md.
+_UNSUPPORTED_REWRITES = {
+    "corpus_clip_ids_2604.kdenlive": "no matching registered bin clip",
+    "corpus_nesting_effects_2604.kdenlive": "Unknown producer reference",
+}
+
 if not _FIXTURES:
     pytest.skip(
         f"no real-Kdenlive fixtures in {FIXTURE_DIR} -- see make_real_fixtures.md",
@@ -49,7 +57,8 @@ def _count_tags(path: Path) -> dict[str, int]:
     return counts
 
 
-@pytest.mark.parametrize("fixture", _FIXTURES, ids=[f.name for f in _FIXTURES])
+@pytest.mark.parametrize("fixture", [f for f in _FIXTURES if f.name not in _UNSUPPORTED_REWRITES],
+                         ids=[f.name for f in _FIXTURES if f.name not in _UNSUPPORTED_REWRITES])
 def test_roundtrip_preserves_and_loads(fixture: Path, melt_bin, tmp_path: Path):
     project = parse_project(fixture)
     # Guard against a silently-empty parse masquerading as a clean round-trip.
@@ -70,3 +79,15 @@ def test_roundtrip_preserves_and_loads(fixture: Path, melt_bin, tmp_path: Path):
 
     result = melt_accepts(out, melt_bin=melt_bin)
     assert result.ok, f"round-tripped {fixture.name} rejected by melt:\n{result.stderr[-1500:]}"
+
+
+@pytest.mark.parametrize("fixture,diagnostic", sorted(_UNSUPPORTED_REWRITES.items()))
+def test_unsupported_native_import_refuses_write_safely(fixture, diagnostic, tmp_path):
+    project = parse_project(FIXTURE_DIR / fixture)
+    assert project.producers or project.playlists or project.tracks
+    target = tmp_path / "existing.kdenlive"
+    target.write_bytes(b"previous revision")
+    with pytest.raises(ProjectSerializeError, match=diagnostic):
+        serialize_project(project, target)
+    assert target.read_bytes() == b"previous revision"
+    assert list(tmp_path.iterdir()) == [target]

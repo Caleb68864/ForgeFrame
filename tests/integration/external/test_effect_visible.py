@@ -20,14 +20,16 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
+from tests._testkit import requires_ffmpeg, requires_melt
 
 from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
 
 from . import builders
-from ._oracle import frames_differ, frames_similar, render_frame
+from ._check_pack import build_check_pack
+from ._oracle import edge_energy, frames_differ, frames_similar, render_frame
 
-pytestmark = pytest.mark.external
+pytestmark = [pytest.mark.external, requires_melt]
 
 FRAME = 10
 EFFECT = "avfilter.negate"  # unmistakable: inverts every channel
@@ -82,4 +84,25 @@ def test_effect_changes_pixels(melt_bin, render_dir: Path):
 
     assert frames_differ(base, withfx), (
         "root-placed effect changed nothing -- effect is a no-op in melt"
+    )
+
+
+@requires_ffmpeg
+def test_effect_add_gblur_changes_pixels(melt_bin, render_dir: Path):
+    """The public effect_add path must visibly apply the registered gblur."""
+    pack = build_check_pack(render_dir / "pack")
+    base_step = next(step for step in pack if step.slug == "audio_fade")
+    effect_step = next(step for step in pack if step.slug == "effect_blur")
+    base = render_frame(
+        base_step.path, FRAME, render_dir, melt_bin=melt_bin, name="gblur_base.png"
+    )
+    with_effect = render_frame(
+        effect_step.path, FRAME, render_dir, melt_bin=melt_bin, name="gblur_effect.png"
+    )
+    # A blur keeps every region's mean colour, so the colour fingerprint behind
+    # frames_differ barely moves (delta 1.2). What it must destroy is edge energy
+    # (measured 0.72 -> 0.50 on these bars; a no-op would stay at 1.0x).
+    base_edges, blurred_edges = edge_energy(base), edge_energy(with_effect)
+    assert blurred_edges < 0.85 * base_edges, (
+        f"effect_add gblur did not soften the bars: edge energy {base_edges:.2f} -> {blurred_edges:.2f}"
     )

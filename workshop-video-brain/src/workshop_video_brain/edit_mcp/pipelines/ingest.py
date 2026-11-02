@@ -49,12 +49,12 @@ def _silence_json_path(markers_dir: Path, asset: MediaAsset) -> Path:
     return markers_dir / f"{stem}_silence.json"
 
 
-def run_ingest(workspace: Workspace, config: Config) -> IngestReport:
+def run_ingest(workspace: Workspace, config: Config, *, progress=None, pending_output=None, completed_output=None) -> IngestReport:
     """Run the full ingest pipeline for *workspace*.
 
     Steps per asset:
     1. Scan workspace media/raw/ for media files.
-    2. Skip asset if transcript JSON already exists (idempotency).
+    2. Resume fresh artifacts independently.
     3. Generate proxy if needed and not already present.
     4. Extract audio, run Whisper transcription.
     5. Run silence detection.
@@ -91,8 +91,10 @@ def run_ingest(workspace: Workspace, config: Config) -> IngestReport:
 
     proxy_policy = ProxyPolicy()
 
-    for asset in assets:
+    for index, asset in enumerate(assets):
         asset_name = Path(asset.path).name
+        if progress:
+            progress("transcribe", index, len(assets), source=asset.path)
         try:
             _process_asset(
                 asset=asset,
@@ -103,11 +105,15 @@ def run_ingest(workspace: Workspace, config: Config) -> IngestReport:
                 config=config,
                 proxy_policy=proxy_policy,
                 report=report,
+                pending_output=pending_output,
+                completed_output=completed_output,
             )
         except Exception as exc:  # noqa: BLE001
             msg = f"Error processing {asset_name}: {exc}"
             logger.error(msg)
             report.errors.append(msg)
+    if progress:
+        progress("transcribe", len(assets), len(assets))
 
     # 7. Persist the workspace manifest
     try:
@@ -135,6 +141,8 @@ def _process_asset(
     config: Config,
     proxy_policy: ProxyPolicy,
     report: IngestReport,
+    pending_output=None,
+    completed_output=None,
 ) -> None:
     """Process a single asset through the ingest pipeline."""
     asset_path = Path(asset.path)
@@ -142,19 +150,26 @@ def _process_asset(
 
     logger.info("Processing asset: %s", asset_path.name)
 
-    # 2. Idempotency: skip if transcript JSON already exists
+    # Resume each artifact independently: an existing transcript must not hide
+    # a missing proxy, subtitle, or silence report from interrupted work.
     transcript_json = _transcript_json_path(transcripts_dir, asset)
-    if transcript_json.exists():
-        logger.info("Transcript already exists for %s -- skipping", asset_path.name)
-        return
+    source_mtime = asset_path.stat().st_mtime
+
+    def fresh(path: Path) -> bool:
+        return path.is_file() and path.stat().st_size > 0 and path.stat().st_mtime >= source_mtime
 
     # 3. Proxy generation
     if config.ffmpeg_available and needs_proxy(asset, proxy_policy):
         existing_proxy = proxy_path_for(asset, proxy_dir)
-        if not (existing_proxy.exists() and
-                existing_proxy.stat().st_mtime >= asset_path.stat().st_mtime):
+        if not fresh(existing_proxy):
             try:
+                if pending_output:
+                    pending_output(existing_proxy)
+                if existing_proxy.is_file() and existing_proxy.stat().st_size == 0:
+                    existing_proxy.unlink()
                 proxy_out = generate_proxy(asset, proxy_dir, proxy_policy)
+                if completed_output:
+                    completed_output(proxy_out)
                 asset.proxy_path = str(proxy_out)
                 asset.proxy_status = ProxyStatus.ready
                 report.proxied_count += 1
@@ -162,70 +177,88 @@ def _process_asset(
             except Exception as exc:  # noqa: BLE001
                 asset.proxy_status = ProxyStatus.failed
                 logger.warning("Proxy generation failed for %s: %s", asset_path.name, exc)
+                report.errors.append(f"Proxy generation failed for {asset_path.name}: {exc}")
         else:
             asset.proxy_path = str(existing_proxy)
             asset.proxy_status = ProxyStatus.ready
     elif asset.media_type == "video":
         asset.proxy_status = ProxyStatus.not_needed
 
+    if not asset.audio_codec and not asset.channels and asset.media_type != "audio":
+        logger.info("No audio stream in %s; skipping transcription", asset_path.name)
+        return
+
     # 4. Transcription (audio or video)
     if not config.ffmpeg_available:
         logger.warning("FFmpeg unavailable; skipping transcription for %s", asset_path.name)
         return
 
-    if not whisper_engine.is_available():
+    if not fresh(transcript_json) and not whisper_engine.is_available():
         logger.warning("No Whisper backend; skipping transcription for %s", asset_path.name)
         return
 
     # Extract audio to WAV if needed
     audio_path = audio_dir / f"{stem}_audio.wav"
-    if not audio_path.exists():
-        try:
-            whisper_engine.extract_audio(asset_path, audio_path)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Audio extraction failed for %s: %s", asset_path.name, exc)
-            return
-
     # Transcribe
     asset.transcript_status = TranscriptStatus.processing
     try:
-        transcript = whisper_engine.transcribe(
-            audio_path=audio_path,
-            model=config.whisper_model,
-            asset_id=asset.id,
-        )
+        from workshop_video_brain.core.models.transcript import Transcript
+        if fresh(transcript_json):
+            transcript = Transcript.from_json(transcript_json.read_text(encoding="utf-8"))
+        else:
+            if not fresh(audio_path):
+                if pending_output:
+                    pending_output(audio_path)
+                whisper_engine.extract_audio(asset_path, audio_path)
+                if completed_output:
+                    completed_output(audio_path)
+            transcript = whisper_engine.transcribe(
+                audio_path=audio_path, model=config.whisper_model, asset_id=asset.id,
+            )
+            report.transcribed_count += 1
         asset.transcript_status = TranscriptStatus.completed
     except Exception as exc:  # noqa: BLE001
         asset.transcript_status = TranscriptStatus.failed
         logger.warning("Transcription failed for %s: %s", asset_path.name, exc)
+        report.errors.append(f"Transcription failed for {asset_path.name}: {exc}")
         return
 
     # 6. Save transcript artifacts
-    transcript_json.write_text(whisper_engine.transcript_to_json(transcript), encoding="utf-8")
+    from workshop_video_brain.workspace.safe_write import atomic_write_text
+    if not fresh(transcript_json):
+        atomic_write_text(transcript_json, whisper_engine.transcript_to_json(transcript))
 
     txt_path = transcripts_dir / f"{stem}_transcript.txt"
-    txt_path.write_text(transcript.raw_text, encoding="utf-8")
+    if not fresh(txt_path):
+        atomic_write_text(txt_path, transcript.raw_text)
 
     srt_path = transcripts_dir / f"{stem}_transcript.srt"
-    srt_path.write_text(whisper_engine.transcript_to_srt(transcript), encoding="utf-8")
+    if not fresh(srt_path):
+        atomic_write_text(srt_path, whisper_engine.transcript_to_srt(transcript))
 
-    report.transcribed_count += 1
     logger.info("Transcript saved: %s", transcript_json)
 
     # 5. Silence detection
+    silence_out = _silence_json_path(markers_dir, asset)
+    if fresh(silence_out):
+        try:
+            json.loads(silence_out.read_text(encoding="utf-8"))
+            return
+        except (ValueError, OSError):
+            pass
     try:
         silence_gaps = detect_silence(asset_path)
         if silence_gaps:
             report.silence_detected_count += 1
 
-        silence_out = _silence_json_path(markers_dir, asset)
         silence_data = [
             {"start": start, "end": end}
             for start, end in silence_gaps
         ]
-        silence_out.write_text(
+        atomic_write_text(silence_out,
             json.dumps(silence_data, indent=2), encoding="utf-8"
         )
         logger.info("Silence markers saved: %s (%d gap(s))", silence_out, len(silence_gaps))
     except Exception as exc:  # noqa: BLE001
         logger.warning("Silence detection failed for %s: %s", asset_path.name, exc)
+        report.errors.append(f"Silence detection failed for {asset_path.name}: {exc}")
