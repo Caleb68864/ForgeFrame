@@ -158,21 +158,46 @@ def render_final(
 def _find_latest_project(workspace_root: Path) -> Path:
     """Find the latest .kdenlive project in workspace.
 
-    Uses the shared version-aware selector (``_v<N>`` suffix, mtime fallback)
-    so this agrees with every other "latest project" site in the codebase.
+    Looks in ``projects/working_copies/`` first -- the same place every
+    editing tool reads and writes (``tools_helpers._load_latest_project``).
+    Only when that is empty does it fall back to a workspace-wide search, and
+    that search never considers ``projects/snapshots/``.
+
+    Previously this always ran ``rglob`` over the whole workspace. Snapshots
+    are pre-overwrite copies that keep the working copy's ``_v<N>`` name, and
+    the version selector does not break ties, so a final render could pick
+    the stale snapshot instead of the edited working copy.
+
+    Uses the shared version-aware selector (``_v<N>`` suffix, mtime fallback).
 
     Raises:
         FileNotFoundError: If no .kdenlive files found.
     """
     from workshop_video_brain.edit_mcp.server.tools_helpers import latest_project
 
-    kdenlive_files = list(workspace_root.rglob("*.kdenlive"))
-    latest = latest_project(kdenlive_files)
+    working_copies = workspace_root / "projects" / "working_copies"
+    candidates = (
+        sorted(working_copies.glob("*.kdenlive")) if working_copies.is_dir() else []
+    )
+    if not candidates:
+        snapshots = (workspace_root / "projects" / "snapshots").resolve()
+        candidates = [
+            p for p in sorted(workspace_root.rglob("*.kdenlive"))
+            if not p.resolve().is_relative_to(snapshots)
+        ]
+        if candidates:
+            logger.warning(
+                "render_final: no project in %s; falling back to workspace-wide "
+                "search (%d candidate(s))", working_copies, len(candidates),
+            )
+    latest = latest_project(candidates)
     if latest is None:
         raise FileNotFoundError(
-            f"No .kdenlive project found in {workspace_root}. "
-            "Create a project first."
+            f"No .kdenlive project found in {workspace_root} "
+            "(looked in projects/working_copies/ first; snapshots are ignored). "
+            "Create a project first, or pass project_file explicitly."
         )
+    logger.info("render_final: selected project %s", latest)
     return latest
 
 

@@ -78,6 +78,14 @@ code on branch `wip/2026-11-09-phase3`; hardening fixes noted per item.
    `render_final_tool` + `render_list_profiles` in `edit_mcp/server/tools/render.py`,
    pipeline `edit_mcp/pipelines/render_final.py` (shared executor since the
    Reliability work); all five presets present in `adapters/render/profiles.py`.
+   Fixed 2026-11-09: with no `project_file`, `_find_latest_project` ran
+   `rglob("*.kdenlive")` over the whole workspace, including
+   `projects/snapshots/`. Snapshots keep the working copy's `_v<N>` name and
+   the version key breaks no ties, so a final render could pick a stale
+   pre-edit snapshot. It now reads `projects/working_copies/` first (as every
+   editing tool does) and never considers snapshots. A `ValueError` (bad
+   `output_name`) now returns `invalid_input` instead of the misleading
+   "check melt/ffmpeg" message. Test: `tests/unit/test_render_final_project_selection.py`.
 
 4. ~~**QC Automation Tool** (`qc_check`)~~ **Done (`43b02c5`); hardened 2026-11-09.**
    Post-render automated checks: black frame detection (ffmpeg blackdetect), audio clipping scan, loudness measurement, file size sanity check. All doable with existing FFmpeg adapter.

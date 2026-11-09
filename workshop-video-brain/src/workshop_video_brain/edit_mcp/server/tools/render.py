@@ -185,6 +185,9 @@ def render_final_tool(
         profile: Render profile name (see render_list_profiles for options).
         output_name: Optional base name for the output file. Defaults to
                      the profile name with a timestamp.
+        project_file: Optional .kdenlive path (absolute or relative to the
+                      workspace). Defaults to the latest working copy in
+                      projects/working_copies/.
 
     Returns:
         RenderResult with output_path, profile_used, duration_seconds,
@@ -206,6 +209,15 @@ def render_final_tool(
         return _ok(data)
     except FileNotFoundError as exc:
         return from_exception(exc)
+    except ValueError as exc:
+        # e.g. output_name containing a directory, or a malformed profile
+        # file. Previously fell through to the generic "check melt/ffmpeg"
+        # message, which pointed at the wrong cause.
+        return invalid_input(
+            str(exc),
+            "Pass output_name as a bare file name (no directories), and a "
+            "profile name from render_list_profiles.",
+        )
     except RuntimeError as exc:
         return from_exception(exc)
     except Exception as exc:
