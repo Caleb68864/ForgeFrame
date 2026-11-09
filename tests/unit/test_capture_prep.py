@@ -214,3 +214,26 @@ class TestReturnType:
     def test_non_empty_for_full_plan(self, full_shot_plan: dict):
         result = generate_capture_checklist(full_shot_plan)
         assert len(result) > 100
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"target_fps": 0},
+    {"target_fps": -30},
+    {"target_fps": True},
+    {"target_resolution": "1080p"},
+    {"target_resolution": "0x1080"},
+])
+def test_rejects_bad_targets(full_shot_plan: dict, kwargs: dict):
+    """target_fps=0 used to emit "Shutter speed: 1/0"."""
+    with pytest.raises(ValueError):
+        generate_capture_checklist(full_shot_plan, **kwargs)
+
+
+def test_rejects_non_dict_plan():
+    with pytest.raises(ValueError, match="shot_plan must be a dict"):
+        generate_capture_checklist(["not", "a", "plan"])  # type: ignore[arg-type]
+
+
+def test_mentions_vfr_check(full_shot_plan: dict):
+    result = generate_capture_checklist(full_shot_plan)
+    assert "media_check_vfr" in result

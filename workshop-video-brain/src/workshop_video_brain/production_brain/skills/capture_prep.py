@@ -25,7 +25,26 @@ def generate_capture_checklist(
     Returns:
         Markdown string with sections: Camera Settings, Audio Setup,
         Lighting Notes, Sync Strategy, Shot Order.
+
+    Raises:
+        ValueError: If ``shot_plan`` is not a dict, ``target_fps`` is not a
+            positive integer, or ``target_resolution`` is not ``WxH``.
     """
+    # Validate up front: target_fps=0 used to emit "Shutter speed: 1/0" and a
+    # garbage resolution string went straight into the checklist.
+    if not isinstance(shot_plan, dict):
+        raise ValueError(
+            f"shot_plan must be a dict (from generate_shot_plan or "
+            f"reports/shot_plan.json), got {type(shot_plan).__name__}"
+        )
+    if isinstance(target_fps, bool) or not isinstance(target_fps, int) or target_fps <= 0:
+        raise ValueError(f"target_fps must be a positive integer, got {target_fps!r}")
+    w, sep, h = str(target_resolution).lower().partition("x")
+    if not (sep and w.isdigit() and h.isdigit() and int(w) > 0 and int(h) > 0):
+        raise ValueError(
+            f"target_resolution must look like '1920x1080', got {target_resolution!r}"
+        )
+
     title = shot_plan.get("title", "Untitled Project")
     lines: list[str] = []
 
@@ -43,6 +62,12 @@ def generate_capture_checklist(
         target_fps * 2,
     ))
     lines.append("- **Format:** Record in the highest quality your card supports")
+    lines.append(
+        "- **Constant frame rate:** Phones and screen recorders often record "
+        "variable frame rate (VFR), which drifts out of sync in the edit. Lock "
+        "the frame rate if the device allows it; after ingest, run "
+        "`media_check_vfr` and convert any VFR files with `media_transcode_cfr`."
+    )
     lines.append("")
 
     # ---- Audio Setup ----

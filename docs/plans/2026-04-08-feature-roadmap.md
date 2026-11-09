@@ -59,6 +59,12 @@ code on branch `wip/2026-11-09-phase3`; hardening fixes noted per item.
    Skill `workshop-video-brain/skills/ff-capture-prep/SKILL.md`, generator
    `production_brain/skills/capture_prep.py::generate_capture_checklist`,
    tests `tests/unit/test_capture_prep.py`.
+   Hardened 2026-11-09: inputs are validated (`target_fps=0` used to print
+   "Shutter speed: 1/0"; a non-`WxH` resolution passed straight through), and
+   the checklist now tells the creator to lock frame rate and run
+   `media_check_vfr` / `media_transcode_cfr` after ingest. Note there is no
+   MCP tool or CLI command for it; the skill calls the Python function
+   directly (see open follow-ups).
 
 2. ~~**VFR Detection Tool** (`media_check_vfr`)~~ **Done (`43b02c5`).**
    Detect variable frame rate in ingested media, auto-suggest/run CFR transcode. FFprobe can detect this; FFmpeg adapter already exists.
@@ -114,6 +120,21 @@ code on branch `wip/2026-11-09-phase3`; hardening fixes noted per item.
   the render matches the requested profile (resolution, fps, codec). The
   executor already verifies streams/duration; QC could reuse the profile
   (`edit_mcp/server/tools/render.py::qc_check`).
+- **Capture prep has no tool or CLI entry point.** `generate_capture_checklist`
+  is reachable only via the skill's inline Python
+  (`workshop-video-brain/skills/ff-capture-prep/SKILL.md`), unlike other
+  Production Brain outputs. A `capture_prep` MCP tool / `wvb` command that
+  reads `reports/shot_plan.json` and writes the checklist would match the
+  Reliability rule "available through documented user entry points"
+  (`production_brain/skills/capture_prep.py`).
+- **VFR divergence is computed twice with different formulas.** `probe.py`
+  sets `is_vfr` from `|r-avg| / max(r, avg) > 5%`, while
+  `vfr_check._calculate_divergence` reports `|r-avg| / avg * 100`; the two
+  can disagree near the threshold. Use one helper
+  (`edit_mcp/adapters/ffmpeg/probe.py`, `edit_mcp/pipelines/vfr_check.py`).
+- **Single-file VFR check.** `media_check_vfr` only scans a whole workspace;
+  there is no way to check one file before ingest
+  (`edit_mcp/server/tools/workspace_media.py::media_check_vfr`).
 
 ### Medium Effort / High Value
 
