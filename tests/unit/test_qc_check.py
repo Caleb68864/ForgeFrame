@@ -23,9 +23,26 @@ SILENCE_DETECT_STDERR = (
     "[silencedetect @ 0x5678] silence_end: 15.2 | silence_duration: 4.7\n"
 )
 
-CLIPPING_STDERR = "Flat_factor detected on channel 0\n"
+# Real astats summary shape (ffmpeg 7.x) for a sine driven 20x into the rails.
+# The previous fixture ("Flat_factor detected ...") was text ffmpeg never
+# prints, which is how a no-op clipping check stayed green.
+CLIPPING_STDERR = (
+    "[Parsed_astats_0 @ 0x1] Channel: 1\n"
+    "[Parsed_astats_0 @ 0x1] Peak level dB: 0.000265\n"
+    "[Parsed_astats_0 @ 0x1] Flat factor: 31.336683\n"
+    "[Parsed_astats_0 @ 0x1] Overall\n"
+    "[Parsed_astats_0 @ 0x1] Peak level dB: 0.000265\n"
+    "[Parsed_astats_0 @ 0x1] Flat factor: 31.336683\n"
+)
 
-CLEAN_STDERR = "size=N/A time=00:01:00.00 bitrate=N/A speed=120x\n"
+# Clean decoder output carrying a clean astats summary, so one stderr can
+# stand in for every ffmpeg-backed check.
+CLEAN_STDERR = (
+    "[Parsed_astats_0 @ 0x1] Overall\n"
+    "[Parsed_astats_0 @ 0x1] Peak level dB: -18.063656\n"
+    "[Parsed_astats_0 @ 0x1] Flat factor: 0.000000\n"
+    "size=N/A time=00:01:00.00 bitrate=N/A speed=120x\n"
+)
 
 
 def _mock_subprocess(stderr: str):
@@ -168,14 +185,67 @@ def test_missing_filter_skips(mock_run):
 
     assert "black_frames" in report.checks_skipped
     assert "black_frames" not in report.checks_failed
-    assert report.overall_pass  # skipped != failed
+    assert "black_frames" not in report.checks_passed
+    # Nothing was verified, so the report must not claim a pass.
+    assert not report.overall_pass
+    assert "ffmpeg unavailable" in report.check_errors["black_frames"]
+
+
+def _mock_failed_subprocess(returncode: int, stderr: str):
+    result = MagicMock()
+    result.stderr = stderr
+    result.returncode = returncode
+    return result
+
+
+@patch("workshop_video_brain.edit_mcp.pipelines.qc_check.subprocess.run")
+def test_ffmpeg_nonzero_exit_is_skip_not_pass(mock_run):
+    """A video-only file has no audio for silencedetect: ffmpeg exits non-zero
+    with empty detector output. That used to be recorded as 'silence passed'."""
+    mock_run.return_value = _mock_failed_subprocess(
+        234, "Output file does not contain any stream\n"
+    )
+    report = run_qc(SAMPLE_PATH, checks=["silence", "clipping"])
+
+    assert report.checks_passed == []
+    assert sorted(report.checks_skipped) == ["clipping", "silence"]
+    assert "exited 234" in report.check_errors["silence"]
+    assert not report.overall_pass
+
+
+@patch("workshop_video_brain.edit_mcp.pipelines.qc_check.subprocess.run")
+def test_clipping_needs_astats_numbers(mock_run):
+    mock_run.return_value = _mock_subprocess("size=N/A time=00:00:01.00\n")
+    report = run_qc(SAMPLE_PATH, checks=["clipping"])
+
+    assert "clipping" in report.checks_skipped
+    assert "Peak level dB" in report.check_errors["clipping"]
+
+
+@patch("workshop_video_brain.edit_mcp.pipelines.qc_check.subprocess.run")
+def test_full_scale_without_flat_tops_is_not_clipping(mock_run):
+    mock_run.return_value = _mock_subprocess(
+        "Peak level dB: -0.050000\nFlat factor: 0.000000\n"
+    )
+    report = run_qc(SAMPLE_PATH, checks=["clipping"])
+
+    assert report.audio_clipping is False
+    assert report.audio_peak_db == pytest.approx(-0.05)
+
+
+def test_missing_file_size_is_skip(tmp_path):
+    report = run_qc(tmp_path / "nope.mp4", checks=["file_size"])
+    assert "file_size" in report.checks_skipped
+    assert not report.overall_pass
 
 
 # --- clean file passes all --------------------------------------------------
 
 @patch("workshop_video_brain.edit_mcp.pipelines.qc_check.subprocess.run")
-def test_clean_file_passes_all(mock_run):
+def test_clean_file_passes_all(mock_run, tmp_path):
     mock_run.return_value = _mock_subprocess(CLEAN_STDERR)
+    render = tmp_path / "render.mp4"
+    render.write_bytes(b"\0" * 4096)
     mock_loudness = MagicMock(return_value={"input_i": -14.0, "input_tp": -2.0, "input_lra": 6.0})
 
     with patch(
@@ -183,7 +253,7 @@ def test_clean_file_passes_all(mock_run):
         mock_loudness,
         create=True,
     ):
-        report = run_qc(SAMPLE_PATH)
+        report = run_qc(render)
 
     assert report.overall_pass
     assert len(report.checks_failed) == 0

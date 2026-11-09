@@ -50,17 +50,54 @@ Gaps identified by comparing ForgeFrame capabilities against the video-editing-g
 
 ### High Impact / Low Effort
 
-1. **Capture Prep Skill** (`ff-capture-prep`)
+Status check 2026-11-09: all four items below were already implemented in
+`43b02c5` (2026-04-09, "Phase 3 Pipeline Completeness"). Verified against the
+code on branch `wip/2026-11-09-phase3`; hardening fixes noted per item.
+
+1. ~~**Capture Prep Skill** (`ff-capture-prep`)~~ **Done (`43b02c5`).**
    Generate pre-shoot checklist from shot plan: camera settings, mic setup, resolution/fps, lighting notes, sync strategy. Pure text skill, no new adapters.
+   Skill `workshop-video-brain/skills/ff-capture-prep/SKILL.md`, generator
+   `production_brain/skills/capture_prep.py::generate_capture_checklist`,
+   tests `tests/unit/test_capture_prep.py`.
 
-2. **VFR Detection Tool** (`media_check_vfr`)
+2. ~~**VFR Detection Tool** (`media_check_vfr`)~~ **Done (`43b02c5`).**
    Detect variable frame rate in ingested media, auto-suggest/run CFR transcode. FFprobe can detect this; FFmpeg adapter already exists.
+   `media_check_vfr` + `media_transcode_cfr` in `edit_mcp/server/tools/workspace_media.py`,
+   pipeline `edit_mcp/pipelines/vfr_check.py`, tests `tests/unit/test_vfr_check.py`.
 
-3. **Full Render Tool** (`render_final`)
+3. ~~**Full Render Tool** (`render_final`)~~ **Done (`43b02c5`).**
    Render with preset selection: youtube-1080p, youtube-4k, vimeo-hq, master-prores, master-dnxhr. Render profiles already exist in render/profiles.py -- needs user-facing MCP tool.
+   `render_final_tool` + `render_list_profiles` in `edit_mcp/server/tools/render.py`,
+   pipeline `edit_mcp/pipelines/render_final.py` (shared executor since the
+   Reliability work); all five presets present in `adapters/render/profiles.py`.
 
-4. **QC Automation Tool** (`qc_check`)
+4. ~~**QC Automation Tool** (`qc_check`)~~ **Done (`43b02c5`); hardened 2026-11-09.**
    Post-render automated checks: black frame detection (ffmpeg blackdetect), audio clipping scan, loudness measurement, file size sanity check. All doable with existing FFmpeg adapter.
+   `qc_check` in `edit_mcp/server/tools/render.py`, pipeline `edit_mcp/pipelines/qc_check.py`.
+   Fixed 2026-11-09: the clipping check searched stderr for `Flat_factor`,
+   which astats never prints, so it could not fire on real audio (the unit
+   fixture was invented text). It now parses astats `Peak level dB` and
+   `Flat factor`. ffmpeg exit codes were ignored, so a corrupt file or a
+   video-only render "passed" silence/clipping; non-zero exits are now skips
+   with a reason in `check_errors`. `overall_pass` is false when every check
+   was skipped, a missing file's `file_size` is a skip rather than a pass, and
+   unknown check names are rejected (`invalid_input`) instead of skipped
+   silently. Real-ffmpeg proof: `tests/integration/test_qc_check_real_ffmpeg.py`.
+
+#### Open follow-ups found 2026-11-09
+
+- **QC silence threshold vs. tutorials.** `_check_silence` fails any render
+  with a single 1 s gap below -50 dB, which flags deliberate pauses in normal
+  tutorial footage. Consider a minimum-duration or percentage threshold
+  (`edit_mcp/pipelines/qc_check.py::_check_silence`).
+- **QC loudness only checks "too quiet".** `_check_loudness` fails below
+  -24 LUFS or above -1 dBTP; it does not report distance from the YouTube
+  -14 LUFS target or flag an over-loud master
+  (`edit_mcp/pipelines/qc_check.py::_check_loudness`).
+- **QC is not profile-aware.** `qc_check` takes only a file, so it cannot check
+  the render matches the requested profile (resolution, fps, codec). The
+  executor already verifies streams/duration; QC could reuse the profile
+  (`edit_mcp/server/tools/render.py::qc_check`).
 
 ### Medium Effort / High Value
 

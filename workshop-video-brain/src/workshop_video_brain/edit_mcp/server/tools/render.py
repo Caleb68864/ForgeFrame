@@ -321,7 +321,7 @@ def qc_check(file_path: str, checks: str = "") -> dict:
     Checks: black_frames, silence, loudness, clipping, file_size.
     Pass a comma-separated subset or leave empty for all checks.
     """
-    from workshop_video_brain.edit_mcp.pipelines.qc_check import run_qc
+    from workshop_video_brain.edit_mcp.pipelines.qc_check import ALL_CHECKS, run_qc
 
     if not file_path or not file_path.strip():
         return invalid_input("file_path must be a non-empty string", "Pass the path to a rendered media file to check.", param="file_path")
@@ -334,6 +334,15 @@ def qc_check(file_path: str, checks: str = "") -> dict:
     check_list: list[str] | None = None
     if checks.strip():
         check_list = [c.strip() for c in checks.split(",") if c.strip()]
+        unknown = [c for c in check_list if c not in ALL_CHECKS]
+        if unknown:
+            # A typo used to be silently skipped and the report still said
+            # overall_pass=True.
+            return invalid_input(
+                f"Unknown QC check(s): {', '.join(unknown)}",
+                f"Use a comma-separated subset of: {', '.join(ALL_CHECKS)}, or leave checks empty for all.",
+                param="checks",
+            )
 
     report = run_qc(p, check_list)
     return _ok(report.model_dump())

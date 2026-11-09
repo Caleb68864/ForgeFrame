@@ -16,6 +16,8 @@ class QCReport(BaseModel):
     black_frames: list[TimeRange] = []
     silence_regions: list[TimeRange] = []
     audio_clipping: bool = False
+    audio_peak_db: float | None = None
+    audio_flat_factor: float | None = None
     loudness_lufs: float | None = None
     true_peak_dbtp: float | None = None
     file_size_bytes: int = 0
@@ -23,4 +25,6 @@ class QCReport(BaseModel):
     checks_passed: list[str] = []
     checks_failed: list[str] = []
     checks_skipped: list[str] = []
+    # check name -> why it was skipped (ffmpeg missing/failed, no stream, ...)
+    check_errors: dict[str, str] = {}
     overall_pass: bool = True
