@@ -36,15 +36,31 @@ class VFRFile:
     r_frame_rate: str
     avg_frame_rate: str
     divergence_pct: float
+    # Next step for the caller: the media_transcode_cfr call that fixes it.
+    suggested_action: str = ""
+
+
+@dataclass
+class UnprobedFile:
+    """A video file whose frame rate could not be determined."""
+
+    path: str
+    error: str
 
 
 @dataclass
 class VFRReport:
-    """Result of scanning a workspace for VFR media."""
+    """Result of scanning a workspace for VFR media.
+
+    ``all_cfr`` is True only when every video file was probed and none is VFR.
+    A file that could not be probed is listed in ``unprobed_files`` and makes
+    ``all_cfr`` False -- an unknown frame rate is not a confirmed CFR one.
+    """
 
     files_checked: int
     vfr_files: list[VFRFile] = field(default_factory=list)
     all_cfr: bool = True
+    unprobed_files: list[UnprobedFile] = field(default_factory=list)
 
 
 def check_vfr(workspace_root: Path) -> VFRReport:
@@ -58,6 +74,7 @@ def check_vfr(workspace_root: Path) -> VFRReport:
     """
     video_files = _find_video_files(workspace_root)
     vfr_files: list[VFRFile] = []
+    unprobed: list[UnprobedFile] = []
     checked = 0
 
     for vf in video_files:
@@ -76,14 +93,27 @@ def check_vfr(workspace_root: Path) -> VFRReport:
                     r_frame_rate=r_rate,
                     avg_frame_rate=avg_rate,
                     divergence_pct=divergence,
+                    suggested_action=(
+                        f"media_transcode_cfr(workspace_path, file_path={str(vf)!r})"
+                    ),
                 ))
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 -- one bad file must not abort the scan
+            # Previously swallowed: the report then claimed all_cfr=True for a
+            # workspace where nothing could be probed (e.g. ffprobe missing).
             logger.warning("Failed to probe %s, skipping", vf, exc_info=True)
+            unprobed.append(UnprobedFile(
+                path=str(vf), error=f"{type(exc).__name__}: {exc}"[:300],
+            ))
 
+    logger.info(
+        "VFR scan %s: %d probed, %d VFR, %d unprobed",
+        workspace_root, checked, len(vfr_files), len(unprobed),
+    )
     return VFRReport(
         files_checked=checked,
         vfr_files=vfr_files,
-        all_cfr=len(vfr_files) == 0,
+        all_cfr=not vfr_files and not unprobed,
+        unprobed_files=unprobed,
     )
 
 

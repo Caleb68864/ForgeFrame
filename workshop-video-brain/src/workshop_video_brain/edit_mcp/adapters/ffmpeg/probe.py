@@ -175,6 +175,8 @@ def probe_media(path: Path) -> MediaAsset:
         file_size_bytes=file_size,
         hash=file_hash,
         is_vfr=is_vfr,
+        r_frame_rate=r_frame_rate if video_stream else "",
+        avg_frame_rate=avg_frame_rate if video_stream else "",
         color_space=color_space,
         color_primaries=color_primaries,
         color_transfer=color_transfer,

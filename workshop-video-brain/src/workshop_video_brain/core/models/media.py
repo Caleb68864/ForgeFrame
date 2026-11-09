@@ -38,6 +38,11 @@ class MediaAsset(SerializableMixin):
     transcript_status: TranscriptStatus = TranscriptStatus.pending
     analysis_status: AnalysisStatus = AnalysisStatus.pending
     is_vfr: bool = False
+    # Raw ffprobe rationals behind is_vfr (e.g. "30/1" vs "600/29"). The VFR
+    # report read these via getattr before they existed, so it always showed
+    # "0/1" and 0% divergence.
+    r_frame_rate: str = ""
+    avg_frame_rate: str = ""
     color_space: str | None = None
     color_primaries: str | None = None
     color_transfer: str | None = None

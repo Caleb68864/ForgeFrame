@@ -139,11 +139,14 @@ class TestCheckVFR:
 
     @patch("workshop_video_brain.edit_mcp.pipelines.vfr_check.probe_media")
     def test_probe_error_skips_file(self, mock_probe, workspace_all_cfr: Path):
-        """If probe_media raises, skip that file and continue."""
+        """If probe_media raises, record the file and continue -- but do not
+        claim the workspace is all-CFR when nothing could be verified."""
         mock_probe.side_effect = Exception("ffprobe failed")
         report = check_vfr(workspace_all_cfr)
-        # Should not raise; files checked may be 0 due to errors
-        assert report.all_cfr is True
+        assert report.files_checked == 0
+        assert report.all_cfr is False
+        assert report.unprobed_files
+        assert all("ffprobe failed" in u.error for u in report.unprobed_files)
 
 
 # ---------------------------------------------------------------------------

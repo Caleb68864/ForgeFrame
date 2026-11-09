@@ -64,6 +64,14 @@ code on branch `wip/2026-11-09-phase3`; hardening fixes noted per item.
    Detect variable frame rate in ingested media, auto-suggest/run CFR transcode. FFprobe can detect this; FFmpeg adapter already exists.
    `media_check_vfr` + `media_transcode_cfr` in `edit_mcp/server/tools/workspace_media.py`,
    pipeline `edit_mcp/pipelines/vfr_check.py`, tests `tests/unit/test_vfr_check.py`.
+   Fixed 2026-11-09: every VFR entry reported `r_frame_rate`/`avg_frame_rate`
+   `"0/1"` and 0% divergence, because `MediaAsset` had no such fields and the
+   pipeline read them with a `getattr` default; probe now records both. A file
+   that failed to probe was dropped silently and the report still said
+   `all_cfr=True` (even with ffprobe missing); it is now listed in
+   `unprobed_files` and `all_cfr` is false. Each VFR entry carries a
+   `suggested_action` (the `media_transcode_cfr` call). Real-ffprobe proof:
+   `tests/integration/test_vfr_check_real_ffprobe.py`.
 
 3. ~~**Full Render Tool** (`render_final`)~~ **Done (`43b02c5`).**
    Render with preset selection: youtube-1080p, youtube-4k, vimeo-hq, master-prores, master-dnxhr. Render profiles already exist in render/profiles.py -- needs user-facing MCP tool.
