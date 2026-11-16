@@ -86,3 +86,28 @@ def test_audio_audible(slug, pack, renders, kdenlive_bin, melt_bin, ffmpeg_bin):
     assert volume_k > -60 and volume_m > -60, (
         f"mean_volume K/M={volume_k:.1f}/{volume_m:.1f} dB for {step.path}; captured playlist: {playlist}"
     )
+
+
+def _lane_spans(project) -> list[list[tuple[bool, int, int]]]:
+    """Per non-empty content lane: (is_gap, in, out) in timeline order."""
+    lanes = []
+    for playlist in project.playlists:
+        spans = [(not e.producer_id, e.in_point, e.out_point) for e in playlist.entries]
+        if spans:
+            lanes.append(spans)
+    return lanes
+
+
+@pytest.mark.parametrize("slug", ("single_clip", "two_clips"), ids=("single_clip", "two_clips"))
+def test_kdenlive_rewrite_imports_same_timeline(slug, pack, renders, kdenlive_bin, melt_bin):
+    """Kdenlive 26.x writes in/out/length as timecode; importing its document
+    must give back the frames we wrote (ROADMAP next #1)."""
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
+
+    step = _step(pack, slug)
+    _k, _m, playlist = _rendered(renders, step, kdenlive_bin, melt_bin)
+    assert playlist.exists(), "Kdenlive did not write its regenerated document"
+    assert 'in="00:' in playlist.read_text(), "expected a timecode document from Kdenlive"
+    ours, theirs = parse_project(step.path), parse_project(playlist)
+    assert _lane_spans(ours), f"empty timeline parsed from {step.path}"
+    assert _lane_spans(theirs) == _lane_spans(ours), f"captured playlist: {playlist}"

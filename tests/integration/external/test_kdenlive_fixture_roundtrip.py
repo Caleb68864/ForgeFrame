@@ -35,12 +35,14 @@ def _fixtures() -> list[Path]:
 
 _FIXTURES = _fixtures()
 
-# Native opaque chains currently lose their bin registrations, and nested
-# sequence references are not rebuilt. The serializer must refuse to commit
-# these incomplete imports; see docs/testing/2026-10-13-native-import-validation.md.
+# Nested sequence references are not rebuilt. The serializer must refuse to
+# commit that incomplete import; see
+# docs/testing/2026-10-13-native-import-validation.md.
+# (corpus_clip_ids_2604 used to be listed here: its timecode chains were kept
+# opaque because the parser could not read in/out timecode. Since the parser
+# converts timecode it round-trips and is covered by the test above.)
 _UNSUPPORTED_REWRITES = {
-    "corpus_clip_ids_2604.kdenlive": "no matching registered bin clip",
-    "corpus_nesting_effects_2604.kdenlive": "Unknown producer reference",
+    "corpus_nesting_effects_2604.kdenlive": "not defined anywhere in the project",
 }
 
 if not _FIXTURES:
