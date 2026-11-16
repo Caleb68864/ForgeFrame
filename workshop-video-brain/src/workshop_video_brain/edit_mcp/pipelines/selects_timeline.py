@@ -157,6 +157,9 @@ def build_selects_timeline(
     audio_playlist = Playlist(id="playlist_audio")
 
     seen_producers: dict[str, Producer] = {}
+    # Timeline frame where the next select starts; guides mark this, not the
+    # select's source in-point (selects are best-first, not source-ordered).
+    timeline_frame = 0
 
     for entry in selects:
         clip_ref = entry.clip_ref
@@ -177,7 +180,9 @@ def build_selects_timeline(
 
         fps = project.profile.fps
         in_point = seconds_to_frames(entry.start_seconds, fps)
-        out_point = seconds_to_frames(entry.end_seconds, fps)
+        # Half-open [start, end) -> inclusive MLT out-point (as in
+        # build_ranges_project below).  A zero-length select keeps one frame.
+        out_point = seconds_to_frames(entry.end_seconds, fps) - 1
         if out_point < in_point:
             out_point = in_point
 
@@ -196,11 +201,12 @@ def build_selects_timeline(
         )
 
         guide = Guide(
-            position=in_point,
+            position=timeline_frame,
             label=entry.reason or str(entry.marker.category),
             category=str(entry.marker.category),
         )
         project.guides.append(guide)
+        timeline_frame += out_point - in_point + 1
 
     project.playlists = [video_playlist, audio_playlist]
 
