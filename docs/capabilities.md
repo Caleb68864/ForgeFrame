@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-229 MCP tools; 20 skills.
+230 MCP tools; 20 skills.
 
 ## Skills
 
@@ -50,6 +50,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | broll_library_stats | broll | Get B-roll library statistics. |
 | broll_library_tag | broll | Add tags, rating, or description to a B-roll clip in the library. |
 | broll_suggest | broll | Analyze transcript and suggest specific B-roll shots. |
+| capture_prep_checklist | capture_prep | Generate a pre-shoot capture checklist from the workspace's shot plan. |
 | clip_insert | clips_nle | Insert a clip into the timeline of the latest working copy project. |
 | clip_move | clips_nle | Move a clip from one position to another on the timeline. |
 | clip_move_to | clip_place | Move a clip from one track to another (cross-track move). |
