@@ -27,3 +27,15 @@ These reference sample media that is not vendored; the round-trip test loads
 structure only (melt tolerates the absent avformat resources), it does not
 render media.  See docs/research/2026-07-03-tutorial-effect-analysis/
 reference-projects/PROVENANCE.txt and kdenlive-gui-bin-rejection.md.
+
+timecode_2608.kdenlive
+    Written by Kdenlive 26.08.2 / MLT 7.42.0 on this machine, 2026-11-16.
+    Not a GUI File > Save: it is the document `kdenlive --render` regenerates
+    from a project and writes as /tmp/kdenlive-*.mlt before rendering
+    (captured by tests/integration/external/_oracle.kdenlive_render's
+    capture_playlist).  It is Kdenlive's own serialization, with in/out/length
+    as clock timecode (in="00:00:01.001").  The input was a ForgeFrame project:
+    1920x1080 @ 30000/1001, clip a_bars in=30 out=90, a 45-frame blank, clip
+    b_blue in=15 out=120 (video + audio lanes).  Only edit: the scratch
+    directory prefix was replaced with /fixture.  Media is not vendored.
+    Used by tests/unit/test_parser_timecode.py.

@@ -51,6 +51,12 @@ def _mlt_bindings_report() -> dict:
     return {'available': True, 'python': found.path, 'mlt_version': found.mlt_version, 'error': None}
 
 
+def _motion_track_report() -> dict:
+    from workshop_video_brain.edit_mcp.pipelines.motion_track import opencv_tracker_status
+
+    return opencv_tracker_status()
+
+
 def environment_report() -> dict:
     binaries = {name: _probe(name, ['-version'] if name in ('ffmpeg', 'ffprobe') else ['--version'])
                 for name in ('ffmpeg', 'ffprobe', 'melt', 'tesseract')}
@@ -81,8 +87,10 @@ def environment_report() -> dict:
     mask_models = [p.name for p in sorted(mask_cache.glob('*.onnx')) if p.stat().st_size > 0]
     ffmpeg = binaries['ffmpeg']['available'] and binaries['ffprobe']['available']
     mlt_bindings = _mlt_bindings_report()
+    motion_track = _motion_track_report()
     return {'binaries': binaries, 'encoders': encoders, 'mlt_effects': effects,
             'optional_engines': optional, 'mlt_bindings': mlt_bindings,
+            'motion_track': motion_track,
             'model_cache': {'whisper': whisper_models, 'rembg': mask_models,
                             'selected_whisper_model': selected_model, 'selected_whisper_cached': selected_cached,
                             'note': 'Cached files only; no model is loaded or downloaded.'},
@@ -92,7 +100,8 @@ def environment_report() -> dict:
                          'transcription_offline': ffmpeg and optional['transcription'] and selected_cached,
                          'ai_mask_engine': ffmpeg and optional['ai_mask'] and optional['onnx'],
                          'ai_mask_offline': ffmpeg and optional['ai_mask'] and optional['onnx'] and bool(mask_models),
-                         'motion_track_python': ffmpeg and optional['motion_track'],
+                         # A tracker must construct, not just cv2 import (headless has no CSRT).
+                         'motion_track_python': ffmpeg and motion_track['ready'],
                          'scene_detect_pyscenedetect': optional['scene_detect'] and importlib.util.find_spec('cv2') is not None,
                          'silence_cut_auto_editor': _auto_editor_ready(),
                          'mlt_bindings': mlt_bindings['available'],
@@ -101,5 +110,6 @@ def environment_report() -> dict:
                 'binaries': 'Install missing FFmpeg/ffprobe and MLT melt binaries and expose them on PATH.',
                 'optional_engines': 'Use uv sync --extra research / ai-mask / ai-mask-heavy / motion-track / scene-detect / auto-editor as needed.',
                 'auto_editor': 'After installing the auto-editor extra, run auto-editor --version once: it downloads its native binary.',
+                'motion_track': 'The OpenCV tracker engine needs opencv-contrib-python-headless (uv sync --extra motion-track); plain opencv-python has no CSRT/KCF.',
                 'transcription': 'Install faster-whisper and cache the WVB_WHISPER_MODEL model before offline use.',
             }}

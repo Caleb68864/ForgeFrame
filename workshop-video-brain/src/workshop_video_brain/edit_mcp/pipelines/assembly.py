@@ -508,7 +508,8 @@ def assemble_timeline(
         producer = _get_or_create_producer(primary.clip_ref, primary.source_path)
         in_frames = seconds_to_frames(primary.in_seconds, fps)
         if primary.out_seconds >= 0:
-            out_frames = seconds_to_frames(primary.out_seconds, fps)
+            # out_seconds is exclusive; MLT out-points are inclusive.
+            out_frames = max(in_frames, seconds_to_frames(primary.out_seconds, fps) - 1)
         else:
             out_frames = in_frames + seconds_to_frames(5.0, fps) - 1
 
@@ -558,7 +559,7 @@ def assemble_timeline(
                 ins_producer = _get_or_create_producer(ins.clip_ref, ins.source_path)
                 ins_in = seconds_to_frames(ins.in_seconds, fps)
                 if ins.out_seconds >= 0:
-                    ins_out = seconds_to_frames(ins.out_seconds, fps)
+                    ins_out = max(ins_in, seconds_to_frames(ins.out_seconds, fps) - 1)
                 else:
                     ins_out = ins_in + seconds_to_frames(3.0, fps) - 1
                 ins_duration = ins_out - ins_in + 1

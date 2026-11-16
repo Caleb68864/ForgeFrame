@@ -302,7 +302,8 @@ class TestBuildSelectsTimeline:
 
         playlist_entry = captured["project"].playlists[0].entries[0]
         assert playlist_entry.in_point == 250
-        assert playlist_entry.out_point == 500
+        # Inclusive out-point: [10 s, 20 s) at 25 fps is frames 250..499.
+        assert playlist_entry.out_point == 499
 
     @patch(f"{SELECTS_MOD}.serialize_versioned")
     def test_asset_resolved_when_available(self, mock_serialize, tmp_path):
@@ -369,3 +370,54 @@ class TestBuildSelectsTimeline:
 
         pe = captured["project"].playlists[0].entries[0]
         assert pe.out_point >= pe.in_point
+
+
+# ---------------------------------------------------------------------------
+# ROADMAP next #2: clip length and guide placement
+# ---------------------------------------------------------------------------
+
+
+def _capture_project(mock_serialize, tmp_path):
+    captured = {}
+
+    def capture(project, *args, **kwargs):
+        captured["project"] = project
+        return tmp_path / "selects_v1.kdenlive"
+
+    mock_serialize.side_effect = capture
+    return captured
+
+
+class TestSelectsTimelineFrameAccuracy:
+    @patch(f"{SELECTS_MOD}.serialize_versioned")
+    def test_each_clip_spans_exactly_its_duration(self, mock_serialize, tmp_path):
+        captured = _capture_project(mock_serialize, tmp_path)
+        selects = [make_entry(start=0.0, end=2.0), make_entry(start=4.0, end=5.0)]
+        build_selects_timeline(selects, [], tmp_path)
+        for playlist in captured["project"].playlists:
+            lengths = [e.out_point - e.in_point + 1 for e in playlist.entries]
+            assert lengths == [50, 25], playlist.id
+
+    @patch(f"{SELECTS_MOD}.serialize_versioned")
+    def test_guides_sit_at_timeline_position_not_source_position(self, mock_serialize, tmp_path):
+        captured = _capture_project(mock_serialize, tmp_path)
+        # Not source-ordered (build_selects sorts best-first): the 30 s select
+        # plays first, then the 2 s one, then one from another clip.
+        late = make_entry(start=30.0, end=32.0, reason="late")
+        early = make_entry(start=2.0, end=3.0, reason="early")
+        other = make_entry(start=10.0, end=11.0, reason="other")
+        other.clip_ref = "/other.mp4"
+        build_selects_timeline([late, early, other], [], tmp_path)
+        guides = [(g.label, g.position) for g in captured["project"].guides]
+        assert guides == [("late", 0), ("early", 50), ("other", 75)]
+
+    @patch(f"{SELECTS_MOD}.serialize_versioned")
+    def test_zero_length_select_still_one_frame(self, mock_serialize, tmp_path):
+        captured = _capture_project(mock_serialize, tmp_path)
+        build_selects_timeline(
+            [make_entry(start=5.0, end=5.0, reason="a"), make_entry(start=1.0, end=2.0, reason="b")],
+            [], tmp_path,
+        )
+        entries = captured["project"].playlists[0].entries
+        assert [(e.in_point, e.out_point) for e in entries] == [(125, 125), (25, 49)]
+        assert [g.position for g in captured["project"].guides] == [0, 1]

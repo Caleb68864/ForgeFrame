@@ -586,6 +586,28 @@ def _make_cv_tracker(cv2, algorithm: str):
     )
 
 
+def opencv_tracker_status(algorithm: str = DEFAULT_ALGORITHM) -> dict:
+    """Can the OpenCV engine actually build *algorithm*'s tracker here?
+
+    ``cv2`` importing is not enough: plain ``opencv-python(-headless)`` has no
+    CSRT/KCF trackers (they live in the contrib build), so the engine would
+    fail after a readiness check said yes.  This builds the tracker the same
+    way :func:`run_opencv_tracker` does (:func:`_make_cv_tracker`) and
+    discards it.  Never raises.
+    """
+    upper = resolve_algorithm(algorithm)
+    try:
+        import cv2  # type: ignore
+    except Exception as exc:  # noqa: BLE001 -- a status probe never fails
+        return {"cv2": False, "algorithm": upper, "ready": False,
+                "error": f"OpenCV not importable ({exc}). {_pip_hint('opencv')}"}
+    try:
+        _make_cv_tracker(cv2, upper)
+    except Exception as exc:  # noqa: BLE001
+        return {"cv2": True, "algorithm": upper, "ready": False, "error": str(exc)}
+    return {"cv2": True, "algorithm": upper, "ready": True, "error": None}
+
+
 def run_opencv_tracker(
     source: Path,
     seed_rect: Rect,

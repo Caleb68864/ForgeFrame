@@ -389,13 +389,13 @@ def _real() -> list[Path]:
     return sorted(REAL.glob("*.kdenlive"))
 
 
-# The parser preserves native chain/playlist XML but the current serializer
-# does not reconstruct their bin registrations or nested sequence definitions.
-# Well-formed output alone is insufficient: the write gate must reject these
-# incomplete reconstructions until native import gains that support.
+# The serializer does not reconstruct nested sequence definitions. Well-formed
+# output alone is insufficient: the write gate must reject that incomplete
+# reconstruction until native import gains that support.
+# (corpus_clip_ids_2604 left this list when the parser learned MLT timecode:
+# its chains now parse as producers instead of staying opaque.)
 _UNSUPPORTED_REWRITES = {
-    "corpus_clip_ids_2604.kdenlive": "no matching registered bin clip",
-    "corpus_nesting_effects_2604.kdenlive": "Unknown producer reference",
+    "corpus_nesting_effects_2604.kdenlive": "not defined anywhere in the project",
 }
 
 

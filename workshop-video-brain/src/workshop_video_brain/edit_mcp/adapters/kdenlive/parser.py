@@ -64,6 +64,54 @@ _KNOWN_TAGS = {
 }
 
 
+def mlt_time_to_frames(value: str, fps: float) -> int:
+    """Convert an MLT time value to a frame count at *fps*.
+
+    Kdenlive 26.x (and 25.x for chains/blanks) saves ``in``/``out``/``length``
+    through MLT's xml consumer with ``time_format=clock``, so a native file
+    holds ``in="00:00:01.001"`` rather than ``in="30"``.  This mirrors MLT's
+    own ``mlt_property_get_int`` parsing (``mlt_property.c``):
+
+    * no ``:`` -> a plain frame count (``"137"``, ``"-1"``);
+    * ``:`` plus ``.`` or ``,`` -> clock ``[[HH:]MM:]SS.sss``, frames =
+      ``lrint(fps * seconds)`` (round half to even, like ``lrint``);
+    * otherwise SMPTE ``[[HH:]MM:]SS:FF``; a ``;`` before the frame field is
+      NTSC drop-frame.
+
+    Raises ``ValueError`` on anything else, so the caller's malformed-element
+    handling still applies.
+    """
+    text = (value or "").strip()
+    if not text:
+        raise ValueError("empty time value")
+    if ":" not in text and ";" not in text:
+        return int(text)
+    if fps <= 0:
+        raise ValueError(f"cannot convert timecode {text!r} without a frame rate")
+    if "." in text or "," in text:
+        parts = text.replace(",", ".").split(":")
+        if len(parts) > 3:
+            raise ValueError(f"bad clock time {text!r}")
+        seconds = float(parts[-1])
+        minutes = int(parts[-2]) if len(parts) >= 2 else 0
+        hours = int(parts[-3]) if len(parts) == 3 else 0
+        return round(fps * (hours * 3600 + minutes * 60 + seconds))
+    drop = ";" in text
+    parts = text.replace(";", ":").split(":")
+    if not 2 <= len(parts) <= 4:
+        raise ValueError(f"bad SMPTE time {text!r}")
+    fields = [int(p) for p in parts]
+    fields = [0] * (4 - len(fields)) + fields
+    hours, minutes, seconds, frames = fields
+    nominal = round(fps)
+    total = ((hours * 60 + minutes) * 60 + seconds) * nominal + frames
+    if drop:
+        dropped = 2 * (nominal // 30) if nominal % 30 == 0 else 0
+        total_minutes = hours * 60 + minutes
+        total -= dropped * (total_minutes - total_minutes // 10)
+    return total
+
+
 def _elem_to_opaque(elem: ET.Element, position_hint: str | None = None) -> OpaqueElement:
     return OpaqueElement(
         tag=elem.tag,
@@ -100,7 +148,7 @@ def _parse_producer(elem: ET.Element) -> Producer:
     return Producer(id=producer_id, resource=resource, properties=props)
 
 
-def _parse_chain(elem: ET.Element) -> Producer:
+def _parse_chain(elem: ET.Element, fps: float = 25.0) -> Producer:
     """Parse a ``<chain>`` (producer + MLT ``<link>`` children) into a Producer.
 
     Round-trips the chain form the serializer emits for the native
@@ -127,7 +175,9 @@ def _parse_chain(elem: ET.Element) -> Producer:
                 )
             )
     chain_out_raw = elem.get("out")
-    chain_out = int(chain_out_raw) if chain_out_raw is not None else None
+    chain_out = (
+        mlt_time_to_frames(chain_out_raw, fps) if chain_out_raw is not None else None
+    )
     return Producer(
         id=producer_id,
         resource=props.get("resource", ""),
@@ -156,7 +206,7 @@ def _fold_audio_twins(producers: list, playlists: list) -> None:
 
 
 def _parse_playlist(
-    elem: ET.Element, track_index: int = 0
+    elem: ET.Element, track_index: int = 0, fps: float = 25.0
 ) -> tuple[Playlist, list[OpaqueElement]]:
     playlist_id = elem.get("id", "")
     entries: list[PlaylistEntry] = []
@@ -167,8 +217,8 @@ def _parse_playlist(
             entries.append(
                 PlaylistEntry(
                     producer_id=child.get("producer", ""),
-                    in_point=int(child.get("in", "0")),
-                    out_point=int(child.get("out", "0")),
+                    in_point=mlt_time_to_frames(child.get("in", "0"), fps),
+                    out_point=mlt_time_to_frames(child.get("out", "0"), fps),
                 )
             )
             # Clip effects are stored by real Kdenlive as <filter> children of
@@ -191,7 +241,7 @@ def _parse_playlist(
             real_index += 1
         elif child.tag == "blank":
             # Represent gaps as PlaylistEntry with empty producer_id
-            length = int(child.get("length", "0"))
+            length = mlt_time_to_frames(child.get("length", "0"), fps)
             entries.append(PlaylistEntry(producer_id="", in_point=0, out_point=length - 1))
         elif child.tag == "filter":
             # Track-level effects are stored by real Kdenlive/MLT as <filter>
@@ -484,11 +534,14 @@ def _parse_tractor(
     return tracks, opaques, subtitles
 
 
-def _parse_guide(elem: ET.Element) -> Guide | None:
+def _parse_guide(elem: ET.Element, fps: float = 25.0) -> Guide | None:
     try:
         pos_str = elem.get("position") or elem.get("time") or elem.get("pos") or "0"
-        # Position might be a frame count or a timecode; store as int
-        position = int(float(pos_str))
+        # Position might be a frame count or a timecode; store as int frames
+        if ":" in pos_str or ";" in pos_str:
+            position = mlt_time_to_frames(pos_str, fps)
+        else:
+            position = int(float(pos_str))
         label = elem.get("comment") or elem.get("label") or elem.text or ""
         category = elem.get("type") or elem.get("category")
         comment = elem.get("comment") if "comment" not in (label,) else None
@@ -589,6 +642,14 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
         content_playlist_ids.add(pid)
 
     profile = ProjectProfile()
+    # Timecode in/out values are converted at the project frame rate, so the
+    # profile must be known before any playlist/chain is read, wherever the
+    # <profile> element sits in the document.
+    for elem in root:
+        if elem.tag == "profile":
+            profile = _parse_profile(elem)
+            break
+    fps = profile.fps
     producers: list[Producer] = []
     playlists: list[Playlist] = []
     tracks: list[Track] = []
@@ -601,7 +662,7 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
         tag = elem.tag
 
         if tag == "profile":
-            profile = _parse_profile(elem)
+            continue  # read in the pre-pass above
 
         elif tag == "producer":
             producer_id = elem.get("id", "")
@@ -628,7 +689,7 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
 
         elif tag == "chain":
             try:
-                producers.append(_parse_chain(elem))
+                producers.append(_parse_chain(elem, fps))
             except Exception as exc:
                 logger.warning(
                     "Skipping malformed <chain id=%r>: %s",
@@ -650,7 +711,9 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
                 # track_index = the position this playlist will occupy in the
                 # project's playlist list, matching the effect-stack / serializer
                 # convention (index into project.playlists).
-                playlist, child_opaques = _parse_playlist(elem, track_index=len(playlists))
+                playlist, child_opaques = _parse_playlist(
+                    elem, track_index=len(playlists), fps=fps
+                )
                 playlists.append(playlist)
                 opaque_elements.extend(child_opaques)
             except Exception as exc:
@@ -675,7 +738,7 @@ def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
                 opaque_elements.append(_elem_to_opaque(elem))
 
         elif tag in ("kdenlive:guide", "guide"):
-            guide = _parse_guide(elem)
+            guide = _parse_guide(elem, fps)
             if guide is not None:
                 guides.append(guide)
             else:

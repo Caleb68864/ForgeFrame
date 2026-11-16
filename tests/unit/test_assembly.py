@@ -712,3 +712,40 @@ class TestAssemblyModels:
         assert len(restored.steps) == 1
         assert restored.steps[0].clips[0].clip_ref == "cut.mp4"
         assert restored.unmatched_clips == ["broll.mp4"]
+
+
+class TestAssembleTimelineFrameAccuracy:
+    """ROADMAP next #2: a trimmed clip spans exactly out-in seconds of frames."""
+
+    def _plan(self):
+        from workshop_video_brain.core.models.assembly import (
+            AssemblyPlan, ClipAssignment, StepAssembly,
+        )
+
+        return AssemblyPlan(
+            project_title="Frames",
+            steps=[
+                StepAssembly(step_number=1, chapter_title="One", clips=[
+                    ClipAssignment(clip_ref="a.mp4", source_path="/m/a.mp4", in_seconds=1.0, out_seconds=5.0),
+                    ClipAssignment(clip_ref="c.mp4", source_path="/m/c.mp4", role="insert",
+                                   in_seconds=0.0, out_seconds=2.0),
+                ]),
+                StepAssembly(step_number=2, chapter_title="Two", clips=[
+                    ClipAssignment(clip_ref="b.mp4", source_path="/m/b.mp4", in_seconds=0.0, out_seconds=2.0),
+                ]),
+            ],
+        )
+
+    def test_trimmed_clips_are_not_one_frame_long(self, tmp_path):
+        from workshop_video_brain.core.models.kdenlive import ProjectProfile
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
+
+        path = assemble_timeline(tmp_path, self._plan(), profile=ProjectProfile(fps=25.0))
+        project = parse_project(path)
+        by_id = {p.id: p for p in project.playlists}
+        primary = [(e.in_point, e.out_point) for e in by_id["playlist_v2"].entries]
+        assert primary == [(25, 124), (0, 49)]
+        inserts = [(e.producer_id != "", e.out_point - e.in_point + 1) for e in by_id["playlist_v1"].entries]
+        assert inserts[:2] == [(True, 50), (False, 50)]
+        chapters = [g.position for g in project.guides if g.category == "chapter"]
+        assert chapters == [0, 100]

@@ -2,7 +2,7 @@
 
 Runtime XML validation checks producer references and bin registration before committing a generated project. This exposes two existing native import limitations that older tests missed by checking only well-formed XML and repeated serialization.
 
-- `corpus_clip_ids_2604.kdenlive`: native chains with timecode attributes are retained as opaque XML, but their bin registrations are not reconstructed by the serializer. Referenced timeline chains have no registered bin clip.
+- `corpus_clip_ids_2604.kdenlive`: native chains with timecode attributes are retained as opaque XML, but their bin registrations are not reconstructed by the serializer. Referenced timeline chains have no registered bin clip. **Resolved 2026-11-16:** the parser now converts MLT timecode (`parser.mlt_time_to_frames`), so these chains parse as producers and the file round-trips; it moved to the supported round-trip set.
 - `corpus_nesting_effects_2604.kdenlive`: preserved native playlists reference nested sequence producers that the serializer does not recreate. References can point to absent sequence UUIDs.
 
 Parsing these originals remains supported. Rewriting them now raises `ProjectSerializeError` before writing, and regression tests assert that an existing destination remains unchanged. Full editable import needs parsing native timecodes, preserving bin registration relationships, and modeling multiple nested sequences before these fixtures can satisfy the roundtrip contract.
