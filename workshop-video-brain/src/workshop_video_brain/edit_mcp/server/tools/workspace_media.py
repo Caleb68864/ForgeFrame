@@ -276,8 +276,10 @@ def media_check_vfr(workspace_path: str) -> dict:
         Report with files_checked count, vfr_files (each with r/avg frame
         rate, divergence_pct and a suggested_action naming the
         media_transcode_cfr call), unprobed_files (path + error for files
-        ffprobe could not read), and all_cfr -- True only when every video
-        file was probed and none is VFR.
+        ffprobe could not read), resolved_files (VFR originals whose CFR
+        ``<stem>_cfr`` copy sits beside them -- already converted, nothing to
+        do), and all_cfr -- True only when every video file was probed and
+        every VFR file is resolved.
     """
     try:
         ws_root = _validate_workspace_path(workspace_path)

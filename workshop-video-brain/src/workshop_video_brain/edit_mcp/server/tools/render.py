@@ -327,13 +327,42 @@ def project_match_source(workspace_path: str, source_file: str) -> dict:
 
 @mcp.tool()
 @tool_guard
-def qc_check(file_path: str, checks: str = "") -> dict:
+def qc_check(
+    file_path: str,
+    checks: str = "",
+    target_lufs: float = -14.0,
+    lufs_tolerance: float = 4.0,
+    profile: str = "",
+    workspace_path: str = "",
+) -> dict:
     """Run automated quality checks on a rendered media file.
 
-    Checks: black_frames, silence, loudness, clipping, file_size.
-    Pass a comma-separated subset or leave empty for all checks.
+    Checks: black_frames, silence, loudness, clipping, file_size, profile.
+    Pass a comma-separated subset or leave empty for all (``profile`` runs
+    only when there is a profile to compare against).
+
+    Args:
+        file_path: The rendered file.
+        checks: Comma-separated subset of checks; empty for all.
+        target_lufs: Integrated loudness target (default -14, YouTube).
+        lufs_tolerance: Allowed distance from the target in LU (default 4,
+            i.e. -18..-10 LUFS).
+        profile: Render profile name (render_list_profiles) the render should
+            match in resolution, fps and codec.
+        workspace_path: Instead of ``profile``, compare against the latest
+            working-copy project's profile (resolution and fps).
+
+    Silence fails only on silence that matters: a run over 2 s, more than
+    half the duration silent, or over 1 s of silence at the very start or
+    end. Every pause is still listed in silence_regions; check_notes says
+    why a check failed.
     """
-    from workshop_video_brain.edit_mcp.pipelines.qc_check import ALL_CHECKS, run_qc
+    from workshop_video_brain.edit_mcp.pipelines.qc_check import (
+        KNOWN_CHECKS,
+        expected_from_project_profile,
+        expected_from_render_profile,
+        run_qc,
+    )
 
     if not file_path or not file_path.strip():
         return invalid_input("file_path must be a non-empty string", "Pass the path to a rendered media file to check.", param="file_path")
@@ -342,19 +371,46 @@ def qc_check(file_path: str, checks: str = "") -> dict:
         return err(f"File not found: {file_path}", error_type="missing_file", suggestion="Check the file path is correct and the file exists.", path=str(file_path))
     if p.is_dir():
         return invalid_input(f"file_path is a directory, not a file: {file_path}", "Pass the path to a single rendered media file, not a folder.", path=str(file_path))
+    if lufs_tolerance < 0:
+        return invalid_input("lufs_tolerance must be zero or more", "Pass the allowed distance from target_lufs in LU, e.g. 4.", param="lufs_tolerance")
 
     check_list: list[str] | None = None
     if checks.strip():
         check_list = [c.strip() for c in checks.split(",") if c.strip()]
-        unknown = [c for c in check_list if c not in ALL_CHECKS]
+        unknown = [c for c in check_list if c not in KNOWN_CHECKS]
         if unknown:
             # A typo used to be silently skipped and the report still said
             # overall_pass=True.
             return invalid_input(
                 f"Unknown QC check(s): {', '.join(unknown)}",
-                f"Use a comma-separated subset of: {', '.join(ALL_CHECKS)}, or leave checks empty for all.",
+                f"Use a comma-separated subset of: {', '.join(KNOWN_CHECKS)}, or leave checks empty for all.",
                 param="checks",
             )
 
-    report = run_qc(p, check_list)
+    if profile.strip() and workspace_path.strip():
+        return invalid_input(
+            "Pass profile or workspace_path, not both",
+            "Use profile for a render profile name, or workspace_path to compare against the project's own profile.",
+            param="profile",
+        )
+    expected = None
+    if profile.strip():
+        try:
+            expected = expected_from_render_profile(profile.strip())
+        except FileNotFoundError:
+            return not_found("Render profile", profile, "Use a name from render_list_profiles.")
+    elif workspace_path.strip():
+        from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import ProjectParseError
+        try:
+            _ws, project, latest = _load_latest_project(workspace_path)
+        except ProjectParseError as exc:
+            return corrupt_project(workspace_path, exc)
+        except (ValueError, FileNotFoundError) as exc:
+            return from_exception(exc)
+        expected = expected_from_project_profile(project.profile, source=f"project {latest.name}")
+
+    report = run_qc(
+        p, check_list, target_lufs=target_lufs, lufs_tolerance=lufs_tolerance,
+        expected_profile=expected,
+    )
     return _ok(report.model_dump())

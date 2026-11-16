@@ -304,3 +304,90 @@ class TestTranscodeToCFRRealFFmpeg:
         assert "Invalid data found when processing input" in message
         assert "ffmpeg version" not in message
         assert "configuration:" not in message
+
+
+# ---------------------------------------------------------------------------
+# ROADMAP next #6 (a)/(b): one divergence formula; converted originals resolved
+# ---------------------------------------------------------------------------
+
+def _ffprobe_json(r_rate: str, avg_rate: str) -> str:
+    import json
+    return json.dumps({
+        "format": {"duration": "10.0", "format_name": "mov,mp4"},
+        "streams": [{
+            "codec_type": "video", "codec_name": "h264", "width": 320,
+            "height": 240, "r_frame_rate": r_rate, "avg_frame_rate": avg_rate,
+        }],
+    })
+
+
+class TestDivergenceFormula:
+    def test_decision_and_reported_pct_use_one_formula(self, tmp_path: Path):
+        """60/1 vs 56.9: |d|/max = 5.17 % (VFR), |d|/avg = 5.45 %. The report
+        used the second; the decision the first. They must agree."""
+        from workshop_video_brain.edit_mcp.adapters.ffmpeg import probe as probe_mod
+
+        media = tmp_path / "media" / "raw"
+        media.mkdir(parents=True)
+        (media / "clip.mp4").write_text("fake")
+        done = subprocess.CompletedProcess([], 0, stdout=_ffprobe_json("60/1", "569/10"), stderr="")
+        with patch.object(probe_mod.subprocess, "run", return_value=done):
+            report = check_vfr(tmp_path)
+        assert len(report.vfr_files) == 1
+        assert report.vfr_files[0].divergence_pct == pytest.approx(3.1 / 60 * 100)
+
+    def test_helper_is_the_threshold_rule(self):
+        from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import (
+            VFR_DIVERGENCE_THRESHOLD,
+            frame_rate_divergence,
+        )
+        # Just under the line by |d|/max, just over by |d|/avg.
+        d = frame_rate_divergence("30/1", "2855/100")
+        assert d == pytest.approx(1.45 / 30)
+        assert d <= VFR_DIVERGENCE_THRESHOLD
+        assert frame_rate_divergence("0/0", "30/1") == 0.0
+
+
+class TestConvertedOriginals:
+    def _probe(self, path):
+        return _make_media_asset(str(path), is_vfr="_cfr" not in path.name
+                                 and "vfr" in path.name)
+
+    @patch("workshop_video_brain.edit_mcp.pipelines.vfr_check.probe_media")
+    def test_original_with_cfr_sibling_is_resolved(self, mock_probe, tmp_path: Path):
+        media = tmp_path / "media" / "raw"
+        media.mkdir(parents=True)
+        (media / "clip_vfr.mp4").write_text("fake")
+        (media / "clip_vfr_cfr.mp4").write_text("fake")
+        mock_probe.side_effect = self._probe
+
+        report = check_vfr(tmp_path)
+        assert report.vfr_files == []
+        assert report.all_cfr is True
+        assert len(report.resolved_files) == 1
+        res = report.resolved_files[0]
+        assert res.path.endswith("clip_vfr.mp4")
+        assert res.cfr_copy.endswith("clip_vfr_cfr.mp4")
+        assert res.divergence_pct > 5.0
+
+    @patch("workshop_video_brain.edit_mcp.pipelines.vfr_check.probe_media")
+    def test_vfr_sibling_does_not_resolve(self, mock_probe, tmp_path: Path):
+        """A `_cfr` copy that is itself VFR (or unreadable) fixes nothing."""
+        media = tmp_path / "media" / "raw"
+        media.mkdir(parents=True)
+        (media / "clip_vfr.mp4").write_text("fake")
+        (media / "clip_vfr_cfr.mp4").write_text("fake")
+        mock_probe.side_effect = lambda p: _make_media_asset(str(p), is_vfr=True)
+
+        report = check_vfr(tmp_path)
+        assert report.resolved_files == []
+        assert len(report.vfr_files) == 2
+        assert report.all_cfr is False
+
+    @patch("workshop_video_brain.edit_mcp.pipelines.vfr_check.probe_media")
+    def test_unconverted_vfr_still_flagged(self, mock_probe, workspace_with_vfr: Path):
+        mock_probe.side_effect = self._probe
+        report = check_vfr(workspace_with_vfr)
+        assert len(report.vfr_files) == 1
+        assert report.resolved_files == []
+        assert report.all_cfr is False

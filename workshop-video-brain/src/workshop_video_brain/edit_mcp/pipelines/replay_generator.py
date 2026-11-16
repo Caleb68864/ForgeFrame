@@ -282,9 +282,12 @@ def generate_replay(
             producer = seen_producers[clip_ref]
 
         in_point = seconds_to_frames(seg_start, fps)
-        out_point = seconds_to_frames(seg_end, fps)
-        if out_point <= in_point:
-            out_point = in_point + 1
+        # Half-open [start, end) -> inclusive MLT out-point, as in
+        # selects_timeline.build_selects_timeline.  A zero-length segment
+        # keeps one frame.
+        out_point = seconds_to_frames(seg_end, fps) - 1
+        if out_point < in_point:
+            out_point = in_point
 
         entry = PlaylistEntry(
             producer_id=producer.id,
@@ -311,7 +314,7 @@ def generate_replay(
             )
         )
 
-        seg_duration_frames = out_point - in_point
+        seg_duration_frames = out_point - in_point + 1  # out is inclusive
         timeline_frame += seg_duration_frames
 
         # 8. Add crossfade transition between segments (not after the last one)
