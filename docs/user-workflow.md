@@ -201,6 +201,25 @@ uv run wvb render status /path/to/workspace
 
 ---
 
+## Reaction GIFs
+
+A captioned reaction GIF of a movie line, in three evidence-first steps
+(skill `ff-reaction-gif`; MCP tools `gif_find_line`, `gif_fetch_scene`,
+`gif_render`):
+
+```bash
+# 1. Every match of the line, with the 4 cues before it and a ~30 s window
+uv run wvb gif find "https://tubitv.com/movies/..." "I've got it"
+# 2. Download only that window; prints shot cuts and a contact sheet path
+uv run wvb gif scene "https://tubitv.com/movies/..." 20:15 20:45 -o ./ksm --fine-sheet 15
+# 3. Render (times are seconds within clip.mp4); prints size, duration, fps, width, check strip
+uv run wvb gif render ./ksm/clip.mp4 15.5 17.52 "I'VE GOT IT!"
+```
+
+GIFs land in `$WVB_GIF_GALLERY` (default `~/Pictures/Reaction GIFs`).
+Look at the contact sheet before choosing times and at the check strip
+before sharing.
+
 ## Guided Workflow (All in One)
 
 For new projects, the `prepare-tutorial-project` command runs the full pipeline interactively:
