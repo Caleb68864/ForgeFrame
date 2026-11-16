@@ -15,6 +15,7 @@ import json
 import math
 import os
 import re
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -73,6 +74,11 @@ def melt_render_full(project: str | Path, out: str | Path, melt_bin: str = "melt
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     cmd = [melt_bin, str(project), "-consumer", f"avformat:{out}", "vcodec=libx264", "acodec=aac", "terminate_on_pause=1"]
+    # melt's Qt module (kdenlivetitle, qtblend) refuses to load without an
+    # X11/Wayland display and renders "INVALID" instead. CI runs the suite
+    # under xvfb-run; a headless local shell does not, so mirror kdenlive_render.
+    if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")) and shutil.which("xvfb-run"):
+        cmd = ["xvfb-run", "-a", *cmd]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0 or not out.exists():
         raise RuntimeError(f"melt render failed rc={proc.returncode} for {project}; stderr tail:\n{proc.stderr[-1500:]}")

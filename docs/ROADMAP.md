@@ -92,6 +92,7 @@ All five were implemented in the same April commit and were never marked done.
 | 5 | Hard-rule violations in generated XML | Done | `da08b49`; `test_bin_lengths.py`, `test_serializer_entry_ids.py`, `test_speed_variant_bin.py` |
 | 6 | GUI pass + hard rules rewrite | Blocked on owner (next #3) | `CLAUDE.md` still says "target Kdenlive 25.x" |
 | 7 | `kdenlive --verify-file` | Blocked upstream (next #10) | |
+| 8 | `test_frames_match[title]` fails locally (PSNR 16.21 dB) | Done 2026-11-16 (branch `fix/title-differential`) | Not a serializer bug: our title producer XML matches what Kdenlive 26.08.2 rewrites. The melt side (`_oracle.melt_render_full`) ran without a display, so melt 7.42's Qt module refused to load `kdenlivetitle` and drew "INVALID" over the frame; `kdenlive_render` already used `xvfb-run`, and CI hid it by running the whole suite under `xvfb-run`. `melt_render_full` now wraps in `xvfb-run -a` when neither `DISPLAY` nor `WAYLAND_DISPLAY` is set; title PSNR 43.19 dB, threshold unchanged at 33. |
 
 The section's "done when" (GUI pass shows no dialogs) is therefore not met.
 
