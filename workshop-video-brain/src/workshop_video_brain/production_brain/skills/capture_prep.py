@@ -3,9 +3,57 @@
 Pure function that takes a shot plan dict and returns a markdown checklist
 with camera settings, audio setup, lighting notes, sync strategy, and
 optimized shot order.
+
+``load_shot_plan`` is the shared workspace loader used by the
+``capture_prep_checklist`` MCP tool and the ``wvb plan capture-prep`` command.
 """
 from __future__ import annotations
 
+import copy
+import json
+from pathlib import Path
+
+#: Where ``new_project`` saves the structured shot plan, relative to the workspace.
+SHOT_PLAN_REPORT = Path("reports") / "shot_plan.json"
+
+#: Plan used when a workspace has no shot plan yet: the checklist still covers
+#: camera, audio, lighting and sync, with no shot order.
+GENERIC_SHOT_PLAN: dict = {
+    "title": "Generic Shoot",
+    "a_roll": [], "overhead": [], "closeups": [], "measurements": [],
+    "inserts": [], "glamour": [], "pickups": [],
+}
+
+SHOT_CATEGORIES = ("a_roll", "overhead", "closeups", "measurements",
+                   "inserts", "glamour", "pickups")
+
+
+def load_shot_plan(workspace_root: Path | str) -> tuple[dict, Path | None]:
+    """Load ``reports/shot_plan.json`` from a workspace.
+
+    Returns ``(plan, path)``. When the file does not exist, returns a fresh copy
+    of :data:`GENERIC_SHOT_PLAN` and ``None``.
+
+    Raises:
+        ValueError: If the file exists but is not valid JSON or not an object.
+    """
+    path = Path(workspace_root) / SHOT_PLAN_REPORT
+    if not path.is_file():
+        return copy.deepcopy(GENERIC_SHOT_PLAN), None
+    try:
+        plan = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise ValueError(f"{path} is not valid JSON: {exc}") from exc
+    if not isinstance(plan, dict):
+        raise ValueError(
+            f"{path} must hold a JSON object, got {type(plan).__name__}"
+        )
+    return plan, path
+
+
+def count_shots(shot_plan: dict) -> int:
+    """Number of shots across all categories of a shot plan."""
+    return sum(len(shot_plan.get(k) or []) for k in SHOT_CATEGORIES)
 
 
 def generate_capture_checklist(
@@ -150,11 +198,6 @@ def _lighting_for_types(lines: list[str], shot_plan: dict) -> None:
 
 def _sync_strategy(lines: list[str], shot_plan: dict) -> None:
     """Add sync strategy recommendations."""
-    all_shots = []
-    for category in ("a_roll", "overhead", "closeups", "measurements",
-                     "inserts", "glamour", "pickups"):
-        all_shots.extend(shot_plan.get(category, []))
-
     device_count_hint = 1
     if shot_plan.get("a_roll") and shot_plan.get("overhead"):
         device_count_hint = 2  # likely separate camera setups
@@ -203,3 +246,31 @@ def _optimized_shot_order(lines: list[str], shot_plan: dict) -> None:
     if order_num == 1:
         lines.append("*No shots in plan -- shoot in any convenient order.*")
         lines.append("")
+
+
+def capture_prep_payload(
+    shot_plan: dict,
+    shot_plan_path: Path | None,
+    target_resolution: str = "1920x1080",
+    target_fps: int = 30,
+) -> dict:
+    """Checklist plus summary fields, as returned by the tool and ``--json``.
+
+    Validation is :func:`generate_capture_checklist`'s (raises ``ValueError``).
+    """
+    markdown = generate_capture_checklist(shot_plan, target_resolution, target_fps)
+    payload = {
+        "title": shot_plan.get("title", "Untitled Project"),
+        "shot_plan_path": str(shot_plan_path) if shot_plan_path else None,
+        "shot_count": count_shots(shot_plan),
+        "target_resolution": target_resolution,
+        "target_fps": target_fps,
+        "markdown": markdown,
+    }
+    if shot_plan_path is None:
+        payload["note"] = (
+            f"No {SHOT_PLAN_REPORT.as_posix()} in the workspace; this is a generic "
+            "checklist with no shot order. Create a shot plan (ff-shot-plan or "
+            "ff-new-project) for a shot-by-shot order."
+        )
+    return payload
