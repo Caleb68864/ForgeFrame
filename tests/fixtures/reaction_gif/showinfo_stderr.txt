@@ -1,0 +1,8 @@
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'clip.mp4':
+  Duration: 00:00:30.03, start: 0.000000, bitrate: 1200 kb/s
+[Parsed_showinfo_1 @ 0x55d0c8a2b2c0] config in time_base: 1/12800, frame_rate: 25/1
+[Parsed_showinfo_1 @ 0x55d0c8a2b2c0] n:   0 pts: 199680 pts_time:15.6    duration:    512 duration_time:0.04    fmt:yuv420p cl:left sar:1/1 s:1280x720 i:P iskey:0 type:P checksum:AB12CD34 plane_checksum:[...] mean:[...] stdev:[...]
+[Parsed_showinfo_1 @ 0x55d0c8a2b2c0] color_range:tv color_space:unknown
+[Parsed_showinfo_1 @ 0x55d0c8a2b2c0] n:   1 pts: 224768 pts_time:17.56   duration:    512 duration_time:0.04    fmt:yuv420p cl:left sar:1/1 s:1280x720 i:P iskey:1 type:I checksum:0
+[Parsed_showinfo_1 @ 0x55d0c8a2b2c0] n:   2 pts: 341760 pts_time:26.7    duration:    512 duration_time:0.04    fmt:yuv420p
+frame=    3 fps=0.0 q=-0.0 Lsize=N/A time=00:00:30.00 bitrate=N/A speed= 120x
