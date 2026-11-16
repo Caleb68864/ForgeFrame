@@ -23,8 +23,12 @@ from workshop_video_brain.core.models.kdenlive import (
     Track,
 )
 from workshop_video_brain.core.models.markers import Marker
+from workshop_video_brain.core.models.timeline import AddTransition
 from workshop_video_brain.core.models.media import MediaAsset
 from workshop_video_brain.core.utils.naming import slugify
+from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher_intents import (
+    _apply_add_transition,
+)
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_versioned
 from workshop_video_brain.edit_mcp.pipelines.marker_rules import default_config
 from workshop_video_brain.edit_mcp.pipelines.review_timeline import rank_markers
@@ -317,26 +321,26 @@ def generate_replay(
         seg_duration_frames = out_point - in_point + 1  # out is inclusive
         timeline_frame += seg_duration_frames
 
-        # 8. Add crossfade transition between segments (not after the last one)
-        if seg_idx < len(merged) - 1:
-            from workshop_video_brain.core.models.kdenlive import OpaqueElement
-            xml = (
-                f'<transition id="transition_{seg_idx}" '
-                f'type="luma" '
-                f'track="playlist_video" '
-                f'left="producer_{seg_idx}" '
-                f'right="producer_{seg_idx + 1 if seg_idx + 1 < len(seen_producers) else seg_idx}" '
-                f'duration="{_CROSSFADE_FRAMES}" />'
-            )
-            project.opaque_elements.append(
-                OpaqueElement(
-                    tag="transition",
-                    xml_string=xml,
-                    position_hint="after_tractor",
-                )
-            )
-
     project.playlists = [video_playlist, audio_playlist]
+
+    # 8. Crossfade between segments as a real MLT ``luma`` dissolve (the same
+    # path as ``transitions_apply``). A bare ``<transition>`` without an
+    # ``mlt_service`` is skipped by melt ('failed to load transition
+    # "(null)"'), which left hard cuts. Each crossfade moves the incoming
+    # segment (and the rest) onto a new top track, so the next pair is
+    # always clips 0/1 of the newest track.
+    track_ref = video_playlist.id
+    for _ in range(len(merged) - 1):
+        _apply_add_transition(project, AddTransition(
+            type="dissolve", track_ref=track_ref, left_clip_ref="0",
+            duration_frames=_CROSSFADE_FRAMES,
+        ))
+        track_ref = project.playlists[-1].id
+        # The overlap pulls the incoming segment earlier: its guide follows
+        # it to the lead-in blank's end on the new track.
+        top = project.playlists[-1].entries
+        lead = top[0].out_point + 1 if top and not top[0].producer_id else 0
+        project.guides[len(project.playlists) - 2].position = lead
 
     # Serialize to versioned path
     title_slug = slugify("replay") or "replay"
