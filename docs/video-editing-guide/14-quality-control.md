@@ -54,9 +54,10 @@ Work through this checklist on every export before uploading.
 | Check | What It Detects | Example of a Real Problem | Manual Alternative |
 |---|---|---|---|
 | **Black frames** | Contiguous frames at or below 0.01 luma | Missed source clip left a 2-second black gap at 4:32 | Scrub timeline at 2x speed |
-| **Silence** | Audio RMS below -60 dBFS for >0.5 seconds | Narration track accidentally muted for 8 seconds | Listen through at 2x speed |
-| **Loudness** | Integrated LUFS below -18 or above -10 | Mix is too quiet (viewers skip); mix is too loud (YouTube normalizes down, dynamic range collapses) | `ffmpeg -i file.mp4 -af loudnorm=print_format=json -f null -` |
+| **Silence** | Audio below -50 dB for 1 s or more is listed; the check fails on a run over 2 s, more than half the video silent, or over 1 s of silence at the very start or end | Narration track accidentally muted for 8 seconds | Listen through at 2x speed |
+| **Loudness** | Integrated LUFS more than 4 LU from the -14 LUFS target (below -18 or above -10), or true peak above -1 dBTP; `qc_check target_lufs=... lufs_tolerance=...` changes the window | Mix is too quiet (viewers skip); mix is too loud (YouTube normalizes down, dynamic range collapses) | `ffmpeg -i file.mp4 -af loudnorm=print_format=json -f null -` |
 | **Clipping** | True peak samples at or above -0.5 dBTP | Mic peaked during a loud explanation; sounds distorted on good speakers | Kdenlive audio meter; any sample above 0 dBFS is clipping |
+| **Profile** | Resolution, frame rate (and codec, for a render profile) differ from what you chose | Rendered at 1280x720 with the preview profile instead of the 1080p one | `qc_check profile="youtube-1080p"` or `workspace_path=...` |
 | **File size** | File significantly smaller or larger than expected for the profile | 2-hour render at 8 Mbps came out 50 MB -- encoding failed silently; or 30-min tutorial is 18 GB -- wrong profile used | `ls -lh output.mp4` |
 
 ### Loudness Targets

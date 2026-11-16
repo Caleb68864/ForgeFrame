@@ -258,3 +258,143 @@ def test_clean_file_passes_all(mock_run, tmp_path):
     assert report.overall_pass
     assert len(report.checks_failed) == 0
     assert len(report.checks_passed) == len(ALL_CHECKS)
+
+
+# --- ROADMAP next #5: silence that matters, loudness target, profile -------
+
+def _silence_stderr(runs, duration=None):
+    lines = []
+    if duration is not None:
+        h, rem = divmod(duration, 3600)
+        m, s = divmod(rem, 60)
+        lines.append(f"  Duration: {int(h):02d}:{int(m):02d}:{s:05.2f}, start: 0.000000, bitrate: 128 kb/s")
+    for start, end in runs:
+        lines.append(f"[silencedetect @ 0x1] silence_start: {start}")
+        lines.append(f"[silencedetect @ 0x1] silence_end: {end} | silence_duration: {end - start}")
+    return "\n".join(lines) + "\n"
+
+
+@patch("workshop_video_brain.edit_mcp.pipelines.qc_check.subprocess.run")
+def test_single_short_pause_passes(mock_run):
+    """A 1.2 s pause mid-video is a normal tutorial pause, not a failure."""
+    mock_run.return_value = _mock_subprocess(_silence_stderr([(30.0, 31.2)], duration=120.0))
+    report = run_qc(SAMPLE_PATH, checks=["silence"])
+    assert len(report.silence_regions) == 1  # still reported
+    assert "silence" in report.checks_passed
+    assert report.silence_longest_seconds == pytest.approx(1.2)
+
+
+@patch("workshop_video_brain.edit_mcp.pipelines.qc_check.subprocess.run")
+def test_many_short_pauses_pass_below_ratio(mock_run):
+    runs = [(10.0 * i + 5, 10.0 * i + 6.5) for i in range(10)]  # 15 s of 120 s
+    mock_run.return_value = _mock_subprocess(_silence_stderr(runs, duration=120.0))
+    report = run_qc(SAMPLE_PATH, checks=["silence"])
+    assert "silence" in report.checks_passed
+    assert report.silence_total_seconds == pytest.approx(15.0)
+
+
+@patch("workshop_video_brain.edit_mcp.pipelines.qc_check.subprocess.run")
+def test_long_run_fails(mock_run):
+    mock_run.return_value = _mock_subprocess(_silence_stderr([(40.0, 44.0)], duration=120.0))
+    report = run_qc(SAMPLE_PATH, checks=["silence"])
+    assert "silence" in report.checks_failed
+    assert "longest" in report.check_notes["silence"]
+
+
+@patch("workshop_video_brain.edit_mcp.pipelines.qc_check.subprocess.run")
+def test_mostly_silent_fails_on_total(mock_run):
+    runs = [(3.4 * i, 3.4 * i + 1.8) for i in range(1, 18)]  # 30.6 s of 60 s, each 1.8 s
+    mock_run.return_value = _mock_subprocess(_silence_stderr(runs, duration=60.0))
+    report = run_qc(SAMPLE_PATH, checks=["silence"])
+    assert "silence" in report.checks_failed
+    assert "total" in report.check_notes["silence"]
+    assert "longest" not in report.check_notes["silence"]
+
+
+@patch("workshop_video_brain.edit_mcp.pipelines.qc_check.subprocess.run")
+def test_dead_air_at_start_fails(mock_run):
+    mock_run.return_value = _mock_subprocess(_silence_stderr([(0.0, 1.6)], duration=120.0))
+    report = run_qc(SAMPLE_PATH, checks=["silence"])
+    assert "silence" in report.checks_failed
+    assert report.check_notes["silence"].endswith("at the start (> 1 s)")
+
+
+@patch("workshop_video_brain.edit_mcp.pipelines.qc_check.subprocess.run")
+def test_dead_air_at_end_fails(mock_run):
+    mock_run.return_value = _mock_subprocess(_silence_stderr([(118.4, 120.0)], duration=120.0))
+    report = run_qc(SAMPLE_PATH, checks=["silence"])
+    assert "silence" in report.checks_failed
+    assert report.check_notes["silence"].endswith("at the end (> 1 s)")
+
+
+def _loudness(i, tp=-3.0):
+    return MagicMock(return_value={"input_i": i, "input_tp": tp, "input_lra": 7.0})
+
+
+@patch("workshop_video_brain.edit_mcp.pipelines.qc_check.subprocess.run")
+@pytest.mark.parametrize("lufs, passes", [(-14.0, True), (-16.0, True), (-18.0, True),
+                                          (-10.0, True), (-18.5, False), (-9.5, False),
+                                          (-20.0, False)])
+def test_loudness_against_default_target(mock_run, lufs, passes):
+    """Default target -14 LUFS integrated, +/-4 LU (the guide's -18..-10
+    window). -20 (quiet) and -9.5 (over-loud) used to pass: only < -24 failed."""
+    with patch("workshop_video_brain.edit_mcp.adapters.ffmpeg.probe.measure_loudness", _loudness(lufs)):
+        report = run_qc(SAMPLE_PATH, checks=["loudness"])
+    assert report.loudness_target_lufs == -14.0
+    assert report.loudness_delta_lu == pytest.approx(lufs + 14.0)
+    assert ("loudness" in report.checks_passed) is passes
+
+
+@patch("workshop_video_brain.edit_mcp.pipelines.qc_check.subprocess.run")
+def test_loudness_target_configurable(mock_run):
+    with patch("workshop_video_brain.edit_mcp.adapters.ffmpeg.probe.measure_loudness", _loudness(-23.0)):
+        report = run_qc(SAMPLE_PATH, checks=["loudness"], target_lufs=-23.0, lufs_tolerance=1.0)
+    assert "loudness" in report.checks_passed
+    assert report.loudness_delta_lu == pytest.approx(0.0)
+
+
+def _asset(width=1920, height=1080, fps=30.0, codec="h264"):
+    a = MagicMock()
+    a.width, a.height, a.fps, a.video_codec = width, height, fps, codec
+    return a
+
+
+def test_profile_match_passes():
+    from workshop_video_brain.edit_mcp.pipelines.qc_check import ExpectedProfile
+    exp = ExpectedProfile(width=1920, height=1080, fps=30.0, video_codec="libx264", source="t")
+    with patch("workshop_video_brain.edit_mcp.adapters.ffmpeg.probe.probe_media", return_value=_asset()):
+        report = run_qc(SAMPLE_PATH, expected_profile=exp)
+    assert "profile" in report.checks_passed or "profile" in report.checks_failed  # ran by default
+    report = None
+    with patch("workshop_video_brain.edit_mcp.adapters.ffmpeg.probe.probe_media", return_value=_asset()):
+        report = run_qc(SAMPLE_PATH, checks=["profile"], expected_profile=exp)
+    assert report.checks_passed == ["profile"]
+    assert report.profile_mismatches == []
+
+
+@pytest.mark.parametrize("asset, field", [
+    (_asset(width=1280, height=720), "resolution"),
+    (_asset(fps=25.0), "fps"),
+    (_asset(codec="hevc"), "codec"),
+])
+def test_profile_mismatch_fails(asset, field):
+    from workshop_video_brain.edit_mcp.pipelines.qc_check import ExpectedProfile
+    exp = ExpectedProfile(width=1920, height=1080, fps=30.0, video_codec="libx264", source="t")
+    with patch("workshop_video_brain.edit_mcp.adapters.ffmpeg.probe.probe_media", return_value=asset):
+        report = run_qc(SAMPLE_PATH, checks=["profile"], expected_profile=exp)
+    assert report.checks_failed == ["profile"]
+    assert any(m.startswith(field) for m in report.profile_mismatches), report.profile_mismatches
+
+
+def test_profile_requested_without_expected_is_skip():
+    report = run_qc(SAMPLE_PATH, checks=["profile"])
+    assert report.checks_skipped == ["profile"]
+    assert "profile" in report.check_errors
+    assert report.overall_pass is False
+
+
+def test_expected_from_render_profile():
+    from workshop_video_brain.edit_mcp.pipelines.qc_check import expected_from_render_profile
+    exp = expected_from_render_profile("youtube-1080p")
+    assert (exp.width, exp.height, exp.video_codec) == (1920, 1080, "libx264")
+    assert exp.fps == pytest.approx(30.0)
