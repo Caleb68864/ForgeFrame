@@ -273,8 +273,11 @@ def media_check_vfr(workspace_path: str) -> dict:
         workspace_path: Absolute path to the workspace root directory.
 
     Returns:
-        Report with files_checked count, list of VFR files with divergence
-        details, and all_cfr flag.
+        Report with files_checked count, vfr_files (each with r/avg frame
+        rate, divergence_pct and a suggested_action naming the
+        media_transcode_cfr call), unprobed_files (path + error for files
+        ffprobe could not read), and all_cfr -- True only when every video
+        file was probed and none is VFR.
     """
     try:
         ws_root = _validate_workspace_path(workspace_path)
