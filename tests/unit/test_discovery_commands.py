@@ -1,6 +1,9 @@
 """Discovery stays offline even with optional engines absent."""
 import json
 import subprocess
+import importlib.machinery
+import sys
+import types
 
 import click
 from click.testing import CliRunner
@@ -80,3 +83,50 @@ def test_local_model_empty_files_are_not_offline_ready(tmp_path, monkeypatch):
     for name in ('model.bin', 'config.json', 'tokenizer.json'):
         (tmp_path / name).touch()
     assert doctor.environment_report()['features']['transcription_offline'] is False
+
+
+# ROADMAP next #4: motion_track_python must mean "a tracker can be built",
+# not just "cv2 imports" (opencv-python-headless has no CSRT/KCF).
+class _HeadlessCv2(types.ModuleType):
+    """Shape of plain opencv-python-headless: imports, has no trackers."""
+
+
+def _contrib_cv2():
+    module = types.ModuleType('cv2')
+
+    class TrackerCSRT:
+        @staticmethod
+        def create():
+            return object()
+
+    module.TrackerCSRT = TrackerCSRT
+    return module
+
+
+def _report_with_cv2(monkeypatch, cv2_module):
+    cv2_module.__spec__ = importlib.machinery.ModuleSpec('cv2', None)
+    monkeypatch.setattr(doctor, '_probe', lambda *args: {'available': True})
+    monkeypatch.setitem(sys.modules, 'cv2', cv2_module)
+    return doctor.environment_report()
+
+
+def test_motion_track_not_ready_when_cv2_has_no_tracker(monkeypatch):
+    report = _report_with_cv2(monkeypatch, _HeadlessCv2('cv2'))
+    assert report['features']['motion_track_python'] is False
+    assert report['motion_track']['cv2'] is True
+    assert report['motion_track']['ready'] is False
+    assert 'contrib' in report['motion_track']['error']
+
+
+def test_motion_track_ready_when_csrt_constructs(monkeypatch):
+    report = _report_with_cv2(monkeypatch, _contrib_cv2())
+    assert report['features']['motion_track_python'] is True
+    assert report['motion_track'] == {'cv2': True, 'algorithm': 'CSRT', 'ready': True, 'error': None}
+
+
+def test_motion_track_not_ready_without_cv2(monkeypatch):
+    monkeypatch.setitem(sys.modules, 'cv2', None)  # import raises ImportError
+    monkeypatch.setattr(doctor, '_probe', lambda *args: {'available': True})
+    report = doctor.environment_report()
+    assert report['features']['motion_track_python'] is False
+    assert report['motion_track']['cv2'] is False
