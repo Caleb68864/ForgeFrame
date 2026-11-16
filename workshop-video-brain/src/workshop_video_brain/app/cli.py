@@ -876,6 +876,45 @@ def plan_shots(idea: str) -> None:
         sys.exit(1)
 
 
+@plan.command("capture-prep")
+@click.argument("workspace_path")
+@click.option("--target-resolution", default="1920x1080", show_default=True,
+              help="Camera resolution as WxH, e.g. 3840x2160.")
+@click.option("--target-fps", default=30, type=int, show_default=True,
+              help="Whole-number frame rate, e.g. 24, 30 or 60.")
+@click.option("--json", "as_json", is_flag=True, default=False,
+              help="Emit the checklist and summary as JSON.")
+def plan_capture_prep(
+    workspace_path: str, target_resolution: str, target_fps: int, as_json: bool,
+) -> None:
+    """Print a pre-shoot capture checklist for WORKSPACE_PATH.
+
+    Uses reports/shot_plan.json when present, else a generic checklist.
+    Same output as the capture_prep_checklist MCP tool.
+    """
+    from workshop_video_brain.production_brain.skills.capture_prep import (
+        capture_prep_payload,
+        load_shot_plan,
+    )
+
+    try:
+        ws = Path(workspace_path)
+        if not ws.is_dir():
+            raise ValueError(f"Workspace path does not exist or is not a directory: {workspace_path}")
+        plan_data, plan_path = load_shot_plan(ws)
+        payload = capture_prep_payload(plan_data, plan_path, target_resolution, target_fps)
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps(payload, indent=2))
+        return
+    if "note" in payload:
+        click.echo(f"Note: {payload['note']}", err=True)
+    click.echo(payload["markdown"])
+
+
 # ---------------------------------------------------------------------------
 # prepare-tutorial-project guided workflow
 # ---------------------------------------------------------------------------

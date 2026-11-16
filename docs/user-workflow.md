@@ -64,6 +64,9 @@ uv run wvb plan script --idea "How to build a wooden toolbox"
 
 # Generate a shot plan (uses outline internally)
 uv run wvb plan shots --idea "How to build a wooden toolbox"
+
+# Pre-shoot capture checklist from the workspace's reports/shot_plan.json
+uv run wvb plan capture-prep /path/to/workspace --target-resolution 3840x2160 --target-fps 24
 ```
 
 The planning phase is entirely local — no network calls, no API keys required.

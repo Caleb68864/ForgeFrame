@@ -172,7 +172,7 @@ Generate a pre-shoot capture checklist from a shot plan: camera settings, audio,
 | **Trigger phrases** | "capture prep", "shoot prep", "pre-shoot", "filming checklist", "camera settings checklist" |
 | **Inputs** | Workspace path (reads `reports/shot_plan.json`); optional target resolution (default 1920x1080) and frame rate (default 30fps) |
 | **Outputs** | Pre-shoot checklist markdown organized by setup category (camera settings, audio, lighting, sync, shot order optimized to minimize camera moves) |
-| **Key MCP tools** | `generate_capture_checklist` (Python engine) |
+| **Key MCP tools** | `capture_prep_checklist` (CLI: `wvb plan capture-prep <workspace>`) |
 | **Handbook chapter** | Ch.04 — Scripts, Shot Plans & Capture Prep; Ch.05 — Filming Your Tutorial |
 
 ---
