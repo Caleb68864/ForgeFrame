@@ -19,30 +19,26 @@ Use this skill when the user:
 
 1. **Find the workspace.** Ask the user for the workspace path if not already known.
 
-2. **Load the shot plan.** Check for `reports/shot_plan.json` in the workspace:
-   ```python
-   import json
-   from pathlib import Path
-   shot_plan_path = Path(workspace_root) / "reports" / "shot_plan.json"
-   if shot_plan_path.exists():
-       shot_plan = json.loads(shot_plan_path.read_text())
-   ```
-   If no shot plan exists, generate a generic checklist using an empty plan dict:
-   ```python
-   shot_plan = {"title": "Generic Shoot", "a_roll": [], "overhead": [], "closeups": [], "measurements": [], "inserts": [], "glamour": [], "pickups": []}
-   ```
-
-3. **Ask about target settings** (or use defaults):
+2. **Ask about target settings** (or use defaults):
    - Resolution: default `"1920x1080"`, ask if shooting 4K (`"3840x2160"`)
-   - Frame rate: default `30`, ask if they prefer 24 or 60
+   - Frame rate: default `30`, ask if they prefer 24 or 60. Whole numbers only;
+     23.976/29.97 are rejected for now.
 
-4. **Generate the checklist:**
-   ```python
-   from workshop_video_brain.production_brain.skills.capture_prep import generate_capture_checklist
-   checklist_md = generate_capture_checklist(shot_plan, target_resolution, target_fps)
+3. **Generate the checklist** with the `capture_prep_checklist` MCP tool:
    ```
+   capture_prep_checklist(workspace_path, target_resolution="1920x1080", target_fps=30)
+   ```
+   It reads `reports/shot_plan.json` from the workspace. Without one it returns
+   a generic checklist (no shot order) plus a `note`; tell the user a shot plan
+   (`ff-shot-plan` / `ff-new-project`) gives a shot-by-shot order. The result's
+   `data.markdown` is the checklist; `data.shot_count` and `data.title`
+   summarise it. A bad `target_fps` / `target_resolution` or a malformed
+   `shot_plan.json` comes back as `invalid_input` with a `suggestion`.
 
-5. **Present the checklist** with additional personalized notes:
+   From a terminal the same checklist is
+   `wvb plan capture-prep <workspace> [--target-resolution 3840x2160] [--target-fps 24] [--json]`.
+
+4. **Present the checklist** with additional personalized notes:
    - If the user mentioned specific gear, add notes about that gear
    - If the workspace has previous shoots, mention lessons from those
    - Highlight any must-have shots they might miss
@@ -84,7 +80,7 @@ high-bitrate sources for proxying).
 
 User: "I'm about to film the dovetail tutorial, can you get me a checklist?"
 
-Response: Load the shot plan from the workspace, generate the checklist at 1080p/30fps, present it with notes about the specific shots in the plan.
+Response: Call `capture_prep_checklist` on the workspace at 1080p/30fps, present it with notes about the specific shots in the plan.
 
 ---
 
