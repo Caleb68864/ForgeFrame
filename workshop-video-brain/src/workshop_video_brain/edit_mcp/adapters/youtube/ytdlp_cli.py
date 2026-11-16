@@ -73,6 +73,8 @@ def download_subs(url: str, work_dir: Path) -> list[Path]:
     """Fetch English subs (manual and auto) as SRT into *work_dir*."""
     work_dir = Path(work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
+    for old in work_dir.glob("subs*.srt"):  # never mix in another video's subs
+        old.unlink()
     _run(build_subs_command(url, work_dir / "subs", ytdlp_binary()), ANALYSIS_TIMEOUT_SECONDS)
     found = sorted(work_dir.glob("subs*.srt"))
     if not found:

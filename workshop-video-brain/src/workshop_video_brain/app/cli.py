@@ -1393,6 +1393,136 @@ def pacing_analyze(workspace_path: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# gif group (captioned reaction GIFs: find -> scene -> render)
+# ---------------------------------------------------------------------------
+
+
+@main.group("gif")
+def gif_group() -> None:
+    """Captioned reaction GIFs: find a line, fetch the scene, render.
+
+    Same flow as the gif_find_line / gif_fetch_scene / gif_render MCP tools.
+    """
+
+
+def _gif_fail(exc: Exception) -> None:
+    click.echo(f"Error: {exc}", err=True)
+    sys.exit(1)
+
+
+@gif_group.command("find")
+@click.argument("source")
+@click.argument("text")
+@click.option("--context", default=4, show_default=True, help="Preceding cues to show per match.")
+@click.option("--offset", "picture_offset", default=3.0, show_default=True,
+              help="Seconds the picture lags the subtitle.")
+@click.option("--work-dir", default=None, help="Where subtitles are saved.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Emit JSON.")
+def gif_find(source: str, text: str, context: int, picture_offset: float,
+             work_dir: str | None, as_json: bool) -> None:
+    """Find TEXT in the subtitles of SOURCE (a URL or a local .srt).
+
+    Downloads subtitles only. Prints every match with its context cues and a
+    suggested ~30 s window for `wvb gif scene`.
+    """
+    from workshop_video_brain.edit_mcp.pipelines.reaction_gif import find_line
+
+    try:
+        result = find_line(source, text, work_dir=Path(work_dir) if work_dir else None,
+                           context=context, picture_offset=picture_offset)
+    except Exception as exc:
+        _gif_fail(exc)
+    if as_json:
+        click.echo(json.dumps(result, indent=2))
+        return
+    click.echo(f"{result['match_count']} match(es) for {text!r}")
+    for n, m in enumerate(result["matches"], 1):
+        click.echo(f"\n[{n}] {m['cue']['start_mmss']}  (sub cue {m['cue']['index']})")
+        for c in m["context"]:
+            click.echo(f"      {c['start_mmss']:>7}  {c['text'].replace(chr(10), ' / ')}")
+        click.echo(f"   >> {m['cue']['start_mmss']:>7}  {m['cue']['text'].replace(chr(10), ' / ')}")
+        w = m["suggested_window"]
+        click.echo(f"   window: {w['start_mmss']}-{w['end_mmss']}")
+
+
+@gif_group.command("scene")
+@click.argument("source")
+@click.argument("start", required=False)
+@click.argument("end", required=False)
+@click.option("-o", "--out-dir", default=None, help="Folder for clip.mp4 (URL source).")
+@click.option("--no-sheet", is_flag=True, default=False, help="Skip the 2 fps contact sheet.")
+@click.option("--fine-sheet", "fine_sheet_at", default=None,
+              help="Clip time for a 6 fps / 3 s contact sheet.")
+@click.option("--waveform", "waveform_at", default=None, help="Clip time for a 6 s waveform.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Emit JSON.")
+def gif_scene(source: str, start: str | None, end: str | None, out_dir: str | None,
+              no_sheet: bool, fine_sheet_at: str | None, waveform_at: str | None,
+              as_json: bool) -> None:
+    """Download START-END (MM:SS) of SOURCE, or examine a local clip.
+
+    Prints shot-cut times, end-before-cut times and the contact sheet path.
+    """
+    from workshop_video_brain.edit_mcp.pipelines.reaction_gif import fetch_scene
+
+    try:
+        result = fetch_scene(source, start, end, out_dir=Path(out_dir) if out_dir else None,
+                             contact_sheet=not no_sheet, fine_sheet_at=fine_sheet_at,
+                             waveform_at=waveform_at)
+    except Exception as exc:
+        _gif_fail(exc)
+    if as_json:
+        click.echo(json.dumps(result, indent=2))
+        return
+    click.echo(f"clip: {result['clip']}")
+    cuts = ", ".join(f"{c:.2f}" for c in result["scene_cuts"]) or "none"
+    click.echo(f"shot cuts (s): {cuts}")
+    if result["end_before_cuts"]:
+        click.echo("end before cut: " + ", ".join(f"{c:.2f}" for c in result["end_before_cuts"]))
+    for key in ("contact_sheet", "fine_sheet", "waveform"):
+        if key in result:
+            click.echo(f"{key.replace('_', ' ')}: {result[key]}")
+
+
+@gif_group.command("render")
+@click.argument("clip_path")
+@click.argument("start")
+@click.argument("end")
+@click.argument("caption", required=False, default="")
+@click.option("-o", "--output", default=None, help="GIF path (default: gallery/<caption>.gif).")
+@click.option("--gallery", default=None,
+              help="GIF gallery folder (default: $WVB_GIF_GALLERY or ~/Pictures/Reaction GIFs).")
+@click.option("--width", default=480, show_default=True)
+@click.option("--fps", default=15, show_default=True)
+@click.option("--json", "as_json", is_flag=True, default=False, help="Emit JSON.")
+def gif_render(clip_path: str, start: str, end: str, caption: str, output: str | None,
+               gallery: str | None, width: int, fps: int, as_json: bool) -> None:
+    """Render CLIP_PATH from START to END (seconds in the clip) with CAPTION.
+
+    Prints size, duration, fps, width and the check-strip path.
+    """
+    from workshop_video_brain.edit_mcp.pipelines.reaction_gif import render_gif
+
+    try:
+        result = render_gif(Path(clip_path), start, end, caption or None,
+                            output=Path(output) if output else None,
+                            gallery_dir=Path(gallery) if gallery else None,
+                            width=width, fps=fps)
+    except Exception as exc:
+        _gif_fail(exc)
+    if as_json:
+        click.echo(json.dumps(result, indent=2))
+        return
+    click.echo(f"gif: {result['path']}")
+    click.echo(
+        f"size: {result['size_mb']} MB  duration: {result['duration']} s  "
+        f"fps: {result['fps']}  width: {result['width']} px  frames: {result['frames']}"
+    )
+    click.echo(f"check strip: {result['check_strip']}")
+    for w in result["warnings"]:
+        click.echo(f"warning: {w}", err=True)
+
+
+# ---------------------------------------------------------------------------
 # wvb group
 # ---------------------------------------------------------------------------
 

@@ -119,3 +119,31 @@ def test_default_output_goes_to_gallery(clip, tmp_path, monkeypatch):
     monkeypatch.setenv("WVB_GIF_GALLERY", str(tmp_path / "gallery"))
     result = rg.render_gif(clip, 0.5, 1.0, "Hi there")
     assert Path(result["path"]) == tmp_path / "gallery" / "hi-there.gif"
+
+
+def test_cli_scene_and_render(clip, tmp_path):
+    from click.testing import CliRunner
+    from workshop_video_brain.app.cli import main
+
+    r = CliRunner()
+    res = r.invoke(main, ["gif", "scene", str(clip), "--waveform", "0", "--fine-sheet", "1"])
+    assert res.exit_code == 0, res.output
+    assert "shot cuts (s): 2.00" in res.output
+    assert "end before cut: 1.96" in res.output
+
+    out = tmp_path / "cli.gif"
+    res = r.invoke(main, ["gif", "render", str(clip), "0.5", "1.96", "I'VE GOT IT!", "-o", str(out)])
+    assert res.exit_code == 0, res.output
+    assert out.exists()
+    assert "width: 480 px" in res.output
+    assert "check strip:" in res.output
+
+
+def test_mcp_render_tool(clip, tmp_path):
+    from tests._testkit import call_tool
+    from workshop_video_brain.edit_mcp.server.bundles import reaction_gif as bundle
+
+    out = call_tool(bundle.gif_render, str(clip), "0.5", "1.5", "Nope", output_path=str(tmp_path / "m.gif"))
+    assert out["status"] == "success", out
+    assert out["data"]["width"] == 480
+    assert Path(out["data"]["check_strip"]).exists()

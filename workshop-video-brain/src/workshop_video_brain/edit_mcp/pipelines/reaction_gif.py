@@ -332,6 +332,22 @@ def build_check_strip_args(frame_count: int, frames: int = 10) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+def caption_fit_warning(caption: str | None, width: int = DEFAULT_WIDTH) -> str | None:
+    """Rough check (bold sans ~0.62 em per glyph) that one caption line fits."""
+    if not caption:
+        return None
+    m = caption_metrics(width)
+    longest = max(len(line) for line in caption.splitlines() or [""])
+    est = longest * m.fontsize * 0.62
+    if est > width - 2 * m.borderw:
+        return (
+            f"Caption line of {longest} characters is about {est:.0f} px wide at "
+            f"{m.fontsize} px, wider than the {width} px GIF: shorten it or "
+            "break it onto two lines. Check the strip."
+        )
+    return None
+
+
 def default_gallery_dir() -> Path:
     """``$WVB_GIF_GALLERY``, else ``~/Pictures/Reaction GIFs``."""
     env = os.environ.get(GALLERY_ENV)
@@ -482,6 +498,7 @@ def render_gif(
         "end": end_s,
         "caption": caption,
         "check_strip": str(strip),
+        "warnings": [w for w in [caption_fit_warning(caption, width)] if w],
     }
 
 
@@ -494,7 +511,7 @@ def find_line(
     source: str,
     query: str,
     *,
-    work_dir: Path,
+    work_dir: Path | None = None,
     context: int = 4,
     picture_offset: float = PICTURE_OFFSET_SECONDS,
 ) -> dict:
@@ -510,7 +527,9 @@ def find_line(
     else:
         from workshop_video_brain.edit_mcp.adapters.youtube import ytdlp_cli
 
-        srt_files = ytdlp_cli.download_subs(source, Path(work_dir))
+        srt_files = ytdlp_cli.download_subs(
+            source, Path(work_dir) if work_dir else default_work_dir("subs")
+        )
     results = []
     for srt in srt_files:
         cues = parse_srt(srt.read_text(encoding="utf-8", errors="replace"))
@@ -526,25 +545,55 @@ def find_line(
     }
 
 
-def fetch_scene(
-    url: str,
-    start: float | str,
-    end: float | str,
-    *,
-    out_dir: Path,
-    contact_sheet: bool = True,
-) -> dict:
-    """Download just ``start..end`` of *url* to ``out_dir/clip.mp4``, then
-    collect the evidence: shot-cut times and (optionally) a contact sheet."""
-    from workshop_video_brain.edit_mcp.adapters.youtube import ytdlp_cli
+def default_work_dir(kind: str) -> Path:
+    """Scratch folder for subs/scenes: ``<gallery>/_work/<kind>``."""
+    return default_gallery_dir() / "_work" / kind
 
-    start_s, end_s = parse_time(start), parse_time(end)
-    if end_s <= start_s:
-        raise ValueError(f"End ({end}) must be after start ({start}).")
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    clip = ytdlp_cli.download_section(url, start_s, end_s, out_dir / "clip.mp4")
-    return describe_clip(clip, contact_sheet=contact_sheet)
+
+def fetch_scene(
+    source: str,
+    start: float | str | None = None,
+    end: float | str | None = None,
+    *,
+    out_dir: Path | None = None,
+    contact_sheet: bool = True,
+    fine_sheet_at: float | str | None = None,
+    waveform_at: float | str | None = None,
+) -> dict:
+    """Get the scene clip and its evidence.
+
+    *source* is a URL (only ``start..end`` is downloaded, with yt-dlp, to
+    ``out_dir/clip.mp4``) or a local clip (re-examined, nothing downloaded).
+    Returns shot-cut times, the matching end-before-cut times, a 2 fps
+    contact sheet, and optionally a fine 6 fps / 3 s sheet from
+    *fine_sheet_at* and a 6 s waveform from *waveform_at* (clip seconds).
+    """
+    local = Path(source).expanduser()
+    if local.is_file():
+        clip = local
+    else:
+        if start is None or end is None:
+            raise ValueError("A URL source needs a start and end (MM:SS).")
+        from workshop_video_brain.edit_mcp.adapters.youtube import ytdlp_cli
+
+        start_s, end_s = parse_time(start), parse_time(end)
+        if end_s <= start_s:
+            raise ValueError(f"End ({end}) must be after start ({start}).")
+        out_dir = Path(out_dir) if out_dir else default_work_dir(
+            f"scene-{int(start_s)}-{int(end_s)}"
+        )
+        out_dir.mkdir(parents=True, exist_ok=True)
+        clip = ytdlp_cli.download_section(source, start_s, end_s, out_dir / "clip.mp4")
+    out = describe_clip(clip, contact_sheet=contact_sheet)
+    if fine_sheet_at is not None:
+        at = parse_time(fine_sheet_at)
+        out["fine_sheet"] = str(make_contact_sheet(
+            clip, clip.with_name(f"{clip.stem}.fine-{at:g}.png"), fps=6, start=at, duration=3.0
+        ))
+    if waveform_at is not None:
+        at = parse_time(waveform_at)
+        out["waveform"] = str(make_waveform(clip, at, clip.with_name(f"{clip.stem}.wave-{at:g}.png")))
+    return out
 
 
 def describe_clip(clip: Path, *, contact_sheet: bool = True) -> dict:

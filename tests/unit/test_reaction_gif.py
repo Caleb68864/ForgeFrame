@@ -26,7 +26,10 @@ class TestParseSrt:
         assert first.text == "Hold the rope!"
 
     def test_crlf_and_multiline_text(self):
-        cues = rg.parse_srt((FIX / "crlf.srt").read_text())
+        # Built here: git normalises line endings in checked-in fixtures.
+        text = (FIX / "crlf.srt").read_text().replace("\r\n", "\n").replace("\n", "\r\n")
+        assert "\r\n" in text
+        cues = rg.parse_srt(text)
         assert len(cues) == 2
         assert cues[0].text == "I've got it\nsecond line"
         assert cues[0].end == pytest.approx(2.5)
@@ -261,3 +264,60 @@ class TestYtDlpCommands:
         assert "--force-keyframes-at-cuts" in cmd
         assert cmd[cmd.index("--merge-output-format") + 1] == "mp4"
         assert cmd[cmd.index("-o") + 1] == str(tmp_path / "clip.mp4")
+
+
+# ---------------------------------------------------------------------------
+# Entry points (offline: local .srt only)
+# ---------------------------------------------------------------------------
+
+
+class TestEntryPoints:
+    def test_tools_registered(self):
+        from tests._testkit import assert_registered
+
+        assert_registered("gif_find_line", "gif_fetch_scene", "gif_render")
+
+    def test_find_tool_on_local_srt(self):
+        from tests._testkit import call_tool
+        from workshop_video_brain.edit_mcp.server.bundles import reaction_gif as bundle
+
+        out = call_tool(bundle.gif_find_line, str(FIX / "kingsolomon_excerpt.srt"), "i've got it")
+        assert out["status"] == "success"
+        assert out["data"]["match_count"] == 2
+
+    def test_find_tool_empty_text(self):
+        from tests._testkit import call_tool
+        from workshop_video_brain.edit_mcp.server.bundles import reaction_gif as bundle
+
+        out = call_tool(bundle.gif_find_line, str(FIX / "kingsolomon_excerpt.srt"), "  ")
+        assert out["status"] == "error"
+
+    def test_render_tool_missing_clip(self, tmp_path):
+        from tests._testkit import call_tool
+        from workshop_video_brain.edit_mcp.server.bundles import reaction_gif as bundle
+
+        out = call_tool(bundle.gif_render, str(tmp_path / "nope.mp4"), "0", "1", "x")
+        assert out["status"] == "error"
+
+    def test_cli_help(self):
+        from click.testing import CliRunner
+        from workshop_video_brain.app.cli import main
+
+        res = CliRunner().invoke(main, ["gif", "--help"])
+        assert res.exit_code == 0
+        for sub in ("find", "scene", "render"):
+            assert sub in res.output
+
+    def test_cli_find_local_srt(self):
+        from click.testing import CliRunner
+        from workshop_video_brain.app.cli import main
+
+        res = CliRunner().invoke(main, ["gif", "find", str(FIX / "kingsolomon_excerpt.srt"), "I've got it"])
+        assert res.exit_code == 0, res.output
+        assert "2 match(es)" in res.output
+        assert "Grab it!" in res.output
+        assert "window: 20:00-20:30" in res.output
+
+    def test_caption_fit_warning(self):
+        assert rg.caption_fit_warning("I'VE GOT IT!", 480) is None
+        assert "wider" in rg.caption_fit_warning("THIS CAPTION IS FAR TOO LONG TO FIT", 480)
