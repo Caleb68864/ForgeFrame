@@ -120,6 +120,7 @@ wvb render final ./workspace/ --profile youtube-1080p
 wvb qc-check ./renders/output.mp4  # Automated quality checks
 /ff-publish                         # Generate YouTube metadata
 /ff-social-clips                    # Extract clips for Shorts/Reels
+/ff-reaction-gif                    # Captioned reaction GIF of a movie line
 ```
 
 ## Persistent jobs and guided editing

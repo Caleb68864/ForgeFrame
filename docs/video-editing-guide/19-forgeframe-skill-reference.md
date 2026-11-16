@@ -38,7 +38,7 @@ Each skill entry includes:
 | **Editing** | `ff-auto-editor`, `ff-rough-cut-review`, `ff-pattern-brain` |
 | **Post: Pacing** | `ff-pacing-meter`, `ff-voiceover-fixer` |
 | **Post: Audio** | `ff-audio-cleanup` |
-| **Delivery** | `ff-publish`, `ff-social-clips`, `ff-youtube-analytics` |
+| **Delivery** | `ff-publish`, `ff-social-clips`, `ff-youtube-analytics`, `ff-reaction-gif` |
 
 ---
 
@@ -329,6 +329,20 @@ Extract short-form clips from a tutorial for YouTube Shorts, Instagram Reels, an
 
 ---
 
+### `ff-reaction-gif`
+
+Turn a specific movie line or moment into a 2-3 s captioned reaction GIF, from evidence: subtitle cues (every match, with context), a labelled contact sheet, shot-cut times and a waveform, never guessed timestamps.
+
+| | |
+|---|---|
+| **Trigger phrases** | "reaction gif", "make a gif of", "gif of the line", "captioned gif", "gif from this movie" |
+| **Inputs** | Video URL (Tubi first, YouTube fallback) or a local `.srt` / clip; the line; the caption |
+| **Outputs** | 480 px, 15 fps GIF in the GIF gallery (`$WVB_GIF_GALLERY`, default `~/Pictures/Reaction GIFs`), a 10-frame check strip, and size/duration/fps/width |
+| **Key MCP tools** | `gif_find_line`, `gif_fetch_scene`, `gif_render` (CLI: `wvb gif find|scene|render`) |
+| **Handbook chapter** | Ch.15 — Publishing to YouTube |
+
+---
+
 ### `ff-youtube-analytics`
 
 Pull YouTube channel stats and video data for analytics. Generates performance reports, identifies top content, and saves insights to the Obsidian vault.
@@ -492,6 +506,7 @@ Channel performance insights
 | Write a YouTube description and generate tags | `/ff-publish` |
 | Create short-form clips for social | `/ff-social-clips` |
 | See how my channel is performing | `/ff-youtube-analytics` |
+| Make a captioned reaction GIF of a movie line | `/ff-reaction-gif` |
 
 ---
 

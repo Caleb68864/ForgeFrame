@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-230 MCP tools; 20 skills.
+233 MCP tools; 21 skills.
 
 ## Skills
 
@@ -21,6 +21,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | ff-pacing-meter | Analyse video pacing and energy from transcript data. Detects slow sections, weak intros, and energy drops. Suggests targeted fixes to improve viewer retention and keep the video moving. |
 | ff-pattern-brain | Extract MYOG (Make Your Own Gear) build data from a workshop transcript. Produces a materials list, measurements, numbered build steps, and tips/warnings. Generates overlay text for video and a printable build notes document. Use when the user says "build notes", "pattern", "materials list", "measurements", "printable", or "overlay text". |
 | ff-publish | Generate YouTube publish assets: title options, description, tags, hashtags, chapters, summary, and pinned comment. Use when user says 'publish', 'ready to upload', 'YouTube description', 'generate tags', or 'publish bundle'. |
+| ff-reaction-gif | Turn a specific movie line or moment into a short captioned reaction GIF, working from subtitles, contact sheets and shot-cut times. Use when the user asks for a reaction GIF, a GIF of a line or scene, or a captioned movie clip. |
 | ff-rough-cut-review | Review a rough cut using transcript and edit notes. Identifies pacing issues, repetition, missing inserts, overlay opportunities, and chapter break candidates. Use when user says 'review the cut', 'rough cut feedback', 'pacing review', or 'analyze the edit'. |
 | ff-shot-plan | Generate a production shot list from a tutorial outline or script. Covers A-roll, overhead bench shots, detail closeups, measurement shots, inserts, glamour B-roll, and likely pickup shots. Use when user says 'shot list', 'plan the shots', 'what shots do I need', or 'shooting plan'. |
 | ff-social-clips | Extract short-form clips from a tutorial for YouTube Shorts, Instagram Reels, and TikTok. Generates titles, captions, and social post text. Use when user says 'make shorts', 'social clips', 'extract highlights', 'create reels', or 'repurpose for social'. |
@@ -131,6 +132,9 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | forgeframe_init | timeline_project | Initialize ForgeFrame environment with vault structure, media folders, and config. |
 | forgeframe_status | timeline_project | Check ForgeFrame initialization status. |
 | gap_insert | clips_nle | Insert a gap/blank at a position on the timeline. |
+| gif_fetch_scene | reaction_gif | Step 2: download just the scene and pin exact frames. |
+| gif_find_line | reaction_gif | Step 1 of a reaction GIF: find a spoken line in a video's subtitles. |
+| gif_render | reaction_gif | Step 3: render the captioned GIF and its check strip. |
 | guide_add | guides | Add a timeline guide to a Kdenlive project at *at_seconds*. |
 | guide_add_scene_cuts | scene_guides | Add a guide on the timeline at every scene cut of a placed source. |
 | guide_list | guides | List all guides in a Kdenlive project (read-only). |
