@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import (
+    frame_rate_divergence,
     probe_media,
 )
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
@@ -41,6 +42,23 @@ class VFRFile:
 
 
 @dataclass
+class ResolvedVFRFile:
+    """A VFR original that already has a CFR copy beside it.
+
+    ``media_transcode_cfr`` writes ``<stem>_cfr<ext>`` next to the source and
+    never deletes the original (``media/raw/`` is protected). The original is
+    still VFR, so it is reported -- but as resolved, not as work to do, and it
+    does not stop ``all_cfr`` from being true.
+    """
+
+    path: str
+    cfr_copy: str
+    r_frame_rate: str
+    avg_frame_rate: str
+    divergence_pct: float
+
+
+@dataclass
 class UnprobedFile:
     """A video file whose frame rate could not be determined."""
 
@@ -52,7 +70,8 @@ class UnprobedFile:
 class VFRReport:
     """Result of scanning a workspace for VFR media.
 
-    ``all_cfr`` is True only when every video file was probed and none is VFR.
+    ``all_cfr`` is True only when every video file was probed and every VFR
+    file is resolved (has a CFR ``_cfr`` sibling, listed in ``resolved_files``).
     A file that could not be probed is listed in ``unprobed_files`` and makes
     ``all_cfr`` False -- an unknown frame rate is not a confirmed CFR one.
     """
@@ -61,6 +80,7 @@ class VFRReport:
     vfr_files: list[VFRFile] = field(default_factory=list)
     all_cfr: bool = True
     unprobed_files: list[UnprobedFile] = field(default_factory=list)
+    resolved_files: list[ResolvedVFRFile] = field(default_factory=list)
 
 
 def check_vfr(workspace_root: Path) -> VFRReport:
@@ -74,28 +94,25 @@ def check_vfr(workspace_root: Path) -> VFRReport:
     """
     video_files = _find_video_files(workspace_root)
     vfr_files: list[VFRFile] = []
+    resolved: list[ResolvedVFRFile] = []
     unprobed: list[UnprobedFile] = []
     checked = 0
+    # path -> is_vfr for every file that probed, so a VFR original can be
+    # checked against its _cfr sibling after the scan.
+    probed: dict[Path, bool] = {}
+    flagged: list[tuple[Path, str, str]] = []
 
     for vf in video_files:
         try:
             asset = probe_media(vf)
             checked += 1
+            probed[vf] = bool(asset.is_vfr)
 
             if asset.is_vfr:
-                # Calculate divergence for the report
-                r_rate = getattr(asset, "r_frame_rate", "0/1")
-                avg_rate = getattr(asset, "avg_frame_rate", "0/1")
-                divergence = _calculate_divergence(r_rate, avg_rate)
-
-                vfr_files.append(VFRFile(
-                    path=str(vf),
-                    r_frame_rate=r_rate,
-                    avg_frame_rate=avg_rate,
-                    divergence_pct=divergence,
-                    suggested_action=(
-                        f"media_transcode_cfr(workspace_path, file_path={str(vf)!r})"
-                    ),
+                flagged.append((
+                    vf,
+                    getattr(asset, "r_frame_rate", "0/1"),
+                    getattr(asset, "avg_frame_rate", "0/1"),
                 ))
         except Exception as exc:  # noqa: BLE001 -- one bad file must not abort the scan
             # Previously swallowed: the report then claimed all_cfr=True for a
@@ -105,16 +122,46 @@ def check_vfr(workspace_root: Path) -> VFRReport:
                 path=str(vf), error=f"{type(exc).__name__}: {exc}"[:300],
             ))
 
+    for vf, r_rate, avg_rate in flagged:
+        divergence = _calculate_divergence(r_rate, avg_rate)
+        sibling = cfr_sibling(vf)
+        # Resolved only when the copy exists, probed, and is itself CFR.
+        if probed.get(sibling) is False:
+            resolved.append(ResolvedVFRFile(
+                path=str(vf),
+                cfr_copy=str(sibling),
+                r_frame_rate=r_rate,
+                avg_frame_rate=avg_rate,
+                divergence_pct=divergence,
+            ))
+            continue
+        vfr_files.append(VFRFile(
+            path=str(vf),
+            r_frame_rate=r_rate,
+            avg_frame_rate=avg_rate,
+            divergence_pct=divergence,
+            suggested_action=(
+                f"media_transcode_cfr(workspace_path, file_path={str(vf)!r})"
+            ),
+        ))
+
     logger.info(
-        "VFR scan %s: %d probed, %d VFR, %d unprobed",
-        workspace_root, checked, len(vfr_files), len(unprobed),
+        "VFR scan %s: %d probed, %d VFR, %d resolved, %d unprobed",
+        workspace_root, checked, len(vfr_files), len(resolved), len(unprobed),
     )
     return VFRReport(
         files_checked=checked,
         vfr_files=vfr_files,
         all_cfr=not vfr_files and not unprobed,
         unprobed_files=unprobed,
+        resolved_files=resolved,
     )
+
+
+def cfr_sibling(source: Path) -> Path:
+    """Where ``transcode_to_cfr`` writes the CFR copy of *source*."""
+    source = Path(source)
+    return source.parent / f"{source.stem}_cfr{source.suffix}"
 
 
 class TranscodeSourceUnreadable(RuntimeError):
@@ -175,8 +222,7 @@ def transcode_to_cfr(
             ) from exc
         target_fps = int(round(asset.fps)) or 30
 
-    # Build output path with _cfr suffix
-    output = source.parent / f"{source.stem}_cfr{source.suffix}"
+    output = cfr_sibling(source)
 
     # Through ``run_ffmpeg`` rather than a hand-rolled ``subprocess.run``: it is
     # the one place that turns an absent binary into ``FFmpegNotFound`` and a
@@ -290,22 +336,6 @@ def _find_video_files(workspace_root: Path) -> list[Path]:
 
 
 def _calculate_divergence(r_frame_rate: str, avg_frame_rate: str) -> float:
-    """Calculate percentage divergence between two frame rate strings."""
-    r_val = _parse_rate(r_frame_rate)
-    avg_val = _parse_rate(avg_frame_rate)
-
-    if avg_val == 0:
-        return 0.0
-
-    return abs(r_val - avg_val) / avg_val * 100.0
-
-
-def _parse_rate(rate_str: str) -> float:
-    """Parse a frame rate string like '30/1' or '30000/1001' to float."""
-    try:
-        if "/" in rate_str:
-            num, den = rate_str.split("/")
-            return float(num) / float(den)
-        return float(rate_str)
-    except (ValueError, ZeroDivisionError):
-        return 0.0
+    """Divergence as a percentage -- the same formula ``probe_media`` decides
+    ``is_vfr`` with (``probe.frame_rate_divergence``)."""
+    return frame_rate_divergence(r_frame_rate, avg_frame_rate) * 100.0

@@ -41,6 +41,22 @@ def _parse_frame_rate(rate_str: str) -> float:
         return 0.0
 
 
+# A file is VFR when r_frame_rate and avg_frame_rate diverge by more than this
+# fraction. ``frame_rate_divergence`` is the one formula: the decision here and
+# the percentage ``vfr_check`` reports both use it, so they cannot disagree
+# near the line (they used |r-avg|/max and |r-avg|/avg).
+VFR_DIVERGENCE_THRESHOLD = 0.05
+
+
+def frame_rate_divergence(r_frame_rate: str, avg_frame_rate: str) -> float:
+    """``|r - avg| / max(r, avg)`` as a fraction; 0.0 if either rate is unknown."""
+    r_fps = _parse_frame_rate(r_frame_rate)
+    avg_fps = _parse_frame_rate(avg_frame_rate)
+    if r_fps <= 0 or avg_fps <= 0:
+        return 0.0
+    return abs(r_fps - avg_fps) / max(r_fps, avg_fps)
+
+
 def probe_media(path: Path) -> MediaAsset:
     """Run ffprobe on *path* and return a populated MediaAsset.
 
@@ -113,12 +129,7 @@ def probe_media(path: Path) -> MediaAsset:
 
     # VFR detection: compare r_frame_rate vs avg_frame_rate
     avg_frame_rate = video_stream.get("avg_frame_rate", "0/1")
-    r_fps = _parse_frame_rate(r_frame_rate)
-    avg_fps = _parse_frame_rate(avg_frame_rate)
-    is_vfr = False
-    if r_fps > 0 and avg_fps > 0:
-        divergence = abs(r_fps - avg_fps) / max(r_fps, avg_fps)
-        is_vfr = divergence > 0.05
+    is_vfr = frame_rate_divergence(r_frame_rate, avg_frame_rate) > VFR_DIVERGENCE_THRESHOLD
 
     # Color metadata
     color_space = video_stream.get("color_space")
