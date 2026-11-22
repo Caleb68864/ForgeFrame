@@ -174,7 +174,7 @@ def _project(tmp_path: Path) -> Path:
     return path
 
 
-def _fake_melt(cmd, timeout, on_chunk, *, env=None):
+def _fake_melt(cmd, timeout, on_chunk, *, env=None, **_kwargs):
     assert cmd[0] == "melt" and "-progress2" in cmd
     Path(cmd[cmd.index("-consumer") + 1].removeprefix("avformat:")).write_bytes(b"x" * 64)
     for chunk in (NOISE, "Current Frame: 20, percentage: 40\n", "Current Frame: 49, percentage: 98\n"):

@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-259 MCP tools; 21 skills.
+265 MCP tools; 21 skills.
 
 ## Skills
 
@@ -43,9 +43,13 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | audio_enhance | audio | Apply full voice enhancement pipeline (highpass -> denoise -> compress -> normalize -> limit). |
 | audio_enhance_all | audio | Enhance all audio in workspace media/raw/ folder. |
 | audio_fade | clips_nle | Apply audio fade in or out to a clip. |
+| audio_fade_file | audio_fade_file | Fade the audio of a file in and/or out (``curve``: tri, qsin, esin, hsin, log, exp). |
+| audio_loudness | audio_loudness | Integrated loudness (LUFS), true peak and loudness range of a file, or of every media file in a folder. |
 | audio_loudness_scan | loudness_scan | Measure per-clip loudness (LUFS / true-peak / LRA) across a shoot. |
+| audio_mix_music | audio_mix_music | Lay ``music`` under the voice in ``source`` (an audio file or a video; the picture is copied). |
 | audio_normalize | audio | Normalize audio to YouTube-standard loudness (-16 LUFS). |
 | audio_normalize_two_pass | audio_normalize_two_pass | Normalize loudness accurately with measured two-pass FFmpeg ``loudnorm``. |
+| audio_waveform_image | audio_waveform_image | Draw the audio waveform as an image (64-8000 px each way; png or jpg). |
 | beat_cut | beat_sync | Re-time consecutive clips so each cut lands on a selected beat. |
 | beat_flash | beat_sync | A brightness flash (``level`` 1 -> ``1 + strength``) on each selected beat: one filter per clip hit. |
 | beat_zoom | beat_sync | A zoom punch (scale ``1 + punch``) on each selected beat: one ``qtblend`` per clip hit. |
@@ -174,7 +178,9 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | media_gif | media_gif | A looping GIF (two-pass palette, good colour) or animated WebP of ``seconds`` from ``start_seconds``. |
 | media_ingest | workspace_media | Run the full ingest pipeline: scan, proxy, transcribe, detect silence. |
 | media_list_assets | workspace_media | List media assets found in the workspace media/raw directory. |
+| media_reframe | media_reframe | Reframe to ``aspect`` 9:16, 1:1, 4:5 or 16:9. |
 | media_remove_silence | media_remove_silence | Write a tightened copy of an audio or video file with its silence cut out. |
+| media_render_social_clips | social_render | Cut and reframe every clip in ``reports/social/clips_manifest.json`` from ``source``. |
 | media_rotate_flip | media_rotate_flip | Rotate clockwise (``rotate`` 90/180/270) and/or mirror (``flip`` horizontal/vertical/both). |
 | media_segment_at_silence | silence_segment | Split a long recording into per-take files at detected silences. |
 | media_silence_keep_ranges | media_remove_silence | Report which source seconds silence removal would keep, without rendering. |

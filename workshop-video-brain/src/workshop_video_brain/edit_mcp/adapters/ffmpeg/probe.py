@@ -11,6 +11,7 @@ from pathlib import Path
 
 from workshop_video_brain.core.models import MediaAsset
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
+    ANALYSIS_TIMEOUT_SECONDS,
     FFmpegCommandError,
     FFmpegNotFound,
     FFmpegTimeout,
@@ -438,7 +439,9 @@ def measure_loudness(path: Path) -> LoudnessResult | None:
             ],
             capture_output=True,
             text=True,
-            timeout=120,
+            # A long file's loudnorm pass scales with its length: the shared
+            # analysis ceiling, not 120 s (which turned a long file into None).
+            timeout=ANALYSIS_TIMEOUT_SECONDS,
         )
     except FileNotFoundError:
         logger.warning(

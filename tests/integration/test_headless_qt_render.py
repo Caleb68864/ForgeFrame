@@ -96,16 +96,14 @@ def test_qt_refusal_fails_the_render_loudly(tmp_path, headless, monkeypatch):
     root = tmp_path / "ws"
     WorkspaceManager.create("Headless", tmp_path, workspace_root=root)
     project = _title_project(root / "projects" / "working_copies" / "render_v1.kdenlive")
-    real_run = subprocess.run
 
     def refusing_melt(cmd, *args, **kwargs):
-        if cmd and Path(cmd[0]).name == "melt":
-            Path(cmd[cmd.index("-consumer") + 1].removeprefix("avformat:")).write_bytes(b"x" * 2048)
-            return subprocess.CompletedProcess(
-                cmd, 0, "", "    The MLT Qt module requires a X11 or Wayland environment.\n")
-        return real_run(cmd, *args, **kwargs)
+        Path(cmd[cmd.index("-consumer") + 1].removeprefix("avformat:")).write_bytes(b"x" * 2048)
+        return subprocess.CompletedProcess(
+            cmd, 0, "", "    The MLT Qt module requires a X11 or Wayland environment.\n")
 
-    monkeypatch.setattr(executor.subprocess, "run", refusing_melt)
+    # melt renders stream through _run_render_process (progress + stall watchdog).
+    monkeypatch.setattr(executor, "_run_render_process", refusing_melt)
     job = run_render(root, project, "preview")
     assert job.status == "failed"
     assert job.error_type == "missing_dependency"

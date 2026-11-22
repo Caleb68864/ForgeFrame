@@ -78,6 +78,19 @@ This writes to `reports/social/`:
 - `clip_1_post.txt`, `clip_2_post.txt`, etc. — platform post text
 - `social_summary.md` — overview of all clips with timestamps and scores
 
+Then render them (the manifest alone renders nothing):
+
+```
+media_render_social_clips(source="<the video the transcript came from>",
+                          manifest_path="<workspace>/reports/social/clips_manifest.json",
+                          mode="smart")
+```
+
+`source` must be the file the clip times refer to (the manifest's `source_video`
+is the media folder, and with several source clips the times are ambiguous).
+Modes: `smart` (auto focus on motion/detail), `crop` (manual `focus_x`),
+`pad` (letterbox), `blur` (blurred fill). One-off reframes: `media_reframe`.
+
 ### Step 3 — Generate platform-specific posts
 
 ```

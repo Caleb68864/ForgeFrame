@@ -43,11 +43,15 @@ Let's break this down.
 
 **Practical target:** Process your audio so it measures approximately -14 LUFS integrated and no peaks above -1 dBTP. A dedicated loudness meter (free options include the Youlean Loudness Meter plugin) will show you both numbers before export.
 
-> **ForgeFrame:** Use `measure_loudness` to check your audio against the YouTube standard before export.
-> ```
-> measure_loudness --file "export/my-video.mp4" --target -14
-> ```
-> It reports integrated LUFS, true peak, and whether the file meets spec. You can also measure loudness manually in Audacity using Analyze → Loudness or in any DAW with a LUFS meter.
+> **ForgeFrame:** `audio_loudness source=export/my-video.mp4` reports integrated loudness (LUFS), true peak and loudness range for a file, or for every media file in a folder (with the spread between them). Add `target_lufs=-14` to write a normalized copy of a single file with the two-pass loudnorm, which lands within about 0.1 LU (video is copied). Example readings:
+>
+> | File | Integrated | True peak | LRA |
+> |---|---|---|---|
+> | `music_cinematic_short.mp3` | -13.3 LUFS | -0.12 dBTP | 17.4 |
+> | `test_audio_with_silence.mp4` | -22.05 LUFS | -16.31 dBTP | 2.3 |
+> | `test_clip_1080p2997_5s.mp4` | -21.14 LUFS | -20.14 dBTP | 0.0 |
+>
+> `audio_waveform_image` draws the waveform as a PNG -- a quick visual check for long silences or clipped peaks. You can also measure loudness in Audacity (Analyze -> Loudness) or any DAW with a LUFS meter.
 
 ---
 
@@ -201,6 +205,12 @@ Practical levels:
 | Wordless montage | Loud enough to carry energy, but below tool sounds if those sounds teach the action |
 | Reveal/payoff | Briefly higher, then fade under narration |
 | Detailed instruction | Usually off, or extremely low ambience only |
+
+### Music beds on plain files
+
+> **ForgeFrame:** `audio_mix_music source=voice.wav music=bed.mp3` lays a music bed under a recording -- an audio file or a video, whose picture is copied untouched. The music sits at `music_gain_db` (-18 dB default), loops if it is shorter than the voice, fades in and out, and with `duck=true` drops under speech through a side-chain compressor. Presets: `light` (ratio 4), `medium` (8, default), `strong` (20). Measured with `strong` on a gated tone: the music is 9.5 dB quieter while the voice speaks (-39.6 dB vs -30.1 dB); without ducking the difference is 0.2 dB. The voice level is not changed.
+>
+> Use this for a finished file. On a timeline project, `audio_duck` writes ducking keyframes you can adjust in Kdenlive. `audio_fade_file` fades a file's sound in and/or out (curves tri, qsin, esin, hsin, log, exp); `audio_fade` is the timeline-clip version.
 
 ### Ambient fades
 
