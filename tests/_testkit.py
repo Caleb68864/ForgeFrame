@@ -36,6 +36,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import inspect
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -126,6 +127,19 @@ def call_tool(tool, *args, **kwargs):
 # ---------------------------------------------------------------------------
 # FastMCP registration probing
 # ---------------------------------------------------------------------------
+
+
+def with_display(cmd: list[str]) -> list[str]:
+    """Prefix a melt command with ``xvfb-run -a`` when there is no display.
+
+    melt's Qt module (``kdenlivetitle``, ``qimage``, ``qtblend``) refuses to
+    load without an X11/Wayland display: titles render as "INVALID" and image
+    producers as a flat grey frame. CI runs the whole suite under xvfb-run; a
+    headless local shell does not, so every test melt call goes through this.
+    """
+    if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")) and shutil.which("xvfb-run"):
+        return ["xvfb-run", "-a", *cmd]
+    return cmd
 
 
 def registered_tool_names(mcp=None) -> set[str]:

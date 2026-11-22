@@ -123,27 +123,14 @@ def check_vfr(workspace_root: Path) -> VFRReport:
             ))
 
     for vf, r_rate, avg_rate in flagged:
-        divergence = _calculate_divergence(r_rate, avg_rate)
-        sibling = cfr_sibling(vf)
         # Resolved only when the copy exists, probed, and is itself CFR.
-        if probed.get(sibling) is False:
-            resolved.append(ResolvedVFRFile(
-                path=str(vf),
-                cfr_copy=str(sibling),
-                r_frame_rate=r_rate,
-                avg_frame_rate=avg_rate,
-                divergence_pct=divergence,
-            ))
-            continue
-        vfr_files.append(VFRFile(
-            path=str(vf),
-            r_frame_rate=r_rate,
-            avg_frame_rate=avg_rate,
-            divergence_pct=divergence,
-            suggested_action=(
-                f"media_transcode_cfr(workspace_path, file_path={str(vf)!r})"
-            ),
-        ))
+        entry = _classify_vfr(
+            vf, r_rate, avg_rate, sibling_is_cfr=probed.get(cfr_sibling(vf)) is False,
+        )
+        if isinstance(entry, ResolvedVFRFile):
+            resolved.append(entry)
+        else:
+            vfr_files.append(entry)
 
     logger.info(
         "VFR scan %s: %d probed, %d VFR, %d resolved, %d unprobed",
@@ -155,6 +142,84 @@ def check_vfr(workspace_root: Path) -> VFRReport:
         all_cfr=not vfr_files and not unprobed,
         unprobed_files=unprobed,
         resolved_files=resolved,
+    )
+
+
+def check_vfr_file(path: Path) -> VFRReport:
+    """Check one video file for VFR, with no workspace needed.
+
+    For checking a recording before ingest. The report has the same shape as
+    :func:`check_vfr`'s, so the same rules hold: ``all_cfr`` is True only when
+    the file probed as video and is CFR -- or is VFR with a CFR ``_cfr`` copy
+    beside it (then it is in ``resolved_files``). A file ffprobe cannot read,
+    or one with no video stream, lands in ``unprobed_files`` and makes
+    ``all_cfr`` False.
+
+    Raises:
+        FileNotFoundError: if *path* does not exist.
+    """
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Media file does not exist: {path}")
+
+    def _unprobed(error: str) -> VFRReport:
+        return VFRReport(
+            files_checked=0, all_cfr=False,
+            unprobed_files=[UnprobedFile(path=str(path), error=error[:300])],
+        )
+
+    try:
+        asset = probe_media(path)
+    except Exception as exc:  # noqa: BLE001 -- reported, same as the workspace scan
+        logger.warning("Failed to probe %s", path, exc_info=True)
+        return _unprobed(f"{type(exc).__name__}: {exc}")
+    if getattr(asset, "media_type", "video") != "video":
+        return _unprobed(
+            "No video stream: frame rate (and so VFR) does not apply to this file."
+        )
+    if not asset.is_vfr:
+        return VFRReport(files_checked=1, all_cfr=True)
+
+    sibling = cfr_sibling(path)
+    sibling_is_cfr = False
+    if sibling.exists():
+        try:
+            sibling_is_cfr = not probe_media(sibling).is_vfr
+        except Exception:  # noqa: BLE001 -- an unreadable copy resolves nothing
+            logger.warning("Failed to probe CFR copy %s", sibling, exc_info=True)
+
+    entry = _classify_vfr(
+        path,
+        getattr(asset, "r_frame_rate", "0/1"),
+        getattr(asset, "avg_frame_rate", "0/1"),
+        sibling_is_cfr=sibling_is_cfr,
+    )
+    if isinstance(entry, ResolvedVFRFile):
+        return VFRReport(files_checked=1, all_cfr=True, resolved_files=[entry])
+    return VFRReport(files_checked=1, all_cfr=False, vfr_files=[entry])
+
+
+def _classify_vfr(
+    vf: Path, r_rate: str, avg_rate: str, *, sibling_is_cfr: bool,
+) -> VFRFile | ResolvedVFRFile:
+    """One VFR file: resolved when its ``_cfr`` copy probed CFR, else work to do."""
+    divergence = _calculate_divergence(r_rate, avg_rate)
+    if sibling_is_cfr:
+        return ResolvedVFRFile(
+            path=str(vf),
+            cfr_copy=str(cfr_sibling(vf)),
+            r_frame_rate=r_rate,
+            avg_frame_rate=avg_rate,
+            divergence_pct=divergence,
+        )
+    return VFRFile(
+        path=str(vf),
+        r_frame_rate=r_rate,
+        avg_frame_rate=avg_rate,
+        divergence_pct=divergence,
+        suggested_action=(
+            f"media_transcode_cfr(workspace_path, file_path={str(vf)!r})"
+        ),
     )
 
 

@@ -21,6 +21,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._testkit import with_display
+
 from workshop_video_brain.core.models.kdenlive import (
     KdenliveProject,
     Playlist,
@@ -67,10 +69,14 @@ def _base_color_project(path: Path) -> None:
 def _render_frame(project: Path, frame: int, out_dir: Path) -> Path | None:
     for f in glob.glob(str(out_dir / "f_*.png")):
         os.remove(f)
+    # terminate_on_pause=1 and a timeout: without them melt can wait on the
+    # last frame for ever; with_display: kdenlivetitle needs a display.
     subprocess.run(
-        ["melt", str(project), f"out={frame}", "-consumer", f"avformat:{out_dir}/f_%03d.png"],
+        with_display(["melt", str(project), f"out={frame}", "-consumer",
+                      f"avformat:{out_dir}/f_%03d.png", "terminate_on_pause=1"]),
         capture_output=True,
         text=True,
+        timeout=180,
     )
     frames = sorted(glob.glob(str(out_dir / "f_*.png")))
     return Path(frames[-1]) if frames else None

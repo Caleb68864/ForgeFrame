@@ -373,7 +373,7 @@ ForgeFrame includes 88 MCP tools organized by category. The most commonly used t
 | Tool | What it does |
 |------|--------------|
 | `qc_check` | Run automated QC: black frames, silence, loudness, clipping, file size |
-| `media_check_vfr` | Detect variable frame rate sources in the workspace |
+| `media_check_vfr` | Detect variable frame rate sources in the workspace, or in one file (`file_path=`, no workspace needed) |
 | `media_transcode_cfr` | Convert VFR sources to constant frame rate |
 
 See Ch.14 (Quality Control) for the full QC workflow.

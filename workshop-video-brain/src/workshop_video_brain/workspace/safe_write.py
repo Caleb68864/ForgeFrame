@@ -68,11 +68,14 @@ def atomic_write_bytes(
     snapshot_project: bool = True,
     validator: Callable[[Path], object] | None = None,
     description: str = "",
+    on_snapshot: Callable[[object], None] | None = None,
 ) -> Path:
     """Validate staged bytes, snapshot an existing project, then replace it.
 
     Validation must raise on failure (or return ``False``). Snapshot failures
     abort the write. A workspace root is required when replacing a project.
+    ``on_snapshot`` receives the ``SnapshotRecord`` of the pre-write snapshot
+    when one is taken (the undo journal keeps its id).
     """
     target = assert_not_protected(path).resolve()
     root = Path(workspace_root).resolve() if workspace_root is not None else None
@@ -97,7 +100,9 @@ def atomic_write_bytes(
                 if root is None:
                     raise ValueError("workspace_root is required to snapshot an existing project")
                 from workshop_video_brain.workspace.snapshot import create
-                create(root, target, description or f"Pre-write snapshot of {target.name}")
+                record = create(root, target, description or f"Pre-write snapshot of {target.name}")
+                if on_snapshot is not None:
+                    on_snapshot(record)
             os.replace(staged, target)
             staged = None
             if os.name != "nt":
