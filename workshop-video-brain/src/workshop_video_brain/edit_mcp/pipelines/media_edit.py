@@ -139,3 +139,75 @@ def concat_files(
                         extra_inputs=[Path(s) for s in sources[1:]])
     return {"method": "reencode", "target": {"width": w, "height": h, "fps": rate, "audio": with_audio},
             "result": result}
+
+
+# ---------------------------------------------------------------------------
+# speed, rotate / flip (prompt 31)
+# ---------------------------------------------------------------------------
+
+def atempo_chain(factor: float) -> str:
+    """``atempo`` stages (each within [0.5, 2.0]) whose product is *factor*."""
+    if not 0.25 <= factor <= 4.0:
+        raise ValueError(f"speed factor must be between 0.25 and 4.0, got {factor}")
+    stages = []
+    remaining = float(factor)
+    while remaining > 2.0:
+        stages.append(2.0)
+        remaining /= 2.0
+    while remaining < 0.5:
+        stages.append(0.5)
+        remaining /= 0.5
+    stages.append(remaining)
+    return ",".join(f"atempo={s:.6g}" for s in stages)
+
+
+def speed_file(source: Path, output: Path, factor: float, keep_pitch: bool = True) -> FFmpegResult:
+    """Play *source* at *factor* x (0.25-4.0). Audio keeps its pitch unless ``keep_pitch=False``."""
+    atempo = atempo_chain(factor)
+    asset = probe_media(source)
+    graph, maps = [], []
+    if has_video(asset):
+        graph.append(f"[0:v]setpts=PTS/{factor:.6g}[v]")
+        maps += ["-map", "[v]"]
+    if has_audio(asset):
+        if keep_pitch:
+            chain = atempo
+        else:
+            rate = asset.sample_rate or 48000
+            chain = f"asetrate={int(round(rate * factor))},aresample={rate}"
+        graph.append(f"[0:a]{chain}[a]")
+        maps += ["-map", "[a]"]
+    if not graph:
+        raise ValueError("source has no video or audio stream")
+    args = ["-filter_complex", ";".join(graph), *maps]
+    args += (ENCODE_VIDEO_ARGS if has_video(asset) else []) + (ENCODE_AUDIO_ARGS if has_audio(asset) else [])
+    return run_ffmpeg(args, source, output, overwrite=True, pre_input_args=["-hide_banner"])
+
+
+def rotate_flip_filter(rotate: int = 0, flip: str = "") -> str:
+    """The ``-vf`` chain for a clockwise rotation (0/90/180/270) and/or a flip."""
+    turns = {0: [], 90: ["transpose=1"], 180: ["hflip", "vflip"], 270: ["transpose=2"]}
+    flips = {"": [], "horizontal": ["hflip"], "vertical": ["vflip"], "both": ["hflip", "vflip"]}
+    if rotate not in turns:
+        raise ValueError(f"rotate must be 0, 90, 180 or 270 (clockwise), got {rotate}")
+    if flip not in flips:
+        raise ValueError(f"flip must be '', 'horizontal', 'vertical' or 'both', got {flip!r}")
+    chain = turns[rotate] + flips[flip]
+    if not chain:
+        raise ValueError("nothing to do: give rotate (90/180/270) or flip")
+    return ",".join(chain)
+
+
+def rotate_flip_file(source: Path, output: Path, rotate: int = 0, flip: str = "") -> FFmpegResult:
+    """Rotate and/or flip the picture; audio is copied.
+
+    ffmpeg already applies a phone clip's rotation tag on input, so the output
+    tag is reset to 0 or players would rotate it a second time.
+    """
+    vf = rotate_flip_filter(rotate, flip)
+    asset = probe_media(source)
+    if not has_video(asset):
+        raise ValueError(f"source has no video stream: {source}")
+    args = ["-vf", vf, *ENCODE_VIDEO_ARGS, "-metadata:s:v:0", "rotate=0"]
+    args += ["-c:a", "copy"] if has_audio(asset) else []
+    return run_ffmpeg(args, source, output, overwrite=True, pre_input_args=["-hide_banner"])

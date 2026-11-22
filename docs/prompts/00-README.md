@@ -68,6 +68,7 @@ Review the model's report and diff after each prompt, then commit it yourself
 | 22 | Done 2026-11-22 | `snapshot_diff`, `pipelines/project_diff.py`; `tests/unit/test_project_diff.py`, `tests/unit/test_snapshot_diff_tool.py` (read-only, no render proof needed) |
 | 23 | Done 2026-11-22 | `beat_cut`, `beat_zoom`, `beat_flash`; `tests/unit/test_beat_sync.py`, `tests/integration/external/test_beat_sync_render.py` |
 | 30 | Done 2026-11-22 | `media_trim`, `media_concat`, `pipelines/media_files.py`; `tests/unit/test_media_files.py`, `tests/integration/test_media_trim_concat.py` |
+| 31 | Done 2026-11-22 | `media_speed`, `media_rotate_flip`, `media_convert`, `media_extract_audio`; `tests/unit/test_media_speed_convert_pure.py`, `tests/integration/test_media_speed_convert.py` |
 | 24 | Experiment run 2026-11-22; GUI pass pending | `scripts/chain_placement_experiment.py`, `vault/wiki/kdenlive-chain-per-placement.md`; harness tests `tests/unit/test_chain_layout_variants.py`, `tests/integration/external/test_chain_layout_variants.py` |
 
 Prompt 18 note: `execute_render` now sizes melt with `-profile` (`vault/wiki/melt-render-profile.md`), so read that before changing melt flags.

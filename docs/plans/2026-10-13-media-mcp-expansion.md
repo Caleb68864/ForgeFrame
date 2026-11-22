@@ -109,6 +109,9 @@ never write into protected trees):
   mute files), on a shared foundation: `pipelines/media_files.py` (output resolution,
   stream checks, house encode args), `server/bundles/_media_shell.py`, and
   `run_ffmpeg(extra_inputs=...)`.
+- **Done 2026-11-22** (prompt 31): `media_speed` (0.25-4x, pitch kept via an `atempo`
+  chain), `media_rotate_flip`, `media_convert` (H.264/VP9/HEVC/ProRes presets; audio
+  targets through `convert_format` / `export_compressed`), `media_extract_audio`.
 - **Done 2026-11-02.** Generalise `selects_timeline` / `assembly` builders to the source profile.
 
 Each tool follows the CLAUDE.md checklist (pipeline logic, `@tool_guard`,
