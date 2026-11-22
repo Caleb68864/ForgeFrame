@@ -83,10 +83,10 @@ See Chapter 05 (Filming Your Tutorial) for how to prevent VFR at capture time. I
 > **ForgeFrame:** Use `media_check_vfr` to detect variable frame rate in a source file:
 >
 > ```
-> media_check_vfr file="screen-recording.mp4"
+> media_check_vfr file_path="/path/to/screen-recording.mp4"
 > ```
 >
-> ForgeFrame reports the minimum, maximum, and average frame interval. If min and max differ by more than 1ms, the file is VFR. You can also do this manually:
+> Pass `file_path` to check one file -- no workspace needed, so you can check a recording before ingest -- or `workspace_path` alone to scan every video in the workspace. ForgeFrame compares the stream's `r_frame_rate` with its `avg_frame_rate`; if they differ by more than 5 %, the file is VFR and is listed under `vfr_files` with its divergence and the `media_transcode_cfr` call that fixes it. A VFR file whose `_cfr` copy already sits beside it is listed under `resolved_files` instead. You can also do this manually:
 >
 > ```bash
 > ffprobe -v error -select_streams v:0 \
@@ -101,8 +101,10 @@ See Chapter 05 (Filming Your Tutorial) for how to prevent VFR at capture time. I
 > **ForgeFrame:** Use `media_transcode_cfr` to convert a VFR file to constant frame rate before importing into Kdenlive:
 >
 > ```
-> media_transcode_cfr file="screen-recording.mp4" fps=30 output="screen-recording-cfr.mp4"
+> media_transcode_cfr workspace_path="/path/to/workspace" file_path="media/raw/screen-recording.mp4" target_fps=30
 > ```
+>
+> The CFR copy is written beside the source as `screen-recording_cfr.mp4`; the original is kept. `target_fps=0` (the default) takes the rate from the source.
 >
 > Use 30fps for screen recordings and talking-head footage. Use 60fps only if the source was captured at 60fps. You can also do this manually:
 >

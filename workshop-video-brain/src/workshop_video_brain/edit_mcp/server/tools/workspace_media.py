@@ -263,28 +263,56 @@ def proxy_generate(workspace_path: str) -> dict:
 # ---------------------------------------------------------------------------
 @mcp.tool()
 @tool_guard
-def media_check_vfr(workspace_path: str) -> dict:
-    """Scan workspace for variable frame rate (VFR) video files.
+def media_check_vfr(workspace_path: str = "", file_path: str = "") -> dict:
+    """Check video files for variable frame rate (VFR): a whole workspace, or one file.
 
     VFR media causes audio drift and editing artifacts. This tool identifies
     files that need transcode to constant frame rate before editing.
 
+    Pass ``workspace_path`` alone to scan every video file in the workspace.
+    Pass ``file_path`` to check that one file -- no workspace is needed, so a
+    recording can be checked before ingest. A relative ``file_path`` is read
+    against ``workspace_path`` when one is given.
+
     Args:
         workspace_path: Absolute path to the workspace root directory.
+            Optional when ``file_path`` is absolute.
+        file_path: One video file to check instead of scanning the workspace.
 
     Returns:
         Report with files_checked count, vfr_files (each with r/avg frame
         rate, divergence_pct and a suggested_action naming the
         media_transcode_cfr call), unprobed_files (path + error for files
-        ffprobe could not read), resolved_files (VFR originals whose CFR
-        ``<stem>_cfr`` copy sits beside them -- already converted, nothing to
-        do), and all_cfr -- True only when every video file was probed and
-        every VFR file is resolved.
+        ffprobe could not read, or with no video stream), resolved_files (VFR
+        originals whose CFR ``<stem>_cfr`` copy sits beside them -- already
+        converted, nothing to do), and all_cfr -- True only when every video
+        file was probed and every VFR file is resolved.
     """
     try:
-        ws_root = _validate_workspace_path(workspace_path)
-        from workshop_video_brain.edit_mcp.pipelines.vfr_check import check_vfr
+        from workshop_video_brain.edit_mcp.pipelines.vfr_check import (
+            check_vfr,
+            check_vfr_file,
+        )
         from dataclasses import asdict
+        if file_path and file_path.strip():
+            source = Path(file_path)
+            if not source.is_absolute():
+                if not (workspace_path and workspace_path.strip()):
+                    return invalid_input(
+                        f"file_path is relative ({file_path}) and no workspace_path was given",
+                        "Pass an absolute file_path, or the workspace_path it is relative to.",
+                    )
+                source = _validate_workspace_path(workspace_path) / source
+            if not source.exists():
+                return missing_file(str(source), "video file")
+            if source.is_dir():
+                return invalid_input(
+                    f"file_path is a directory, not a video file: {source}",
+                    "Pass one video file as file_path, or the folder as workspace_path to scan it.",
+                    path=str(source),
+                )
+            return _ok(asdict(check_vfr_file(source)))
+        ws_root = _validate_workspace_path(workspace_path)
         report = check_vfr(ws_root)
         data = asdict(report)
         return _ok(data)

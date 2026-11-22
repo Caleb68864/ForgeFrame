@@ -153,7 +153,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | mask_set | compositing_masking | Insert a mask filter at the top of a clip's effect stack. |
 | mask_set_from_file | shape_alpha_mask | Insert a Shape Alpha (``shape``) filter consuming an external matte file. |
 | mask_set_shape | compositing_masking | Insert a rotoscoping mask with a shape-derived spline at the top of a stack. |
-| media_check_vfr | workspace_media | Scan workspace for variable frame rate (VFR) video files. |
+| media_check_vfr | workspace_media | Check video files for variable frame rate (VFR): a whole workspace, or one file. |
 | media_denoise_video | media_denoise_video | Clean up grainy / high-ISO / low-light footage in one call. |
 | media_ingest | workspace_media | Run the full ingest pipeline: scan, proxy, transcribe, detect silence. |
 | media_list_assets | workspace_media | List media assets found in the workspace media/raw directory. |
