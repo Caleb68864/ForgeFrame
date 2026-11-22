@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-247 MCP tools; 21 skills.
+248 MCP tools; 21 skills.
 
 ## Skills
 
@@ -231,6 +231,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | research_transcript_context | research_transcript | Return transcript segments overlapping a time window around *timestamp_seconds*. |
 | research_transcript_search | research_transcript | Search a transcript for segments containing *query*. |
 | shots_map_to_script | shot_alignment | Map a numbered build-step list to candidate clips + timestamps. |
+| snapshot_diff | snapshot_diff | Explain what changed from version ``a`` to version ``b`` of the project. |
 | snapshot_list | timeline_project | List all snapshots in the workspace. |
 | snapshot_restore | timeline_project | Restore a snapshot by its directory name (timestamp-slug). |
 | social_clip_post | social_publish | Generate social media post text for a specific clip. |

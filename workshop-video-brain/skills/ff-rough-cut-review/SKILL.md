@@ -151,6 +151,10 @@ placement engine can execute your suggestions on the working copy:
 - `clip_ripple_insert(source, before_clip_index)` — insert a missing step with
   its audio; everything after (other tracks, guides, transitions) moves right.
   All four keep the clip's linked audio in sync and refuse speed-changed clips.
+- `snapshot_diff(a="previous", b="latest")` — what changed between two versions
+  (clips added/removed/moved/trimmed/replaced, effects, transitions, guides,
+  duration) in plain sentences; also takes snapshot ids or project paths. Use it
+  to review a round of fixes before rendering. `project_undo` steps back one edit.
 
 For full script-driven assembly rather than spot fixes, hand off to
 `/ff-assemble-from-script`.
