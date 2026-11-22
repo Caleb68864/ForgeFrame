@@ -94,9 +94,12 @@ failed under load because it used absolute seconds, and the slowness it tolerate
 was a defect: `serializer._effective_length` scanned every playlist entry for every
 producer, so serializing was quadratic (10 000 clips 9-14 s; 4x the clips cost 11.5x
 the time). One pass now collects each producer's largest out-point (10 000 clips
-~4 s; ratio ~6). The test now asserts the 2 500 -> 10 000 clip time ratio (< 8.5,
-best of two, interleaved), which load cannot fail and the old code does; memory and
-round-trip fidelity are a separate test.
+~4 s). A second quadratic step showed up in CI (ratio 8.9x): the XML validator
+re-read a playlist's properties -- every child -- for each entry in it. It now reads
+them once per playlist; 2 500 -> 10 000 clips is ~4.6x (serialize 0.39 s -> 1.80 s;
+40 000 clips 11.7 s, was 86 s). The test asserts that ratio (< 7, a discarded warm-up,
+then best of three interleaved), which load cannot fail and the old code does (8.2x);
+memory and round-trip fidelity are a separate test.
 
 Also outstanding, not ranked as work: detached jobs are POSIX only; job progress
 is per frame for renders (melt `-progress2`, prompt 18, 2026-11-22), per stage otherwise;

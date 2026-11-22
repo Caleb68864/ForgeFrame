@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import gc
 import time
 import tracemalloc
 import xml.etree.ElementTree as ET
@@ -301,6 +302,7 @@ def _build_large_xml(n_clips: int) -> str:
 def _round_trip_seconds(tmp_path: Path, n_clips: int, tag: str) -> float:
     src = tmp_path / f"in_{n_clips}_{tag}.kdenlive"
     src.write_text(_build_large_xml(n_clips))
+    gc.collect()
     t0 = time.perf_counter()
     project = parse_project(src)
     serialize_project(project, tmp_path / f"out_{n_clips}_{tag}.kdenlive")
@@ -308,20 +310,22 @@ def _round_trip_seconds(tmp_path: Path, n_clips: int, tag: str) -> float:
 
 
 def test_large_project_parse_serialize_scales_linearly(tmp_path: Path):
-    """10 000 clips must cost about 4x what 2 500 do, not 16x.
+    """10 000 clips must cost about 4x what 2 500 do.
 
     Relative, so CPU load cannot fail it: both sizes are timed under the same
-    conditions (interleaved, best of two each). An absolute ceiling (formerly
-    "< 40 s") failed on a busy machine while hiding the real defect: a
-    per-producer scan of every entry made serializing quadratic (ratio 11.5
-    here; 4 is linear). After the fix the ratio is ~6.
+    conditions (a discarded warm-up, then interleaved runs, best of three each).
+    Two quadratic steps hid behind the old absolute "< 40 s" ceiling: a
+    per-producer scan of every entry in the serializer, and the validator
+    re-reading a playlist's properties (all its children) for every entry in
+    it. Measured after both fixes: ~4.6x (2 500 -> 10 000 clips).
     """
+    _round_trip_seconds(tmp_path, 2_500, "warmup")
     small, big = [], []
-    for run in range(2):
+    for run in range(3):
         small.append(_round_trip_seconds(tmp_path, 2_500, f"s{run}"))
         big.append(_round_trip_seconds(tmp_path, 10_000, f"b{run}"))
     ratio = min(big) / min(small)
-    assert ratio < 8.5, f"10k clips took {ratio:.1f}x the time of 2.5k (linear is 4x): {small} {big}"
+    assert ratio < 7.0, f"10k clips took {ratio:.1f}x the time of 2.5k (linear is 4x): {small} {big}"
 
 
 def test_large_project_parse_serialize_memory_and_fidelity(tmp_path: Path):
