@@ -133,6 +133,10 @@ never write into protected trees):
 - **Done 2026-11-22** (prompt 37): subtitle file ops `subtitle_convert`, `subtitle_shift`,
   `subtitle_merge`, `subtitle_split`, `subtitle_restyle`, plus a bare-file
   `media_burn_subtitles` sized to the real video.
+- **Done 2026-11-22** (prompt 39): images on files -- `image_resize` (contain / cover /
+  stretch / pad), `image_convert` (png/jpg/webp/bmp/tiff, `background` for alpha to JPEG),
+  `image_overlay` and `media_watermark` (burned in, optional time window), ffmpeg only, placed
+  with `image_overlay.position_rect` like the timeline tools. **All of Phase 5 is now done.**
 - **Done 2026-11-22** (prompt 38): text-based editing -- `transcript_words` and
   `media_text_edit` (cut list, rendered file via `silence_cut.render_keep_ranges`, or
   `.kdenlive` via `selects_timeline.build_ranges_project` at the source profile; retimed

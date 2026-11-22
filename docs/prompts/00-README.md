@@ -76,6 +76,7 @@ Review the model's report and diff after each prompt, then commit it yourself
 | 36 | Done 2026-11-22 | `transcribe_file`, `pipelines/subtitle_files.py`; `tests/unit/test_subtitle_files.py`, `tests/unit/test_transcribe_file.py`, `tests/integration/test_transcribe_file_real.py` |
 | 37 | Done 2026-11-22 | six subtitle file tools (`server/tools/subtitle_files.py`); `tests/unit/test_subtitle_file_ops.py`, `tests/integration/test_media_burn_subtitles.py` |
 | 38 | Done 2026-11-22 | `transcript_words`, `media_text_edit`; `tests/unit/test_text_edit.py`, `tests/integration/test_media_text_edit.py`, `tests/integration/external/test_text_edit_render.py` |
+| 39 | Done 2026-11-22 | `image_resize`, `image_convert`, `image_overlay`, `media_watermark` (`server/tools/image_files.py`); `tests/unit/test_image_files_pure.py`, `tests/integration/test_image_file_tools.py` |
 | 24 | Experiment run 2026-11-22; GUI pass pending | `scripts/chain_placement_experiment.py`, `vault/wiki/kdenlive-chain-per-placement.md`; harness tests `tests/unit/test_chain_layout_variants.py`, `tests/integration/external/test_chain_layout_variants.py` |
 
 Prompt 18 note: `execute_render` now sizes melt with `-profile` (`vault/wiki/melt-render-profile.md`), so read that before changing melt flags.

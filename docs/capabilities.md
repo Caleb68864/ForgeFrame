@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-274 MCP tools; 21 skills.
+278 MCP tools; 21 skills.
 
 ## Skills
 
@@ -156,6 +156,9 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | guide_add_scene_cuts | scene_guides | Add a guide on the timeline at every scene cut of a placed source. |
 | guide_list | guides | List all guides in a Kdenlive project (read-only). |
 | guide_remove | guides | Remove guides by time (numeric seconds) or by label (string). |
+| image_convert | image_files | Convert an image to png, jpg, webp, bmp or tiff (``output_path``'s extension wins). JPEG has |
+| image_overlay | image_files | Place ``overlay`` (a logo, keeps its transparency) on an image: ``position`` preset, ``scale`` |
+| image_resize | image_files | Resize an image. One of width/height keeps the aspect; both use ``fit``: contain (inside the |
 | job_cancel | jobs | Request cancellation of the worker and its FFmpeg/MLT child processes. |
 | job_list | jobs | List detached jobs, newest first, reconciling workers lost after restart. |
 | job_retry | jobs | Explicitly retry failed/cancelled/interrupted work with a new job ID. |
@@ -195,6 +198,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | media_thumbnail_sheet | thumbnail_sheet | Extract representative keyframes (+ optional contact sheet) from a clip. |
 | media_transcode_cfr | workspace_media | Transcode a VFR video file to constant frame rate (CFR). |
 | media_trim | media_trim | Cut a range out of a media file into a new file. |
+| media_watermark | image_files | Burn a logo/watermark image into a video file (re-encoded; audio copied), for the whole clip or |
 | mlt_service_info | mlt_services | Return MLT's metadata for one service, including its parameters, as YAML. |
 | mlt_services | mlt_services | List the MLT services this host can load. |
 | move_down | effects_bundles | Move a filter down one position in a clip's filter stack. |

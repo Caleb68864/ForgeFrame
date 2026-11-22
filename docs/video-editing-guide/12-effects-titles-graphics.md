@@ -424,6 +424,17 @@ A **lower third** is a text graphic that sits in the lower portion of the frame 
 
 ---
 
+## Images and Watermarks on Files
+
+Two ways to put a logo on a video:
+
+- **On the timeline** (`watermark_apply`, `overlay_insert`): an image clip with a transform in the `.kdenlive` project. You can still move, fade or remove it in Kdenlive.
+- **Burned into a file** (`media_watermark`): the logo becomes part of the pixels of a new file (`<name>_wm.mp4`; audio copied). Use it for a finished export or a clip that leaves ForgeFrame. `start_seconds` / `end_seconds` limit it to a window.
+
+Both use the same placement: `position` is `top_left`, `top_right`, `bottom_left`, `bottom_right`, `center`, `full`, or `custom` with `x`/`y`. `scale` is the logo width as a share of the frame width (the height follows the logo's shape) and `margin` is the gap from the edges. `opacity` runs from 0 to 1; 0.6 is a typical watermark, 1.0 a solid bug.
+
+For still images: `image_resize` (one side keeps the shape; with both, `fit` = contain, cover, stretch or pad), `image_convert` (png, jpg, webp, bmp, tiff; JPEG has no transparency, so pass `background="white"` or transparent parts turn black) and `image_overlay` (a logo onto an image, same placement). SVGs must be exported to PNG first.
+
 ## Subtitle Files
 
 ForgeFrame can work on subtitle files directly, without a project. Inputs are `.srt`, `.vtt` or a transcript `.json` (from `transcribe_file`); outputs `.srt`, `.vtt`, `.ass` or `.txt`.

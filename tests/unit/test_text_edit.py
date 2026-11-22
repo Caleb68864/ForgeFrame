@@ -1,7 +1,6 @@
 """Text-based editing: deletions -> keep ranges -> retimed transcript (prompt 38; pure)."""
 from __future__ import annotations
 
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
