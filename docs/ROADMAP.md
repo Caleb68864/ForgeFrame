@@ -77,6 +77,18 @@ same `_vN` (e.g. `project_v1` and `my-slug_v1`) by directory-listing order, whic
 differs between filesystems -- the cause of PR #16's CI-only failure. Ties now go
 to the newer file, then the name. Proof `tests/unit/test_latest_project.py::TestLatestProjectTies`.
 
+Found and fixed 2026-11-22: `test_timeline_thumbnails.py::test_melt_fallback_grabs_the_composite`
+failed intermittently in full runs ("melt could not grab frame 45:" with nothing
+after the colon, once a 600 s timeout). Cause, measured with the same one-frame
+melt command: under CPU contention melt 7.42 sometimes exits 0 without writing the
+frame, or stalls after loading its plugins (0 of 120 sequential grabs; 2-7 of
+128-160 with 16 grabs in parallel), and `_melt_frame` reported both as an
+unexplained error. Each grab attempt now has a 60 s ceiling and an empty or stalled
+attempt is retried (3 attempts); a real melt error (non-zero exit with a message) is
+not retried; the error names every attempt's exit code and stderr. 192 grabs at
+16-way concurrency: 0 failures, 9 needed a retry. The cause inside melt itself is
+not identified. Proof `tests/unit/test_melt_frame_retry.py`.
+
 Also outstanding, not ranked as work: detached jobs are POSIX only; job progress
 is per frame for renders (melt `-progress2`, prompt 18, 2026-11-22), per stage otherwise;
 other move/trim intents are still known A/V sync gaps (feature roadmap,
