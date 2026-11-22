@@ -83,7 +83,7 @@ not on PyPI, absent on Windows/macOS, and segfault on bad handles. So:
    orbit, handheld).
 7. **Done 2026-11-22** (prompt 22): `snapshot_diff` (LLM-readable).
 8. **Done 2026-11-22** (prompt 23): beat-synced cuts/zooms/flashes from `music_beat_grid`.
-9. External round-trip test of their "one chain per placement" claim vs our rule 14.
+9. **Experiment run 2026-11-22** (prompt 24), see `vault/wiki/kdenlive-chain-per-placement.md`; GUI pass pending. External round-trip test of their "one chain per placement" claim vs our rule 14.
 
 Do not import their XML habits (bin ids from 2, no bin twin, no control_uuid on
 the main tractor, `dynamictext` titles, non-canonical 29.97 profile, unsorted
