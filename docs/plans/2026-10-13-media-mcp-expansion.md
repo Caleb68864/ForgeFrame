@@ -78,7 +78,7 @@ not on PyPI, absent on Windows/macOS, and segfault on bad handles. So:
 3. **Done 2026-11-22** (prompt 19): applied-effect editing: `effect_param_get/set`, `effect_toggle`, `effect_remove`
    (`clip_index`).
 4. melt load-check in `project_validate` (`terminate_on_pause=1`, bounded frames).
-5. Trim tools as patcher intents: slip, slide, replace clip, ripple insert.
+5. **Done 2026-11-22** (prompt 20): trim tools as patcher intents: slip, slide, replace clip, ripple insert.
 6. Easing presets baked as dense keyframes; named camera moves (zoom-punch,
    orbit, handheld).
 7. `snapshot_diff` (LLM-readable).

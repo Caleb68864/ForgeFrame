@@ -229,6 +229,52 @@ class RemoveEffect(TimelineIntent):
     effect_index: int = 0
 
 
+class SlipClip(TimelineIntent):
+    """Show a different part of the source: in/out shift by ``delta_frames``; place and length stay."""
+    track_ref: str = ""
+    clip_index: int = 0
+    delta_frames: int = 0
+    source_frames: int | None = None
+
+
+class SlideClip(TimelineIntent):
+    """Move a clip along its track by ``delta_frames``; the neighbours absorb the move."""
+    track_ref: str = ""
+    clip_index: int = 0
+    delta_frames: int = 0
+    prev_source_frames: int | None = None
+    next_source_frames: int | None = None
+
+
+class ReplaceClip(TimelineIntent):
+    """Point a clip at other media from ``new_in``, keeping its place and length.
+
+    ``replace_audio`` also swaps the linked audio entry (or blanks it when the
+    new media has no audio, ``new_has_audio=False``); off, the old sound stays
+    under the new picture. Intents never probe: the shell fills ``new_has_audio``.
+    """
+    track_ref: str = ""
+    clip_index: int = 0
+    producer_id: str = ""
+    source_path: str = ""
+    new_in: int = 0
+    source_frames: int | None = None
+    replace_audio: bool = True
+    new_has_audio: bool = True
+
+
+class RippleInsert(TimelineIntent):
+    """Insert a clip (and its audio) before ``before_clip_index``; later content moves right."""
+    track_ref: str = ""
+    before_clip_index: int = 0
+    producer_id: str = ""
+    source_path: str = ""
+    in_point: int = 0
+    out_point: int = 0
+    with_audio: bool = True
+    ripple_all_tracks: bool = True
+
+
 class AddTrackFilter(TimelineIntent):
     """Attach an MLT filter to an entire track (its <playlist>), not a clip.
 

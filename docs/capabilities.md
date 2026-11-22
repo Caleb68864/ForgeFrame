@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-242 MCP tools; 21 skills.
+246 MCP tools; 21 skills.
 
 ## Skills
 
@@ -58,7 +58,11 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | clip_place | clip_place | Place a clip at absolute time ``at_seconds`` on ``track``. |
 | clip_place_matched | clip_place | Place a clip cut to exactly the duration of a reference clip. |
 | clip_remove | clips_nle | Remove a clip from the timeline by index. |
+| clip_replace | clip_trims | Replace a clip's media, keeping its place and length. |
 | clip_ripple_delete | clips_nle | Remove a clip and close the gap. |
+| clip_ripple_insert | clip_trims | Insert a clip and its audio before ``before_clip_index``; everything after moves right. |
+| clip_slide | clip_trims | Slide a clip later (offset > 0) or earlier along its track; its neighbours absorb the move. |
+| clip_slip | clip_trims | Slip a clip: show a later (offset > 0) or earlier part of its source, same place and length. |
 | clip_speed | clips_nle | Change clip playback speed (0.5=slow, 2.0=fast). |
 | clip_split | clips_nle | Split a clip at a timestamp (razor tool). |
 | clip_trim | clips_nle | Trim a clip's in and/or out points. |

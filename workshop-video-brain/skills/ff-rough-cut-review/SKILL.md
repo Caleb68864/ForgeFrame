@@ -142,6 +142,15 @@ placement engine can execute your suggestions on the working copy:
   exact length of a reference clip.
 - `clip_ripple_delete` / `clip_trim` — cut a flagged repetition or tighten a
   slow segment.
+- `clip_slip(clip_index, offset_seconds)` — same place and length, a later
+  (or earlier) part of the source: fix "starts too early" without moving the cut.
+- `clip_slide(clip_index, offset_seconds)` — move a clip along the track; the
+  neighbours absorb it, so the timeline length stays the same.
+- `clip_replace(clip_index, source)` — swap in a better take at the same place
+  and length (`replace_audio=false` keeps the old sound).
+- `clip_ripple_insert(source, before_clip_index)` — insert a missing step with
+  its audio; everything after (other tracks, guides, transitions) moves right.
+  All four keep the clip's linked audio in sync and refuse speed-changed clips.
 
 For full script-driven assembly rather than spot fixes, hand off to
 `/ff-assemble-from-script`.
