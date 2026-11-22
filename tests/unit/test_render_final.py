@@ -318,7 +318,7 @@ class TestFFmpegCommand:
 def output_verification_stub(monkeypatch):
     # These are orchestration/command tests; real output probing has integration coverage.
     monkeypatch.setattr("workshop_video_brain.edit_mcp.adapters.render.executor.verify_render_output",
-                        lambda path: (1.0, 1024))
+                        lambda path, **_kwargs: (1.0, 1024))
 
 
 def test_custom_container_uses_shared_profile_extension(workspace_with_project, monkeypatch):

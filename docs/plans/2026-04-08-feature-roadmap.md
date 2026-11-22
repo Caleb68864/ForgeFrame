@@ -241,8 +241,12 @@ behavior is available through documented user entry points, not only helpers.
   with native fixtures before a format migration.
 - `wvb jobs submit/list/status/cancel/retry` and equivalent MCP tools persist
   detached render/proxy/transcription/workflow operations in SQLite. Currently
-  Linux/macOS only; one detached writer per workspace. Progress describes stages
-  and assets, rather than frame-level render percentages. Synchronous APIs remain
+  Linux/macOS only; one detached writer per workspace. Render jobs report
+  frame-level progress (`progress.percent`, `engine`) from melt's own
+  `-progress2` output (or the MLT worker), throttled; 100 % is set only once the
+  output probes with a video stream, an audio stream when the profile has one,
+  and the timeline's length (prompt 18, 2026-11-22). Other operations report
+  stages and assets. Synchronous APIs remain
   available and must not be used concurrently to mutate the same workspace.
   Restarted workers are reconciled on job inspection; interrupted jobs require
   explicit retry, and live orphan children prevent unsafe reuse of outputs.

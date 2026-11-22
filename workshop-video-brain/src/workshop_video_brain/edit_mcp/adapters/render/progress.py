@@ -1,6 +1,7 @@
 """The render progress callback, shared by every render engine."""
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -40,3 +41,45 @@ class Throttle:
         ):
             self._last_time, self._last_percent = now, update.percent
             self._callback(update)
+
+
+_MELT_PROGRESS = re.compile(r"Current Frame:\s*(\d+),\s*percentage:\s*(\d+)")
+
+
+def parse_melt_progress(chunk: str) -> list[tuple[int, int]]:
+    """``(frame, percent)`` for every melt progress report in *chunk*.
+
+    melt writes ``Current Frame:  31, percentage:  62`` to stderr, ended by
+    ``\\r`` by default and by ``\\n`` with ``-progress2``; both are split on.
+    melt never reports 100: the caller sets it once the output is verified.
+    """
+    found: list[tuple[int, int]] = []
+    for segment in re.split(r"[\r\n]", chunk or ""):
+        match = _MELT_PROGRESS.search(segment)
+        if match:
+            found.append((int(match.group(1)), int(match.group(2))))
+    return found
+
+
+class MeltProgressReader:
+    """Feed raw stderr chunks; complete progress lines go to *on_progress*.
+
+    A chunk can end mid-line, so the unfinished tail is kept for the next one.
+    """
+
+    def __init__(self, on_progress: ProgressCallback, total_frames: int = 0) -> None:
+        self._on_progress = on_progress
+        self._total = total_frames
+        self._pending = ""
+
+    def feed(self, chunk: str) -> None:
+        text = self._pending + chunk
+        cut = max(text.rfind("\r"), text.rfind("\n"))
+        if cut < 0:
+            self._pending = text
+            return
+        self._pending = text[cut + 1:]
+        for frame, percent in parse_melt_progress(text[:cut]):
+            total = self._total or (round(frame * 100 / percent) if percent > 0 else 0)
+            self._on_progress(RenderProgress(frame=frame, total_frames=total,
+                                             percent=float(percent), engine="melt"))

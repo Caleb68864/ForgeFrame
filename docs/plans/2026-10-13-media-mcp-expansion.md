@@ -73,7 +73,7 @@ not on PyPI, absent on Windows/macOS, and segfault on bad handles. So:
    journal + `project_undo` / `project_redo` / `project_history` / `timeline_batch`
    (`edit_mcp/server/tools/history.py`). Undo/redo stack + atomic `timeline_batch`
    with rollback-to-depth, built on the existing snapshots.
-2. Render progress from melt's `percentage:` log lines (CLI path) + probe before
+2. **Done 2026-11-22** (prompt 18): render progress from melt's `percentage:` log lines (CLI path) + probe before
    reporting done (merge with Phase 3 progress).
 3. Applied-effect editing: `effect_param_get/set`, `effect_toggle`, `effect_remove`
    (`clip_index`).

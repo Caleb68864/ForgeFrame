@@ -82,7 +82,7 @@ def test_bindings_engine_streams_progress(tmp_path, monkeypatch, variable):
     monkeypatch.setattr(engine, "run_streaming_worker", run)
     monkeypatch.setattr(engine, "find_mlt_python", lambda **_k: object())
     monkeypatch.setattr(executor, "missing_media", lambda _p: [])
-    monkeypatch.setattr(executor, "verify_render_output", lambda _p: (2.0, 1))
+    monkeypatch.setattr(executor, "verify_render_output", lambda _p, **_k: (2.0, 1))
     seen = []
     done = executor.execute_render(_job(tmp_path), _profile(), on_progress=seen.append)
     assert done.status == "succeeded", done.error_message
