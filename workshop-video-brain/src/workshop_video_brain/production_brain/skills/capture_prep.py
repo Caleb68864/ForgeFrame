@@ -56,10 +56,33 @@ def count_shots(shot_plan: dict) -> int:
     return sum(len(shot_plan.get(k) or []) for k in SHOT_CATEGORIES)
 
 
+#: NTSC-family rates cameras actually offer (1000/1001 of a whole rate).
+FRACTIONAL_FPS = (23.976, 29.97, 47.952, 59.94, 119.88)
+
+
+def normalize_target_fps(target_fps) -> int | float:
+    """A whole frame rate (24, 30, 60...) or one of the NTSC rates (23.976, 29.97, 59.94...).
+
+    Decided by agent 2026-11-22 (owner may revisit): the NTSC rates are what
+    US cameras record, so they are accepted; any other fraction is refused
+    rather than rounded, so a typo never becomes the shooting rate.
+    """
+    if isinstance(target_fps, bool) or not isinstance(target_fps, (int, float)) or target_fps <= 0:
+        raise ValueError(f"target_fps must be a positive whole number or an NTSC rate "
+                         f"({', '.join(map(str, FRACTIONAL_FPS))}), got {target_fps!r}")
+    if float(target_fps).is_integer():
+        return int(target_fps)
+    for rate in FRACTIONAL_FPS:
+        if abs(target_fps - rate) < 0.01:
+            return rate
+    raise ValueError(f"target_fps must be a positive whole number or an NTSC rate "
+                     f"({', '.join(map(str, FRACTIONAL_FPS))}), got {target_fps!r}")
+
+
 def generate_capture_checklist(
     shot_plan: dict,
     target_resolution: str = "1920x1080",
-    target_fps: int = 30,
+    target_fps: int | float = 30,
 ) -> str:
     """Generate a pre-shoot capture checklist from a shot plan.
 
@@ -85,8 +108,7 @@ def generate_capture_checklist(
             f"shot_plan must be a dict (from generate_shot_plan or "
             f"reports/shot_plan.json), got {type(shot_plan).__name__}"
         )
-    if isinstance(target_fps, bool) or not isinstance(target_fps, int) or target_fps <= 0:
-        raise ValueError(f"target_fps must be a positive integer, got {target_fps!r}")
+    target_fps = normalize_target_fps(target_fps)
     w, sep, h = str(target_resolution).lower().partition("x")
     if not (sep and w.isdigit() and h.isdigit() and int(w) > 0 and int(h) > 0):
         raise ValueError(
@@ -107,7 +129,7 @@ def generate_capture_checklist(
     lines.append("- **Color profile:** BT.709 (Rec. 709) for SDR delivery")
     lines.append("- **White balance:** Set manually to match lighting (avoid auto)")
     lines.append("- **Shutter speed:** 1/{0} for natural motion blur".format(
-        target_fps * 2,
+        round(target_fps * 2),
     ))
     lines.append("- **Format:** Record in the highest quality your card supports")
     lines.append(
@@ -252,7 +274,7 @@ def capture_prep_payload(
     shot_plan: dict,
     shot_plan_path: Path | None,
     target_resolution: str = "1920x1080",
-    target_fps: int = 30,
+    target_fps: int | float = 30,
 ) -> dict:
     """Checklist plus summary fields, as returned by the tool and ``--json``.
 
@@ -264,7 +286,7 @@ def capture_prep_payload(
         "shot_plan_path": str(shot_plan_path) if shot_plan_path else None,
         "shot_count": count_shots(shot_plan),
         "target_resolution": target_resolution,
-        "target_fps": target_fps,
+        "target_fps": normalize_target_fps(target_fps),
         "markdown": markdown,
     }
     if shot_plan_path is None:

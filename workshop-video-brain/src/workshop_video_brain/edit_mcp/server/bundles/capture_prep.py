@@ -23,7 +23,7 @@ from workshop_video_brain.server import mcp
 def capture_prep_checklist(
     workspace_path: str,
     target_resolution: str = "1920x1080",
-    target_fps: int = 30,
+    target_fps: float = 30,
 ) -> dict:
     """Generate a pre-shoot capture checklist from the workspace's shot plan.
 
@@ -35,7 +35,8 @@ def capture_prep_checklist(
     Args:
         workspace_path: Path to the workspace root.
         target_resolution: Camera resolution as ``WxH``, e.g. ``"3840x2160"``.
-        target_fps: Whole-number frame rate, e.g. 24, 30 or 60.
+        target_fps: Frame rate: a whole number (24, 25, 30, 50, 60) or an NTSC rate
+            (23.976, 29.97, 59.94).
 
     Returns:
         ``title``, ``shot_plan_path`` (or null), ``shot_count``,
@@ -73,7 +74,7 @@ def capture_prep_checklist(
     except ValueError as exc:
         return invalid_input(
             str(exc),
-            "Use a whole-number target_fps such as 24, 30 or 60 and a "
+            "Use a target_fps such as 24, 30, 60 or an NTSC rate (23.976, 29.97, 59.94) and a "
             "target_resolution like '1920x1080' or '3840x2160'.",
             target_resolution=target_resolution,
             target_fps=target_fps,

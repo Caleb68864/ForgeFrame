@@ -880,12 +880,12 @@ def plan_shots(idea: str) -> None:
 @click.argument("workspace_path")
 @click.option("--target-resolution", default="1920x1080", show_default=True,
               help="Camera resolution as WxH, e.g. 3840x2160.")
-@click.option("--target-fps", default=30, type=int, show_default=True,
-              help="Whole-number frame rate, e.g. 24, 30 or 60.")
+@click.option("--target-fps", default=30.0, type=float, show_default=True,
+              help="Frame rate: 24, 25, 30, 50, 60 or an NTSC rate (23.976, 29.97, 59.94).")
 @click.option("--json", "as_json", is_flag=True, default=False,
               help="Emit the checklist and summary as JSON.")
 def plan_capture_prep(
-    workspace_path: str, target_resolution: str, target_fps: int, as_json: bool,
+    workspace_path: str, target_resolution: str, target_fps: float, as_json: bool,
 ) -> None:
     """Print a pre-shoot capture checklist for WORKSPACE_PATH.
 
