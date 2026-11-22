@@ -89,6 +89,15 @@ not retried; the error names every attempt's exit code and stderr. 192 grabs at
 16-way concurrency: 0 failures, 9 needed a retry. The cause inside melt itself is
 not identified. Proof `tests/unit/test_melt_frame_retry.py`.
 
+Found and fixed 2026-11-22: `test_faults_adapter.py::test_large_project_parse_serialize_bounds`
+failed under load because it used absolute seconds, and the slowness it tolerated
+was a defect: `serializer._effective_length` scanned every playlist entry for every
+producer, so serializing was quadratic (10 000 clips 9-14 s; 4x the clips cost 11.5x
+the time). One pass now collects each producer's largest out-point (10 000 clips
+~4 s; ratio ~6). The test now asserts the 2 500 -> 10 000 clip time ratio (< 8.5,
+best of two, interleaved), which load cannot fail and the old code does; memory and
+round-trip fidelity are a separate test.
+
 Also outstanding, not ranked as work: detached jobs are POSIX only; job progress
 is per frame for renders (melt `-progress2`, prompt 18, 2026-11-22), per stage otherwise;
 other move/trim intents are still known A/V sync gaps (feature roadmap,

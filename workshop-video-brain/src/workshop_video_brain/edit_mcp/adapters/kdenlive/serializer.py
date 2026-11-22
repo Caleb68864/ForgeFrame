@@ -358,16 +358,31 @@ def _opaque_bin_ids(project: KdenliveProject) -> dict[str, int]:
     return result
 
 
-def _effective_length(producer, project: KdenliveProject) -> int | None:
-    """Return a producer's declared or timeline-required length in frames."""
+def _max_uses(project: KdenliveProject) -> dict[str, int]:
+    """producer id -> the largest ``out + 1`` of any entry using it (one pass)."""
+    uses: dict[str, int] = {}
+    for playlist in project.playlists:
+        for entry in playlist.entries:
+            if entry.producer_id:
+                uses[entry.producer_id] = max(uses.get(entry.producer_id, 0), entry.out_point + 1)
+    return uses
+
+
+def _effective_length(producer, project: KdenliveProject, uses: dict[str, int] | None = None) -> int | None:
+    """Return a producer's declared or timeline-required length in frames.
+
+    Pass ``uses`` (from :func:`_max_uses`) when asking for every producer:
+    scanning all entries per producer made serializing quadratic (10 000 clips
+    took 10-14 s).
+    """
     values: list[int] = []
     stored = producer.properties.get("length", "")
     if stored.isdigit():
         values.append(int(stored))
-    uses = [entry.out_point + 1 for playlist in project.playlists
-            for entry in playlist.entries if entry.producer_id == producer.id]
-    if uses:
-        values.append(max(uses))
+    if uses is None:
+        uses = _max_uses(project)
+    if producer.id in uses:
+        values.append(uses[producer.id])
     return max(values) if values else None
 
 
@@ -730,7 +745,8 @@ def serialize_project(
         producer.id for producer in project.producers
         if _variant_base(producer, project, warn_unresolved=False) is not None
     }
-    producer_lengths = {p.id: _effective_length(p, project) for p in project.producers}
+    uses = _max_uses(project)
+    producer_lengths = {p.id: _effective_length(p, project, uses) for p in project.producers}
     opaque_bin_ids = _opaque_bin_ids(project)
     for producer in project.producers:
         kdenlive_id = bin_ids[producer.id]
