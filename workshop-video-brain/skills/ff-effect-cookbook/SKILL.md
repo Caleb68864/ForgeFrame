@@ -122,6 +122,21 @@ Every apply snapshots first — back out any look with `snapshot_restore`.
 - `transitions_apply_between` / `transitions_apply_at` — generic transition at a
   clip boundary or timestamp.
 
+### Inspect / tweak / bypass / remove an applied effect
+
+All take `workspace_path, project_file, track, clip_index`, and the effect as
+`effect_index` (stack position) or `effect_name` (Kdenlive id or MLT service), not both.
+
+- `effect_list_applied` — the clip's effects in stack order: `enabled`,
+  `static_params`, `keyframed_params`.
+- `effect_param_get` — one parameter (`param=`) or the whole description.
+- `effect_param_set` — change static parameters (`params` JSON, e.g. `{"level": 0.3}`);
+  keyframed ones go through `effect_keyframe_set_scalar` / `_rect`; names the
+  catalog does not list need `force=true`.
+- `effect_toggle` — bypass (`enabled=false`) or re-enable without removing it
+  (writes `disable=1` / `0`, like Kdenlive's on/off switch).
+- `effect_remove` — delete one effect; the rest of the stack is untouched.
+
 ---
 
 ## Manual method vs. tool — the guide notes (cross-reference)

@@ -33,6 +33,9 @@ from workshop_video_brain.core.models.timeline import (
     AddClip,
     AddComposition,
     AddEffect,
+    RemoveEffect,
+    SetEffectEnabled,
+    SetEffectParams,
     AddGuide,
     AddSubtitleRegion,
     AddTrackFilter,
@@ -196,6 +199,9 @@ def patch_project(
     - AudioFade: adds an audio fade opaque element for a clip
     - SetTrackMute: mutes or unmutes a track via opaque element
     - SetTrackVisibility: shows or hides a track via opaque element
+    - SetEffectParams: sets static properties on an applied clip effect
+    - SetEffectEnabled: bypasses (disable=1) or re-enables (disable=0) an applied effect
+    - RemoveEffect: removes one applied effect from a clip's stack
 
     Args:
         project: Source KdenliveProject (never mutated).
@@ -253,6 +259,12 @@ def patch_project(
             _apply_set_track_visibility(new_project, intent)
         elif isinstance(intent, AddEffect):
             _apply_add_effect(new_project, intent)
+        elif isinstance(intent, SetEffectParams):
+            _apply_set_effect_params(new_project, intent)
+        elif isinstance(intent, SetEffectEnabled):
+            _apply_set_effect_enabled(new_project, intent)
+        elif isinstance(intent, RemoveEffect):
+            _apply_remove_effect(new_project, intent)
         elif isinstance(intent, ClearTrackFilters):
             _apply_clear_track_filters(new_project, intent)
         elif isinstance(intent, AddTrackFilter):
@@ -1319,6 +1331,40 @@ def _apply_add_effect(project: KdenliveProject, intent: AddEffect) -> None:
         "AddEffect: applied '%s' to clip %d on track '%s'",
         intent.effect_name, intent.clip_index, playlist.id,
     )
+
+
+def _apply_set_effect_params(project: KdenliveProject, intent: SetEffectParams) -> None:
+    """Set static properties on one applied effect (effect_stack.set_effect_property)."""
+    from workshop_video_brain.edit_mcp.adapters.kdenlive import effect_stack
+
+    clip_ref = (intent.track_index, intent.clip_index)
+    try:
+        for name, value in intent.params.items():
+            effect_stack.set_effect_property(project, clip_ref, intent.effect_index, str(name), str(value))
+    except IndexError as exc:
+        logger.warning("SetEffectParams: %s -- skipped.", exc)
+
+
+def _apply_set_effect_enabled(project: KdenliveProject, intent: SetEffectEnabled) -> None:
+    """Write ``disable`` as Kdenlive's on/off switch does: "1" off, "0" on (never deleted)."""
+    from workshop_video_brain.edit_mcp.adapters.kdenlive import effect_stack
+
+    try:
+        effect_stack.set_effect_property(
+            project, (intent.track_index, intent.clip_index), intent.effect_index,
+            "disable", "0" if intent.enabled else "1",
+        )
+    except IndexError as exc:
+        logger.warning("SetEffectEnabled: %s -- skipped.", exc)
+
+
+def _apply_remove_effect(project: KdenliveProject, intent: RemoveEffect) -> None:
+    from workshop_video_brain.edit_mcp.adapters.kdenlive import effect_stack
+
+    try:
+        effect_stack.remove_effect(project, (intent.track_index, intent.clip_index), intent.effect_index)
+    except IndexError as exc:
+        logger.warning("RemoveEffect: %s -- skipped.", exc)
 
 
 def _resolve_track_index(project: KdenliveProject, track_ref: str, track_index: int) -> int | None:

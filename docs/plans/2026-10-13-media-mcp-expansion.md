@@ -75,7 +75,7 @@ not on PyPI, absent on Windows/macOS, and segfault on bad handles. So:
    with rollback-to-depth, built on the existing snapshots.
 2. **Done 2026-11-22** (prompt 18): render progress from melt's `percentage:` log lines (CLI path) + probe before
    reporting done (merge with Phase 3 progress).
-3. Applied-effect editing: `effect_param_get/set`, `effect_toggle`, `effect_remove`
+3. **Done 2026-11-22** (prompt 19): applied-effect editing: `effect_param_get/set`, `effect_toggle`, `effect_remove`
    (`clip_index`).
 4. melt load-check in `project_validate` (`terminate_on_pause=1`, bounded frames).
 5. Trim tools as patcher intents: slip, slide, replace clip, ripple insert.

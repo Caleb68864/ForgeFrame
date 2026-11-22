@@ -162,6 +162,10 @@ Video fade-from-black / fade-to-black uses a clip filter with `mlt_service=brigh
 - Specifically: `avfilter-gblur`, `avfilter-eq`, `avfilter-colorbalance`, `avfilter-chromashift`, `avfilter-fftdnoiz`, `effect-zones`.
 - Test-suite coverage audit: `vault/wiki/kdenlive-test-suite-coverage-audit.md`.
 
+## Bypassing an effect: the `disable` property
+
+A clip filter with `<property name="disable">1</property>` stays in the file and in Kdenlive's effect stack, but MLT skips it when rendering; `0` (or no property) renders it. Kdenlive's effect on/off switch writes exactly this property, and writes `0` when switching back on rather than deleting it. `effect_toggle` does the same (prompt 19, 2026-11-22); `tests/integration/external/test_effect_edit_render.py` shows a disabled `avfilter.negate` renders like no effect, and re-enabling it changes the frame again.
+
 ## Related
 
 - [[kdenlive-image-and-qtblend-pattern]] -- qtblend uses the same clip-filter shape with keyframe-string params.
