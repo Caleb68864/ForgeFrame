@@ -48,7 +48,10 @@ oracle's `render_frame` / `render_video` / `melt_accepts` ran melt without a
 display, so Qt producers (`qimage`, `qtblend`) rendered a flat grey frame. Only
 `melt_render_full` had the `xvfb-run` fallback (the title fix, PR #14); all four
 now go through `_oracle.with_display`. External tier headless: 117 passed, 1
-skipped. Not fixed, product side: ForgeFrame's own melt renders
+skipped. `tests/integration/test_title_renders.py` had the same gap plus no
+`terminate_on_pause=1` and no timeout: headless, its melt ran 17+ minutes until
+killed. It now uses the shared `tests/_testkit.with_display`, `terminate_on_pause=1`
+and `timeout=180`. Not fixed, product side: ForgeFrame's own melt renders
 (`adapters/render/executor.py`) also run without a display check, so an MCP
 server started with no display would render image overlays and titles wrong
 without an error; `wvb doctor` does not report it.

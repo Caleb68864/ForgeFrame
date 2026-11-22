@@ -11,11 +11,12 @@ service without rework.
 """
 from __future__ import annotations
 
+from tests._testkit import with_display  # noqa: F401 -- re-exported for the external tier
+
 import json
 import math
 import os
 import re
-import shutil
 import signal
 import subprocess
 import tempfile
@@ -68,19 +69,6 @@ def kdenlive_render(
     if proc.returncode != 0 or not out.exists():
         raise RuntimeError(f"Kdenlive render failed rc={proc.returncode} for {project}; stderr tail:\n{stderr[-1500:]}")
     return out
-
-
-def with_display(cmd: list[str]) -> list[str]:
-    """Prefix a melt command with ``xvfb-run -a`` when there is no display.
-
-    melt's Qt module (``kdenlivetitle``, ``qimage``, ``qtblend``) refuses to
-    load without an X11/Wayland display: titles render as "INVALID" and image
-    producers as a flat grey frame. CI runs the whole suite under xvfb-run; a
-    headless local shell does not, so every melt call here goes through this.
-    """
-    if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")) and shutil.which("xvfb-run"):
-        return ["xvfb-run", "-a", *cmd]
-    return cmd
 
 
 def melt_render_full(project: str | Path, out: str | Path, melt_bin: str = "melt", timeout: int = 180) -> Path:
