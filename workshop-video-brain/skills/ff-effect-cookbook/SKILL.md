@@ -109,6 +109,13 @@ Every apply snapshots first — back out any look with `snapshot_restore`.
 
 ### Motion, Ken Burns & tracking
 - `effect_pan_zoom` — keyframed pan/zoom (Ken Burns).
+- `effect_camera_move(move=...)` — named camera moves on `qtblend`, no black edges:
+  `zoom_punch` (quick push peaking at `at_frame`, e.g. on a beat), `orbit` (small
+  circular drift), `handheld` (slow seeded wander + roll; subtle/medium/aggressive).
+- Keyframe easing: `effect_keyframe_set_scalar/rect/color` take MLT's native
+  easings (`ease_in_cubic`, ...). `bake=true` writes any easing as dense linear
+  keyframes, and is required for `cubic_bezier(x1,y1,x2,y2)`, `spring(damping,omega)`
+  and custom amounts like `back_out(2.5)`.
 - `subject_zoom` — tracked follow-zoom **or** static punch-in.
 - `subject_locate_frames` → `subject_track` — extract a frame, supply a subject
   bbox, then track that rectangle across the clip (saves keyframes) so

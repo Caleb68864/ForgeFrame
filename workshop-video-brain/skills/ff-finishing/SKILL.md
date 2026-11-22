@@ -141,7 +141,8 @@ For the full publish-copy workflow (title variants, SEO, review), hand off to
   transparency layer = alpha profile.
 - Always QC (`render_review_frames` / `qc_check`) before the final render — a
   black frame or dangling media caught here saves a full re-render.
-- Every mutating tool snapshots first — back out any stage with `snapshot_restore`.
+- Every mutating tool snapshots first — back out any stage with `snapshot_restore`
+  (or `project_undo`). `snapshot_diff` shows what a stage changed before you decide.
 - **Failure contract:** every tool returns a structured error dict carrying
   `error_type` + a plain `suggestion` (never a traceback). A render failure is
   often a `missing_file` (moved media — run `project_validate`) or a `not_found`

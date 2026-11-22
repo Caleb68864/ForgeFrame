@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-242 MCP tools; 21 skills.
+248 MCP tools; 21 skills.
 
 ## Skills
 
@@ -58,7 +58,11 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | clip_place | clip_place | Place a clip at absolute time ``at_seconds`` on ``track``. |
 | clip_place_matched | clip_place | Place a clip cut to exactly the duration of a reference clip. |
 | clip_remove | clips_nle | Remove a clip from the timeline by index. |
+| clip_replace | clip_trims | Replace a clip's media, keeping its place and length. |
 | clip_ripple_delete | clips_nle | Remove a clip and close the gap. |
+| clip_ripple_insert | clip_trims | Insert a clip and its audio before ``before_clip_index``; everything after moves right. |
+| clip_slide | clip_trims | Slide a clip later (offset > 0) or earlier along its track; its neighbours absorb the move. |
+| clip_slip | clip_trims | Slip a clip: show a later (offset > 0) or earlier part of its source, same place and length. |
 | clip_speed | clips_nle | Change clip playback speed (0.5=slow, 2.0=fast). |
 | clip_split | clips_nle | Split a clip at a timestamp (razor tool). |
 | clip_trim | clips_nle | Trim a clip's in and/or out points. |
@@ -75,6 +79,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | composite_split_screen | split_screen | Build a split/quad-screen composite from several source tracks. |
 | composite_wipe | compositing_masking | Add a wipe or dissolve transition between two tracks. |
 | effect_add | effects_catalog | Add a named effect to a clip in a Kdenlive project. |
+| effect_camera_move | camera_moves | Add a named camera move to a clip as a keyframed ``qtblend`` filter. |
 | effect_camera_shake | shake_shadow | Add a deterministic keyframed camera-shake ``qtblend`` filter to a clip. |
 | effect_chroma_key | compositing_masking | Append a basic ``chroma`` key filter to a clip's effect stack. |
 | effect_chroma_key_advanced | compositing_masking | Append an ``avfilter.hsvkey`` advanced chroma filter to a clip. |
@@ -226,6 +231,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | research_transcript_context | research_transcript | Return transcript segments overlapping a time window around *timestamp_seconds*. |
 | research_transcript_search | research_transcript | Search a transcript for segments containing *query*. |
 | shots_map_to_script | shot_alignment | Map a numbered build-step list to candidate clips + timestamps. |
+| snapshot_diff | snapshot_diff | Explain what changed from version ``a`` to version ``b`` of the project. |
 | snapshot_list | timeline_project | List all snapshots in the workspace. |
 | snapshot_restore | timeline_project | Restore a snapshot by its directory name (timestamp-slug). |
 | social_clip_post | social_publish | Generate social media post text for a specific clip. |

@@ -87,6 +87,8 @@ def _keyframe_tool_impl(
     property: str,
     keyframes: str,
     mode: str,
+    bake: bool = False,
+    bake_step: int = 1,
 ) -> dict:
     from workshop_video_brain.edit_mcp.adapters.kdenlive.parser import parse_project
     from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
@@ -150,6 +152,20 @@ def _keyframe_tool_impl(
         return from_exception(exc)
 
     ease_family = workspace.keyframe_defaults.ease_family
+
+    from workshop_video_brain.edit_mcp.pipelines.easing import bake_keyframes, needs_bake
+
+    bake_only = sorted({kf.easing for kf in new_kfs if needs_bake(kf.easing)})
+    if bake_only and not bake:
+        return invalid_input(
+            f"Easing {', '.join(bake_only)} has no MLT operator",
+            "Pass bake=true to write it as dense linear keyframes.", param="easing")
+    if bake:
+        try:
+            new_kfs = bake_keyframes(new_kfs, step=bake_step, family_default=ease_family)
+        except ValueError as exc:
+            return invalid_input(str(exc), "Use an easing that works per segment, or a larger bake_step.",
+                                 param="bake")
 
     try:
         if mode == "merge":
@@ -261,11 +277,18 @@ def effect_keyframe_set_scalar(
     property: str,
     keyframes: str,
     mode: str = "replace",
+    bake: bool = False,
+    bake_step: int = 1,
 ) -> dict:
-    """Write a scalar keyframe animation string to an effect property."""
+    """Write a scalar keyframe animation string to an effect property.
+
+    ``bake=true`` samples every eased segment into linear keyframes every
+    ``bake_step`` frames: needed for ``cubic_bezier`` / ``spring`` (no MLT
+    operator), and a portable fallback for any easing.
+    """
     return _keyframe_tool_impl(
         "scalar", workspace_path, project_file, track, clip,
-        effect_index, property, keyframes, mode,
+        effect_index, property, keyframes, mode, bake=bake, bake_step=bake_step,
     )
 
 
@@ -280,11 +303,18 @@ def effect_keyframe_set_rect(
     property: str,
     keyframes: str,
     mode: str = "replace",
+    bake: bool = False,
+    bake_step: int = 1,
 ) -> dict:
-    """Write a rect keyframe animation string (x y w h [opacity]) to an effect property."""
+    """Write a rect keyframe animation string (x y w h [opacity]) to an effect property.
+
+    ``bake=true`` samples every eased segment into linear keyframes every
+    ``bake_step`` frames: needed for ``cubic_bezier`` / ``spring`` (no MLT
+    operator), and a portable fallback for any easing.
+    """
     return _keyframe_tool_impl(
         "rect", workspace_path, project_file, track, clip,
-        effect_index, property, keyframes, mode,
+        effect_index, property, keyframes, mode, bake=bake, bake_step=bake_step,
     )
 
 
@@ -299,9 +329,16 @@ def effect_keyframe_set_color(
     property: str,
     keyframes: str,
     mode: str = "replace",
+    bake: bool = False,
+    bake_step: int = 1,
 ) -> dict:
-    """Write a color keyframe animation string (0xRRGGBBAA) to an effect property."""
+    """Write a color keyframe animation string (0xRRGGBBAA) to an effect property.
+
+    ``bake=true`` samples every eased segment into linear keyframes every
+    ``bake_step`` frames: needed for ``cubic_bezier`` / ``spring`` (no MLT
+    operator), and a portable fallback for any easing.
+    """
     return _keyframe_tool_impl(
         "color", workspace_path, project_file, track, clip,
-        effect_index, property, keyframes, mode,
+        effect_index, property, keyframes, mode, bake=bake, bake_step=bake_step,
     )

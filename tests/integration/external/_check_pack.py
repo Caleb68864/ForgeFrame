@@ -81,6 +81,37 @@ def build_check_pack(out: Path) -> list[PackStep]:
     return steps
 
 
+def write_easing_pair(out: Path) -> list[PackStep]:
+    """Prompt 21's human check: does Kdenlive keep a native easing operator vs a baked curve?
+
+    Two standalone projects (not part of the cumulative pack): a red box sliding
+    left to right over 20 frames with a ``qtblend`` rect, eased cubic-in once as
+    MLT's ``g`` operator and once baked into linear keyframes.
+    """
+    from tests._testkit import solid_color_project
+    from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize_project
+    from workshop_video_brain.edit_mcp.pipelines.easing import bake_keyframes
+    from workshop_video_brain.edit_mcp.pipelines.keyframes import Keyframe, build_keyframe_string
+    from workshop_video_brain.edit_mcp.server.tools import _build_filter_xml
+
+    out = Path(out)
+    kfs = [Keyframe(0, [0, 0, 80, 45, 1], "ease_in_cubic"), Keyframe(20, [240, 0, 80, 45, 1], "linear")]
+    steps = []
+    for name, keyframes in (("native", kfs), ("baked", bake_keyframes(kfs))):
+        project = solid_color_project(color="0xff0000ff", frames=50)
+        xml = _build_filter_xml(mlt_service="qtblend", kdenlive_id="qtblend", track=0, clip=0,
+                                props=[("rect", build_keyframe_string("rect", keyframes, 25.0))])
+        patcher.insert_effect_xml(project, (0, 0), xml, position=0)
+        dest = out / f"21_easing_{name}.kdenlive"
+        serialize_project(project, dest)
+        steps.append(PackStep(21, f"easing_{name}", dest,
+                              "Red box eases in left to right over 0.8 s. In the Transform keyframes, "
+                              + ("is the first keyframe's type shown as cubic-in, and kept on save?"
+                                 if name == "native" else "21 linear keyframes, same motion as the native file?")))
+    return steps
+
+
 def write_checklist(out: Path, steps: list[PackStep]) -> Path:
     out = Path(out)
     lines = ["# Kdenlive check pack", "",

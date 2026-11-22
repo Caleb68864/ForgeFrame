@@ -29,7 +29,11 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from tests.integration.external._check_pack import build_check_pack, write_checklist  # noqa: E402
+from tests.integration.external._check_pack import (  # noqa: E402
+    build_check_pack,
+    write_checklist,
+    write_easing_pair,
+)
 
 
 def main() -> None:
@@ -37,7 +41,7 @@ def main() -> None:
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
-    steps = build_check_pack(out)
+    steps = build_check_pack(out) + write_easing_pair(out)
     write_checklist(out, steps)
     print(f"\nPack written to {out} ({len(steps)} projects). See CHECKLIST.md.")
 

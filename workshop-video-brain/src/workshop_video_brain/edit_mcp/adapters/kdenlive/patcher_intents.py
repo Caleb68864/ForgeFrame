@@ -34,6 +34,10 @@ from workshop_video_brain.core.models.timeline import (
     AddComposition,
     AddEffect,
     RemoveEffect,
+    ReplaceClip,
+    RippleInsert,
+    SlideClip,
+    SlipClip,
     SetEffectEnabled,
     SetEffectParams,
     AddGuide,
@@ -202,6 +206,8 @@ def patch_project(
     - SetEffectParams: sets static properties on an applied clip effect
     - SetEffectEnabled: bypasses (disable=1) or re-enables (disable=0) an applied effect
     - RemoveEffect: removes one applied effect from a clip's stack
+    - SlipClip / SlideClip / ReplaceClip / RippleInsert: the classic trims,
+      applied to the clip and its linked audio (``patcher_trims``)
 
     Args:
         project: Source KdenliveProject (never mutated).
@@ -259,6 +265,11 @@ def patch_project(
             _apply_set_track_visibility(new_project, intent)
         elif isinstance(intent, AddEffect):
             _apply_add_effect(new_project, intent)
+        elif isinstance(intent, (SlipClip, SlideClip, ReplaceClip, RippleInsert)):
+            from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher_trims
+            {SlipClip: patcher_trims.apply_slip, SlideClip: patcher_trims.apply_slide,
+             ReplaceClip: patcher_trims.apply_replace,
+             RippleInsert: patcher_trims.apply_ripple_insert}[type(intent)](new_project, intent)
         elif isinstance(intent, SetEffectParams):
             _apply_set_effect_params(new_project, intent)
         elif isinstance(intent, SetEffectEnabled):
