@@ -332,12 +332,42 @@ def _stall_seconds() -> float:
         return DEFAULT_STALL_SECONDS
 
 
-def _kill_group(process: subprocess.Popen) -> None:
-    """Kill the render and everything it started (xvfb-run, helpers), then reap it."""
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except (ProcessLookupError, PermissionError, AttributeError, OSError):
-        process.kill()
+def _descendants(pid: int) -> list[int]:
+    """Child processes of *pid*, recursively (Linux ``/proc``; empty elsewhere)."""
+    children: dict[int, list[int]] = {}
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return []
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
+        except (OSError, IndexError):
+            continue
+        children.setdefault(int(fields[1]), []).append(int(entry.name))
+    found, stack = [], [pid]
+    while stack:
+        for child in children.get(stack.pop(), []):
+            found.append(child)
+            stack.append(child)
+    return found
+
+
+def _kill_tree(process: subprocess.Popen) -> None:
+    """Kill the render and everything it started, then reap it.
+
+    The render stays in the caller's process group on purpose: a detached
+    job is cancelled by signalling its whole group (``workspace/jobs``), and a
+    render in a group of its own would escape that. So the tree is walked
+    instead of signalling a group.
+    """
+    for pid in reversed(_descendants(process.pid)):
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    process.kill()
     process.wait()
 
 
@@ -354,14 +384,12 @@ def _run_render_process(
 
     Both pipes are drained on their own threads (MLT writes ~170 lines of
     registration noise; an unread pipe would deadlock it). stderr is read in
-    chunks, not lines, so melt's ``\r``-ended progress is seen live. The
-    process runs in its own process group; on the deadline, or when
-    ``stall_seconds`` pass without a chunk containing ``progress_pattern``, the
-    whole group is killed and ``TimeoutExpired`` / :class:`RenderStalled` raised.
+    chunks, not lines, so melt's ``\r``-ended progress is seen live. On the
+    deadline, or when ``stall_seconds`` pass without a chunk containing
+    ``progress_pattern``, the process and its descendants are killed and
+    ``TimeoutExpired`` / :class:`RenderStalled` raised.
     """
-    process = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, start_new_session=True,
-    )
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     out_parts: list[str] = []
     err_parts: list[str] = []
     last_progress = [time.monotonic()]
@@ -411,7 +439,7 @@ def _run_render_process(
             stalled = stall_seconds is not None and now - last_progress[0] >= stall_seconds
             if now < deadline and not stalled:
                 continue
-            _kill_group(process)
+            _kill_tree(process)
             for thread in threads:
                 thread.join(5)
             if stalled and now < deadline:

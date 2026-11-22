@@ -63,7 +63,7 @@ def _alive(pid: int) -> bool:
         return False
 
 
-def test_stall_kills_the_whole_process_group(fake_melt, tmp_path):
+def test_stall_kills_melt_and_its_children(fake_melt, tmp_path):
     melt = fake_melt("stall")
     started = time.monotonic()
     with pytest.raises(executor.RenderStalled):
