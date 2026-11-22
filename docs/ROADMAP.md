@@ -67,6 +67,11 @@ display. Decided by agent 2026-11-22 (owner may revisit): Qt offscreen instead
 of wrapping melt in `xvfb-run` -- no extra package, and a timeout kill does not
 orphan melt and Xvfb behind the `xvfb-run` shell script.
 
+Found and fixed 2026-11-22: `effect_add` with JSON numbers or booleans in
+`params` -- its own docstring example `{"opacity": 0.5}` -- failed `AddEffect`
+validation (`dict[str, str]`) and came back as an "unexpected error". Values are
+now stringified (`true` -> `1`). Proof `tests/unit/test_effect_add_numeric_params.py`.
+
 Also outstanding, not ranked as work: detached jobs are POSIX only; job progress
 is per frame for renders (melt `-progress2`, prompt 18, 2026-11-22), per stage otherwise;
 other move/trim intents are still known A/V sync gaps (feature roadmap,

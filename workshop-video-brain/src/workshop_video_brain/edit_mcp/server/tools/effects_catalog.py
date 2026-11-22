@@ -113,6 +113,11 @@ def effect_add(
             return err(f"Invalid params JSON: {exc}", error_type="bad_json_param", suggestion='Provide a valid JSON object, e.g. {"opacity": 0.5}.', cause=str(exc))
     if not isinstance(param_dict, dict):
         return invalid_input("params must decode to a JSON object", 'Provide a JSON object of name->value pairs, e.g. {"opacity": 0.5}.', param="params")
+    # MLT properties are strings. JSON numbers and booleans (the docstring's own
+    # {"opacity": 0.5}) used to reach AddEffect's dict[str, str] and fail
+    # validation with an "unexpected error".
+    from workshop_video_brain.edit_mcp.pipelines.effect_edit import stringify
+    param_dict = {str(name): stringify(value) for name, value in param_dict.items()}
 
     # Parse + apply in memory BEFORE snapshotting: a corrupt project or a bad
     # track/clip index then fails cleanly without leaving a leaked snapshot of
