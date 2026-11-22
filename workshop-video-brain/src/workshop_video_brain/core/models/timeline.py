@@ -46,12 +46,20 @@ class TrimClip(TimelineIntent):
     clip_ref: str = ""
     new_in: int = 0
     new_out: int = 0
+    # Apply the same change to the clip's linked audio entry (same producer,
+    # same start frame on an audio track). The patcher sets False on the copy
+    # it applies to the audio track.
+    sync_linked_audio: bool = True
 
 
 class InsertGap(TimelineIntent):
     track_id: str = ""
     position: int = 0
     duration_frames: int = 0
+    # Apply the same change to the clip's linked audio entry (same producer,
+    # same start frame on an audio track). The patcher sets False on the copy
+    # it applies to the audio track.
+    sync_linked_audio: bool = True
 
 
 class AddGuide(TimelineIntent):
@@ -84,6 +92,10 @@ class RemoveClip(TimelineIntent):
     """Remove a clip from a playlist by index."""
     track_ref: str = ""
     clip_index: int = 0
+    # Apply the same change to the clip's linked audio entry (same producer,
+    # same start frame on an audio track). The patcher sets False on the copy
+    # it applies to the audio track.
+    sync_linked_audio: bool = True
 
 
 class MoveClip(TimelineIntent):
@@ -91,6 +103,10 @@ class MoveClip(TimelineIntent):
     track_ref: str = ""
     from_index: int = 0
     to_index: int = 0
+    # Apply the same change to the clip's linked audio entry (same producer,
+    # same start frame on an audio track). The patcher sets False on the copy
+    # it applies to the audio track.
+    sync_linked_audio: bool = True
 
 
 class SplitClip(TimelineIntent):
@@ -98,12 +114,20 @@ class SplitClip(TimelineIntent):
     track_ref: str = ""
     clip_index: int = 0
     split_at_frame: int = 0  # frame within the clip to split at
+    # Apply the same change to the clip's linked audio entry (same producer,
+    # same start frame on an audio track). The patcher sets False on the copy
+    # it applies to the audio track.
+    sync_linked_audio: bool = True
 
 
 class RippleDelete(TimelineIntent):
     """Remove a clip and close the gap (shift subsequent clips left)."""
     track_ref: str = ""
     clip_index: int = 0
+    # Apply the same change to the clip's linked audio entry (same producer,
+    # same start frame on an audio track). The patcher sets False on the copy
+    # it applies to the audio track.
+    sync_linked_audio: bool = True
 
 
 class SetClipSpeed(TimelineIntent):
@@ -169,6 +193,9 @@ class PlaceClip(TimelineIntent):
     at_frame: int = 0
     mode: str = "overwrite"  # "overwrite" | "insert"
     ripple_all_tracks: bool = False
+    # Also place the media's audio on the first audio track (same frame, same
+    # mode) -- the shell sets it when the media has an audio stream.
+    with_audio: bool = False
 
 
 class MoveClipToTrack(TimelineIntent):

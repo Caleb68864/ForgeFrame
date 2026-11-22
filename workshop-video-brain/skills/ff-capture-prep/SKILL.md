@@ -21,8 +21,8 @@ Use this skill when the user:
 
 2. **Ask about target settings** (or use defaults):
    - Resolution: default `"1920x1080"`, ask if shooting 4K (`"3840x2160"`)
-   - Frame rate: default `30`, ask if they prefer 24 or 60. Whole numbers only;
-     23.976/29.97 are rejected for now.
+   - Frame rate: default `30`, ask if they prefer 24 or 60. Whole numbers or the
+     NTSC rates their camera offers (23.976, 29.97, 59.94); other fractions are refused.
 
 3. **Generate the checklist** with the `capture_prep_checklist` MCP tool:
    ```

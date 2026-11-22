@@ -5,6 +5,8 @@ round-trip safety.
 """
 from __future__ import annotations
 
+from workshop_video_brain.core.utils.gc_pause import gc_paused
+
 import json
 import logging
 import xml.etree.ElementTree as ET
@@ -551,6 +553,7 @@ def _parse_guide(elem: ET.Element, fps: float = 25.0) -> Guide | None:
         return None
 
 
+@gc_paused()
 def parse_project(path: Path, missing_ok: bool = False) -> KdenliveProject:
     """Parse a .kdenlive XML file and return a KdenliveProject.
 

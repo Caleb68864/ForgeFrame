@@ -6,6 +6,8 @@ writing.
 """
 from __future__ import annotations
 
+from workshop_video_brain.core.utils.gc_pause import gc_paused
+
 import copy
 import logging
 import os
@@ -632,6 +634,7 @@ def _assert_serializable(project: KdenliveProject) -> None:
 # ---------------------------------------------------------------------------
 
 
+@gc_paused()
 def serialize_project(
     project: KdenliveProject,
     output_path: Path,

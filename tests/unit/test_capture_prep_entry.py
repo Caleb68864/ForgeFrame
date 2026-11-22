@@ -142,14 +142,24 @@ class TestCapturePrepTool:
         assert result["status"] == "error"
         assert result["error_type"] == "invalid_input"
 
-    @pytest.mark.parametrize("fps", [0, -30, 29.97, 23.976, True])
+    @pytest.mark.parametrize("fps", [0, -30, 31.5, 29.5, True])
     def test_bad_fps_uses_generator_validation(self, tmp_path: Path, fps):
         ws = _workspace(tmp_path)
         result = call_tool(_tool(), str(ws), "1920x1080", fps)
         assert result["status"] == "error"
         assert result["error_type"] == "invalid_input"
-        assert "target_fps must be a positive integer" in result["message"]
-        assert "24, 30 or 60" in result["suggestion"]
+        assert "target_fps must be a positive whole number or an NTSC rate" in result["message"]
+        assert "29.97" in result["suggestion"]
+
+    @pytest.mark.parametrize("fps, shown, shutter", [(29.97, 29.97, 60), (23.976, 23.976, 48), (59.94, 59.94, 120),
+                                                     (30.0, 30, 60)])
+    def test_ntsc_rates_are_accepted(self, tmp_path: Path, fps, shown, shutter):
+        ws = _workspace(tmp_path)
+        result = call_tool(_tool(), str(ws), "1920x1080", fps)
+        assert result["status"] == "success", result
+        assert result["data"]["target_fps"] == shown
+        assert f"{shown} fps" in result["data"]["markdown"]
+        assert f"1/{shutter} for natural motion blur" in result["data"]["markdown"]
 
     @pytest.mark.parametrize("res", ["1080p", "1920x", "x1080", "0x1080", ""])
     def test_bad_resolution_uses_generator_validation(self, tmp_path: Path, res):
@@ -220,15 +230,23 @@ class TestCapturePrepCli:
             main, ["plan", "capture-prep", str(ws), "--target-fps", "0"]
         )
         assert result.exit_code == 1
-        assert "target_fps must be a positive integer" in result.output
+        assert "target_fps must be a positive whole number" in result.output
 
     def test_fractional_fps_rejected(self, runner: CliRunner, tmp_path: Path):
         ws = _workspace(tmp_path)
         result = runner.invoke(
-            main, ["plan", "capture-prep", str(ws), "--target-fps", "29.97"]
+            main, ["plan", "capture-prep", str(ws), "--target-fps", "29.5"]
         )
         assert result.exit_code != 0
         assert "Capture Prep Checklist" not in result.output
+
+    def test_ntsc_fps_accepted(self, runner: CliRunner, tmp_path: Path):
+        ws = _workspace(tmp_path)
+        result = runner.invoke(
+            main, ["plan", "capture-prep", str(ws), "--target-fps", "29.97"]
+        )
+        assert result.exit_code == 0, result.output
+        assert "29.97 fps" in result.output
 
     def test_bad_resolution(self, runner: CliRunner, tmp_path: Path):
         ws = _workspace(tmp_path)

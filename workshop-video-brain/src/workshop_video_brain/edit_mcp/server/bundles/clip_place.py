@@ -96,6 +96,25 @@ def _resolve_source(
     return _producer_id_for(media), str(media), _probe_duration_seconds(media)
 
 
+def _media_has_audio(project, producer_id: str, source_path: str) -> bool:
+    """True when the source media (a new path or an existing producer's file) has an audio stream."""
+    from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import count_audio_streams
+
+    path = Path(source_path) if source_path else None
+    if path is None:
+        producer = next((p for p in project.producers if p.id == producer_id), None)
+        resource = (producer.properties.get("resource") or producer.resource) if producer else ""
+        if not resource or (producer and producer.properties.get("mlt_service") in ("color", "colour")):
+            return False
+        path = Path(resource)
+    if not path.is_file():
+        return False
+    try:
+        return count_audio_streams(path) > 0
+    except Exception:  # noqa: BLE001 -- unprobeable media: treat as silent
+        return False
+
+
 def _load(workspace_path: str, project_file: str):
     """Shared load: validate workspace, parse the project file."""
     ws_path, _ws = _require_workspace(workspace_path)
@@ -130,6 +149,7 @@ def clip_place(
     out_seconds: float | None = None,
     mode: str = "overwrite",
     ripple_all_tracks: bool = False,
+    with_audio: bool | None = None,
 ) -> dict:
     """Place a clip at absolute time ``at_seconds`` on ``track``.
 
@@ -149,6 +169,10 @@ def clip_place(
         ripple_all_tracks: Insert mode only -- also shift every other track and
             all guides at/after ``T`` right by the clip length, keeping the whole
             timeline in sync (cross-track).
+        with_audio: Also place the media's sound on the first audio track (same
+            frame, same mode). Default (None): on for ``insert`` when the media
+            has audio -- an inserted A/V clip keeps its sound in sync -- and off
+            for ``overwrite``, so a cover shot never replaces the narration.
 
     Returns a success dict with the placed real-clip index, frame span, expected
     timeline length, and snapshot id -- or an error dict.
@@ -215,6 +239,11 @@ def clip_place(
 
     from workshop_video_brain.core.models.timeline import PlaceClip
 
+    if with_audio is None:
+        _with_audio = mode == "insert" and _media_has_audio(project, producer_id, source_path)
+    else:
+        _with_audio = bool(with_audio) and _media_has_audio(project, producer_id, source_path)
+
     intent = PlaceClip(
         track_ref=playlist.id,
         producer_id=producer_id,
@@ -224,6 +253,7 @@ def clip_place(
         at_frame=at_frame,
         mode=mode,
         ripple_all_tracks=ripple_all_tracks,
+        with_audio=_with_audio,
     )
     try:
         patched = patcher.patch_project(project, [intent])

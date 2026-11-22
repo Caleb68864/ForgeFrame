@@ -229,7 +229,18 @@ def patch_project(
     try:
       for intent in intents:
         _msg_before = len(capture.messages)
-        if isinstance(intent, AddGuide):
+        _name = type(intent).__name__
+        # The clip's audio half follows its video half (patcher_sync); worked
+        # out before the video edit, which changes positions.
+        from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher_sync
+        _partner, _refusal = patcher_sync.partner_intent(new_project, intent)
+        if _refusal:
+            logger.warning("%s: %s -- skipped.", type(intent).__name__, _refusal)
+            _partner = None
+            intent = None  # noqa: PLW2901 -- applied as a no-op below
+        if intent is None:
+            pass
+        elif isinstance(intent, AddGuide):
             _apply_add_guide(new_project, intent)
         elif isinstance(intent, AddClip):
             _apply_add_clip(new_project, intent)
@@ -294,22 +305,34 @@ def patch_project(
                 type(intent).__name__,
             )
 
+        if _partner is not None and not any("skip" in m.lower() for m in capture.messages[_msg_before:]):
+            if callable(_partner):
+                _partner(new_project)
+            else:
+                _apply_one_synced(new_project, _partner)
+
         # Classify this intent: any new "skipped" warning => a no-op skip.
         new_msgs = capture.messages[_msg_before:]
         skip_msgs = [m for m in new_msgs if "skip" in m.lower()]
         if skip_msgs:
             report.skipped.append({
-                "intent": type(intent).__name__,
+                "intent": _name,
                 "reason": "; ".join(skip_msgs),
             })
         else:
-            report.applied.append(type(intent).__name__)
+            report.applied.append(_name)
     finally:
         logger.removeHandler(capture)
 
     if with_report:
         return new_project, report
     return new_project
+
+
+def _apply_one_synced(project: KdenliveProject, intent) -> None:
+    """Apply the audio-track copy of a synced clip edit (``patcher_sync``)."""
+    {TrimClip: _apply_trim_clip, RemoveClip: _apply_remove_clip, MoveClip: _apply_move_clip,
+     SplitClip: _apply_split_clip, RippleDelete: _apply_ripple_delete}[type(intent)](project, intent)
 
 
 def _take_snapshot(workspace_root: Path, project_path: Path) -> None:
@@ -579,6 +602,8 @@ def _apply_remove_clip(project: KdenliveProject, intent: RemoveClip) -> None:
 
     target_entry = real_entries[intent.clip_index]
     playlist.entries.remove(target_entry)
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher_sync import remap_after_remove
+    remap_after_remove(project, project.playlists.index(playlist), intent.clip_index, len(real_entries))
     logger.info(
         "RemoveClip: removed clip at index %d from playlist '%s'",
         intent.clip_index, intent.track_ref,
@@ -633,6 +658,8 @@ def _apply_move_clip(project: KdenliveProject, intent: MoveClip) -> None:
             insert_at += 1  # insert after the destination
         playlist.entries.insert(insert_at, target_entry)
 
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher_sync import remap_after_move
+    remap_after_move(project, project.playlists.index(playlist), intent.from_index, intent.to_index, n)
     logger.info(
         "MoveClip: moved clip from index %d to %d in playlist '%s'",
         intent.from_index, intent.to_index, intent.track_ref,
@@ -713,30 +740,54 @@ def _apply_place_clip(project: KdenliveProject, intent: PlaceClip) -> None:
             )
         )
 
+    from workshop_video_brain.edit_mcp.adapters.kdenlive import patcher_trims
+
     clip = cp.PlacedClip(
         producer_id=intent.producer_id,
         in_point=intent.in_point,
         out_point=intent.out_point,
     )
     mode = (intent.mode or "overwrite").lower()
-    if mode == "insert":
-        result = cp.plan_insert(playlist.entries, intent.at_frame, clip)
-    else:
-        result = cp.plan_overwrite(playlist.entries, intent.at_frame, clip)
+    ripple = mode == "insert" and intent.ripple_all_tracks
+    # A ripple moves every transition at/after the frame; one that spans it
+    # cannot be moved consistently, so refuse before changing anything.
+    if ripple and not patcher_trims._shift_transitions(project, intent.at_frame, clip.length):
+        logger.warning("PlaceClip: a transition spans frame %d; remove it first -- skipped.", intent.at_frame)
+        return
 
+    def plan(entries):
+        if mode == "insert":
+            return cp.plan_insert(entries, intent.at_frame, clip)
+        return cp.plan_overwrite(entries, intent.at_frame, clip)
+
+    result = plan(playlist.entries)
     playlist.entries = result.entries
     _remap_clip_filters(project, track_index, result.index_map)
 
-    # Optional cross-track ripple: shift every other track + guides right by L.
-    if mode == "insert" and intent.ripple_all_tracks:
+    # The media's audio goes on the first audio track, same frame and mode.
+    audio_index = None
+    target_is_audio = any(t.id == playlist.id and t.track_type == "audio" for t in project.tracks)
+    if intent.with_audio and not target_is_audio:
+        audio_ids = {t.id for t in project.tracks if t.track_type == "audio"}
+        audio_index = next((i for i, p in enumerate(project.playlists)
+                            if p.id in audio_ids and i != track_index), None)
+        if audio_index is not None:
+            a_result = plan(project.playlists[audio_index].entries)
+            project.playlists[audio_index].entries = a_result.entries
+            _remap_clip_filters(project, audio_index, a_result.index_map)
+
+    # Optional cross-track ripple: shift every other track + guides right by L
+    # (a clip split by the blank keeps its filters on both halves).
+    if ripple:
         length = clip.length
-        for other_index, other in enumerate(project.playlists):
-            if other_index == track_index:
+        for other_index in range(len(project.playlists)):
+            if other_index in (track_index, audio_index):
                 continue
-            other.entries = cp.plan_insert_blank(other.entries, intent.at_frame, length)
+            patcher_trims._insert_blank_mapped(project, other_index, intent.at_frame, length)
         for guide in project.guides:
             if guide.position >= intent.at_frame:
                 guide.position += length
+    patcher_trims.ensure_producer_length(project, intent.producer_id)
 
     logger.info(
         "PlaceClip: %s producer '%s' at frame %d on '%s' (new index %d)",
@@ -857,6 +908,8 @@ def _apply_split_clip(project: KdenliveProject, intent: SplitClip) -> None:
     full_idx = playlist.entries.index(entry)
     playlist.entries[full_idx] = first_entry
     playlist.entries.insert(full_idx + 1, second_entry)
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher_sync import remap_after_split
+    remap_after_split(project, project.playlists.index(playlist), intent.clip_index, len(real_entries))
 
     logger.info(
         "SplitClip: split clip at index %d in playlist '%s' at frame %d",
@@ -888,6 +941,8 @@ def _apply_ripple_delete(project: KdenliveProject, intent: RippleDelete) -> None
 
     target_entry = real_entries[intent.clip_index]
     playlist.entries.remove(target_entry)
+    from workshop_video_brain.edit_mcp.adapters.kdenlive.patcher_sync import remap_after_remove
+    remap_after_remove(project, project.playlists.index(playlist), intent.clip_index, len(real_entries))
     logger.info(
         "RippleDelete: removed clip at index %d from playlist '%s' (gap closed)",
         intent.clip_index, intent.track_ref,
