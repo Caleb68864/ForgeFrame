@@ -25,7 +25,7 @@ from workshop_video_brain.edit_mcp.server.tools_helpers._workspace import (
 _VERSION_SUFFIX_RE = re.compile(r"_v(\d+)$")
 
 
-def _project_version_key(path: Path) -> tuple[int, int, float]:
+def _project_version_key(path: Path) -> tuple[int, int, float, str]:
     """Sort key used to pick the *latest* project file.
 
     Ordering rules (highest wins):
@@ -35,15 +35,18 @@ def _project_version_key(path: Path) -> tuple[int, int, float]:
     - Files without a numeric ``_v`` suffix fall back to modification time and
       always rank *below* any versioned file (a versioned working copy is the
       canonical edit target).
+    - Ties (``a_v3`` and ``b_v3``, or equal mtimes) go to the newer file, then
+      to the name. Without this, ``max`` returned whichever file the directory
+      listing gave first, which differs between filesystems.
     """
-    m = _VERSION_SUFFIX_RE.search(path.stem)
-    if m:
-        return (1, int(m.group(1)), 0.0)
     try:
         mtime = path.stat().st_mtime
     except OSError:
         mtime = 0.0
-    return (0, 0, mtime)
+    m = _VERSION_SUFFIX_RE.search(path.stem)
+    if m:
+        return (1, int(m.group(1)), mtime, path.name)
+    return (0, 0, mtime, path.name)
 
 
 def latest_project(files: Iterable[Path]) -> Path | None:

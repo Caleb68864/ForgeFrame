@@ -72,6 +72,11 @@ Found and fixed 2026-11-22: `effect_add` with JSON numbers or booleans in
 validation (`dict[str, str]`) and came back as an "unexpected error". Values are
 now stringified (`true` -> `1`). Proof `tests/unit/test_effect_add_numeric_params.py`.
 
+Found and fixed 2026-11-22: `latest_project` picked between two files at the
+same `_vN` (e.g. `project_v1` and `my-slug_v1`) by directory-listing order, which
+differs between filesystems -- the cause of PR #16's CI-only failure. Ties now go
+to the newer file, then the name. Proof `tests/unit/test_latest_project.py::TestLatestProjectTies`.
+
 Also outstanding, not ranked as work: detached jobs are POSIX only; job progress
 is per frame for renders (melt `-progress2`, prompt 18, 2026-11-22), per stage otherwise;
 other move/trim intents are still known A/V sync gaps (feature roadmap,
