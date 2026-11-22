@@ -133,6 +133,15 @@ ForgeFrame ships five named render profiles that cover the most common export sc
 
 > **ForgeFrame: render progress.** Submit a long render as a detached job (`job_submit` / `wvb jobs submit <workspace> render`) and poll `job_status` / `wvb jobs status <workspace> <job-id>`: `progress.percent` climbs as melt renders. It reaches 100 only after ForgeFrame has probed the file -- a video stream, an audio stream when the profile has audio, and at least the timeline's length. A render that stopped early is reported as failed ("Render is shorter than the timeline"), and its partial file is removed.
 
+## Working on plain files
+
+Some ForgeFrame tools work on a media file directly, with no workspace or project: they take `source` and write a new file.
+
+- **Where the output goes:** `output_path` if you give one (an absolute path is safest), else `output_dir/<name><suffix><ext>`, else beside the source. A source inside a workspace's `media/raw/` writes to that workspace's `media/processed/` instead.
+- **Never written:** `media/raw/` and `projects/source/` -- not even a new file there -- and never the source itself. An existing output is refused unless you pass `overwrite=true`.
+- `media_trim source=... start_seconds=1 end_seconds=3` cuts a range. The default `mode="accurate"` re-encodes and is frame exact; `mode="copy"` is instant but starts on the nearest keyframe, so it can run long (a file with one keyframe at the start copy-trims to almost its full length).
+- `media_concat sources='["a.mp4", "b.mp4"]'` joins files in order. Identical files (same codecs, size, frame rate, audio format) are stream-copied; anything else is re-encoded to the first file's size and rate with 48 kHz stereo audio, and a file without sound gets silence of its length.
+
 ## Fast Start and `movflags` Explained
 
 The Fast Start section above mentions `-movflags +faststart`. Here is what it actually does and why it matters.

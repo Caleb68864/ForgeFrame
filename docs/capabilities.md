@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-251 MCP tools; 21 skills.
+253 MCP tools; 21 skills.
 
 ## Skills
 
@@ -167,6 +167,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | mask_set_from_file | shape_alpha_mask | Insert a Shape Alpha (``shape``) filter consuming an external matte file. |
 | mask_set_shape | compositing_masking | Insert a rotoscoping mask with a shape-derived spline at the top of a stack. |
 | media_check_vfr | workspace_media | Check video files for variable frame rate (VFR): a whole workspace, or one file. |
+| media_concat | media_concat | Join media files end to end into one file. |
 | media_denoise_video | media_denoise_video | Clean up grainy / high-ISO / low-light footage in one call. |
 | media_ingest | workspace_media | Run the full ingest pipeline: scan, proxy, transcribe, detect silence. |
 | media_list_assets | workspace_media | List media assets found in the workspace media/raw directory. |
@@ -179,6 +180,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | media_sync_by_audio | audio_sync | Find the time offset between two recordings of the same event. |
 | media_thumbnail_sheet | thumbnail_sheet | Extract representative keyframes (+ optional contact sheet) from a clip. |
 | media_transcode_cfr | workspace_media | Transcode a VFR video file to constant frame rate (CFR). |
+| media_trim | media_trim | Cut a range out of a media file into a new file. |
 | mlt_service_info | mlt_services | Return MLT's metadata for one service, including its parameters, as YAML. |
 | mlt_services | mlt_services | List the MLT services this host can load. |
 | move_down | effects_bundles | Move a filter down one position in a clip's filter stack. |

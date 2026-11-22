@@ -104,6 +104,11 @@ never write into protected trees):
   (shift, merge/split, restyle, convert); **text-based editing** — delete
   transcript words/lines → cut list → file render or `.kdenlive`.
 - Images: resize/convert/watermark/overlay on files.
+- **Done 2026-11-22** (prompt 30): `media_trim` (accurate re-encode or keyframe copy) and
+  `media_concat` (stream copy when identical, else normalising re-encode with silence for
+  mute files), on a shared foundation: `pipelines/media_files.py` (output resolution,
+  stream checks, house encode args), `server/bundles/_media_shell.py`, and
+  `run_ffmpeg(extra_inputs=...)`.
 - **Done 2026-11-02.** Generalise `selects_timeline` / `assembly` builders to the source profile.
 
 Each tool follows the CLAUDE.md checklist (pipeline logic, `@tool_guard`,
