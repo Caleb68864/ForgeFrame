@@ -70,15 +70,23 @@ def kdenlive_render(
     return out
 
 
+def with_display(cmd: list[str]) -> list[str]:
+    """Prefix a melt command with ``xvfb-run -a`` when there is no display.
+
+    melt's Qt module (``kdenlivetitle``, ``qimage``, ``qtblend``) refuses to
+    load without an X11/Wayland display: titles render as "INVALID" and image
+    producers as a flat grey frame. CI runs the whole suite under xvfb-run; a
+    headless local shell does not, so every melt call here goes through this.
+    """
+    if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")) and shutil.which("xvfb-run"):
+        return ["xvfb-run", "-a", *cmd]
+    return cmd
+
+
 def melt_render_full(project: str | Path, out: str | Path, melt_bin: str = "melt", timeout: int = 180) -> Path:
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    cmd = [melt_bin, str(project), "-consumer", f"avformat:{out}", "vcodec=libx264", "acodec=aac", "terminate_on_pause=1"]
-    # melt's Qt module (kdenlivetitle, qtblend) refuses to load without an
-    # X11/Wayland display and renders "INVALID" instead. CI runs the suite
-    # under xvfb-run; a headless local shell does not, so mirror kdenlive_render.
-    if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")) and shutil.which("xvfb-run"):
-        cmd = ["xvfb-run", "-a", *cmd]
+    cmd = with_display([melt_bin, str(project), "-consumer", f"avformat:{out}", "vcodec=libx264", "acodec=aac", "terminate_on_pause=1"])
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0 or not out.exists():
         raise RuntimeError(f"melt render failed rc={proc.returncode} for {project}; stderr tail:\n{proc.stderr[-1500:]}")
@@ -203,7 +211,7 @@ def melt_accepts(
     ]
     try:
         proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout
+            with_display(cmd), capture_output=True, text=True, timeout=timeout
         )
     except subprocess.TimeoutExpired as exc:
         return OracleResult(
@@ -252,7 +260,7 @@ def render_frame(
         "-update",
         "1",
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    proc = subprocess.run(with_display(cmd), capture_output=True, text=True, timeout=timeout)
     if not png.exists():
         raise RuntimeError(
             f"render_frame produced no output for {project_path} frame {frame}.\n"
@@ -283,7 +291,7 @@ def render_video(
         f"vcodec={vcodec}",
         f"acodec={acodec}",
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    proc = subprocess.run(with_display(cmd), capture_output=True, text=True, timeout=timeout)
     if not out_path.exists():
         raise RuntimeError(
             f"render_video produced no output for {project_path}.\n"

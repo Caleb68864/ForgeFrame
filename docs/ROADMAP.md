@@ -41,6 +41,18 @@ shipped behaviour, so they come before new features.
 | 10 | **Prompt 07: `kdenlive --verify-file` as a validator backend.** | **Blocked** until a Kdenlive release ships the flag (26.08.2 does not; checked 2026-11-02). | `docs/prompts/07-verify-file-validator.md` | S |
 | 11 | **Done 2026-11-16** (branch `feat/reaction-gif`): captioned reaction GIFs, rebuilt from the owner's vault `make_gif.py` (find -> scene -> gif). Pipeline `edit_mcp/pipelines/reaction_gif.py` (SRT search with 4 context cues and the ~3 s subtitle-ahead-of-picture window, contact sheet, `showinfo` shot cuts, waveform, 15 fps / 480 px lanczos render with a `textfile=` caption sized from width, two-pass bayer palette, check strip, GIF gallery `$WVB_GIF_GALLERY` or `~/Pictures/Reaction GIFs`) and thin yt-dlp wrappers `adapters/youtube/ytdlp_cli.py`. Proof `tests/unit/test_reaction_gif.py`, real-ffmpeg `tests/integration/test_reaction_gif_render.py` (ends 0.04 s before a hard cut with no second-shot frames). MCP tools `gif_find_line(source, text, context=4, picture_offset=3.0, work_dir="")`, `gif_fetch_scene(source, start="", end="", out_dir="", contact_sheet=True, fine_sheet_at="", waveform_at="")`, `gif_render(clip_path, start, end, caption="", output_path="", gallery_dir="", width=480, fps=15)` (`server/bundles/reaction_gif.py`) and `wvb gif find|scene|render`; skill `ff-reaction-gif` (evidence-first rules), skill reference, user workflow, README and `docs/capabilities.md` updated. Not done: no live Tubi/YouTube run (no downloads during development), so the yt-dlp wrappers are proven only by command-shape tests. | Owner workflow note; no tool for it existed. | `edit_mcp/pipelines/reaction_gif.py` | S-M |
 
+Found and fixed 2026-11-21 (branch `feat/undo-journal`): in a headless local
+shell the external tier failed `test_image_overlay_render.py` (3) and
+`test_pan_zoom_render.py::test_transition_rect_zoom_moves_pixels` -- the
+oracle's `render_frame` / `render_video` / `melt_accepts` ran melt without a
+display, so Qt producers (`qimage`, `qtblend`) rendered a flat grey frame. Only
+`melt_render_full` had the `xvfb-run` fallback (the title fix, PR #14); all four
+now go through `_oracle.with_display`. External tier headless: 117 passed, 1
+skipped. Not fixed, product side: ForgeFrame's own melt renders
+(`adapters/render/executor.py`) also run without a display check, so an MCP
+server started with no display would render image overlays and titles wrong
+without an error; `wvb doctor` does not report it.
+
 Also outstanding, not ranked as work: detached jobs are POSIX only; job progress
 is per stage, not per frame (opt-in per-frame via `WVB_RENDER_ENGINE=mlt`);
 other move/trim intents are still known A/V sync gaps (feature roadmap,
