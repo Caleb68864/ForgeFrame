@@ -43,9 +43,11 @@ def _srt_time_to_seconds(time_str: str) -> float:
 
 
 def _wrap_text(text: str, max_line_length: int) -> str:
-    """Wrap *text* to *max_line_length* characters per line."""
-    lines = textwrap.wrap(text, width=max_line_length)
-    return "\n".join(lines) if lines else text
+    """Wrap *text* to *max_line_length* characters per line, keeping its own line breaks."""
+    out: list[str] = []
+    for line in text.split("\n"):
+        out.extend(textwrap.wrap(line, width=max_line_length) or ([line] if line else []))
+    return "\n".join(out) if out else text
 
 
 # ---------------------------------------------------------------------------
@@ -72,6 +74,26 @@ def generate_srt(
     Returns:
         SRT-formatted string.
     """
+    # The proportional split, as generate_srt always produced it (its output is
+    # pinned by tests/fixtures/transcripts/sample_tutorial.expected.srt).
+    cues = transcript_to_cues(transcript, max_line_length, max_duration, use_words=False)
+    return export_srt(cues, max_line_length=max_line_length)
+
+
+def transcript_to_cues(
+    transcript: Transcript,
+    max_line_length: int = 42,
+    max_duration: float = 5.0,
+    use_words: bool = True,
+) -> list[SubtitleCue]:
+    """Subtitle cues from a transcript; segments longer than *max_duration* are split.
+
+    With ``use_words`` and word timings, a long segment is cut at word
+    boundaries: a new cue starts when the next word would pass
+    *max_duration* or about two lines of *max_line_length*, and cue times are
+    the first and last word's. Otherwise the segment's words are spread
+    evenly over equal time chunks (the original behaviour).
+    """
     cues: list[SubtitleCue] = []
 
     for segment in transcript.segments:
@@ -84,6 +106,8 @@ def generate_srt(
         duration = end - start
         if duration <= max_duration:
             cues.append(SubtitleCue(start_seconds=start, end_seconds=end, text=text))
+        elif use_words and segment.words:
+            cues.extend(_split_at_words(segment.words, max_duration, max_line_length))
         else:
             # Split at approximate word boundaries
             words = text.split()
@@ -105,8 +129,25 @@ def generate_srt(
                     )
                 )
                 chunk_start = chunk_end
+    return cues
 
-    return export_srt(cues, max_line_length=max_line_length)
+
+def _split_at_words(words, max_duration: float, max_line_length: int) -> list[SubtitleCue]:
+    cues: list[SubtitleCue] = []
+    group: list = []
+    max_chars = 2 * max_line_length
+    for word in words:
+        if group:
+            text = " ".join(w.word.strip() for w in [*group, word])
+            if word.end - group[0].start > max_duration or len(text) > max_chars:
+                cues.append(SubtitleCue(start_seconds=group[0].start, end_seconds=group[-1].end,
+                                        text=" ".join(w.word.strip() for w in group)))
+                group = []
+        group.append(word)
+    if group:
+        cues.append(SubtitleCue(start_seconds=group[0].start, end_seconds=group[-1].end,
+                                text=" ".join(w.word.strip() for w in group)))
+    return cues
 
 
 def export_srt(cues: list[SubtitleCue], max_line_length: int = 42) -> str:

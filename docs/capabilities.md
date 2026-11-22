@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-265 MCP tools; 21 skills.
+278 MCP tools; 21 skills.
 
 ## Skills
 
@@ -156,6 +156,9 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | guide_add_scene_cuts | scene_guides | Add a guide on the timeline at every scene cut of a placed source. |
 | guide_list | guides | List all guides in a Kdenlive project (read-only). |
 | guide_remove | guides | Remove guides by time (numeric seconds) or by label (string). |
+| image_convert | image_files | Convert an image to png, jpg, webp, bmp or tiff (``output_path``'s extension wins). JPEG has |
+| image_overlay | image_files | Place ``overlay`` (a logo, keeps its transparency) on an image: ``position`` preset, ``scale`` |
+| image_resize | image_files | Resize an image. One of width/height keeps the aspect; both use ``fit``: contain (inside the |
 | job_cancel | jobs | Request cancellation of the worker and its FFmpeg/MLT child processes. |
 | job_list | jobs | List detached jobs, newest first, reconciling workers lost after restart. |
 | job_retry | jobs | Explicitly retry failed/cancelled/interrupted work with a new job ID. |
@@ -170,6 +173,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | mask_set | compositing_masking | Insert a mask filter at the top of a clip's effect stack. |
 | mask_set_from_file | shape_alpha_mask | Insert a Shape Alpha (``shape``) filter consuming an external matte file. |
 | mask_set_shape | compositing_masking | Insert a rotoscoping mask with a shape-derived spline at the top of a stack. |
+| media_burn_subtitles | subtitle_files | Burn subtitles (srt/vtt/json) into a video file; ``style`` JSON as in ``subtitle_restyle``. |
 | media_check_vfr | workspace_media | Check video files for variable frame rate (VFR): a whole workspace, or one file. |
 | media_concat | media_concat | Join media files end to end into one file. |
 | media_convert | media_convert | Convert to another container/codec, picked by the output extension (``output_path`` wins over ``format``). |
@@ -189,10 +193,12 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | media_split_scenes | media_split_scenes | Split a video into one file per detected shot. |
 | media_stabilize | stabilize | Stabilize shaky footage with two-pass FFmpeg vidstab. |
 | media_sync_by_audio | audio_sync | Find the time offset between two recordings of the same event. |
+| media_text_edit | text_edit | Cut words out of a recording by deleting them from its transcript. |
 | media_thumbnail | media_thumbnail | Save one frame as an image: at ``at_seconds`` (clamped to the last frame), or with -1 the most |
 | media_thumbnail_sheet | thumbnail_sheet | Extract representative keyframes (+ optional contact sheet) from a clip. |
 | media_transcode_cfr | workspace_media | Transcode a VFR video file to constant frame rate (CFR). |
 | media_trim | media_trim | Cut a range out of a media file into a new file. |
+| media_watermark | image_files | Burn a logo/watermark image into a video file (re-encoded; audio copied), for the whole clip or |
 | mlt_service_info | mlt_services | Return MLT's metadata for one service, including its parameters, as YAML. |
 | mlt_services | mlt_services | List the MLT services this host can load. |
 | move_down | effects_bundles | Move a filter down one position in a clip's filter stack. |
@@ -258,6 +264,11 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | subject_locate_frames | motion_track | Extract a frame from a clip so an agent can supply a subject bbox. |
 | subject_track | motion_track | Track a subject rectangle across a clip; save tracked keyframes to JSON. |
 | subject_zoom | motion_track | Apply a tracked follow-zoom (or a static punch-in) to a clip. |
+| subtitle_convert | subtitle_files | Convert a subtitle file to srt, vtt, ass or txt (``style`` JSON and the play size apply to ass). |
+| subtitle_merge | subtitle_files | Merge subtitle files into one; ``offsets`` (JSON list, seconds) shifts each file. |
+| subtitle_restyle | subtitle_files | Rewrap lines (``max_line_length`` x ``max_lines``; longer cues are split, sharing their time) |
+| subtitle_shift | subtitle_files | Move subtitle timings by ``offset_seconds`` and/or stretch them by ``scale`` (0.5-2; |
+| subtitle_split | subtitle_files | Split a subtitle file in two at ``at_seconds`` (``<name>_part1`` / ``_part2``); a cue across the |
 | subtitles_attach | subtitle_track | Attach an SRT to a Kdenlive project as a real subtitle track. |
 | subtitles_burn_in | subtitle_track | Burn subtitles into a delivered media file (media/processed/). |
 | subtitles_export | transcript_markers | Export subtitle files in the specified format. |
@@ -276,11 +287,13 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | track_pan | timeline_audio | Pan a track left/right (a ``panner`` filter on the whole track). |
 | track_visibility | clips_nle | Show or hide a video track. |
 | track_volume | timeline_audio | Set a track's volume (a ``volume`` filter on the whole track). |
+| transcribe_file | transcribe_file | Transcribe a media file with faster-whisper into subtitle files. |
 | transcript_edit | transcript_index | Correct a mis-transcribed segment and reindex that single row. |
 | transcript_export | transcript_markers | Export transcripts in the specified format. |
 | transcript_generate | transcript_markers | Generate transcripts for all media assets in the workspace. |
 | transcript_index_build | transcript_index | Build (or incrementally update) the transcript search index. |
 | transcript_search | transcript_index | Search transcript segments, BM25-ranked, with jump-to timestamps. |
+| transcript_words | text_edit | The transcript as numbered words (``S3 [41] the [42] zipper ...``) to pick deletions from. |
 | transition_masked_wipe | masked_wipes | Add a masked / custom-luma wipe transition between two tracks. |
 | transition_paper_cutout | effects_color | Stamp a torn-paper cutout filter stack onto a clip in one snapshot. |
 | transition_zoom_whip | zoom_whip | Apply a zoom / whip-pan transition across a cut on one video track. |

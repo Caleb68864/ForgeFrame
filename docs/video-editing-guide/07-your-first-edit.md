@@ -217,6 +217,17 @@ Act on the feedback from your pacing review. This step is always manual -- it re
 
 ---
 
+### Editing by transcript
+
+For a talking-head take you can cut by text instead of by timeline:
+
+1. `transcribe_file source=take.mp4` writes `take_transcript.json` with word timings.
+2. `transcript_words transcript_path=take_transcript.json` shows the words numbered: `S3 [41] the [42] zipper [43] goes ...`.
+3. `media_text_edit source=take.mp4 transcript_path=take_transcript.json delete='[{"words": [40, 57]}, {"segment": 12}, {"text": "you know"}]' remove_fillers=true output=cutlist` -- check the cut list (kept ranges, seconds removed) first.
+4. Run it again with `output=kdenlive` for an editable project (one clip per kept range, audio on its own track, the source's size and frame rate) or `output=file` for the finished file.
+
+The silence around each deleted run goes too; kept words keep `padding_seconds` (0.05 s) of air. Each run also writes a retimed transcript and `.srt` that match the edited media. A transcript without word timings (an imported SRT) can only delete whole segments.
+
 ### 9. Titles, Color, and Audio (45-90 min)
 
 These are three separate passes. Don't try to do them simultaneously.
