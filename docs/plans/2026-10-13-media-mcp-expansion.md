@@ -126,6 +126,10 @@ never write into protected trees):
 - **Done 2026-11-22** (prompt 35): file-level loudness without a workspace (`audio_loudness`,
   measure a file or folder; normalize one file through the two-pass loudnorm) and
   `audio_waveform_image`. `measure_loudness` now uses the shared analysis timeout.
+- **Done 2026-11-22** (prompt 36): `transcribe_file` (SRT/VTT/TXT + word-level JSON, no
+  workspace) on a shared `pipelines/subtitle_files.py` (first VTT writer; word-aware cue
+  splitting). Follow-up: a short CC0 spoken clip in `tests/fixtures/media_generated/` (with a
+  `MEDIA_SOURCES.md` entry) so a test can check real words.
 - **Done 2026-11-02.** Generalise `selects_timeline` / `assembly` builders to the source profile.
 
 Each tool follows the CLAUDE.md checklist (pipeline logic, `@tool_guard`,

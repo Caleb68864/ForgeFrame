@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-265 MCP tools; 21 skills.
+266 MCP tools; 21 skills.
 
 ## Skills
 
@@ -276,6 +276,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | track_pan | timeline_audio | Pan a track left/right (a ``panner`` filter on the whole track). |
 | track_visibility | clips_nle | Show or hide a video track. |
 | track_volume | timeline_audio | Set a track's volume (a ``volume`` filter on the whole track). |
+| transcribe_file | transcribe_file | Transcribe a media file with faster-whisper into subtitle files. |
 | transcript_edit | transcript_index | Correct a mis-transcribed segment and reindex that single row. |
 | transcript_export | transcript_markers | Export transcripts in the specified format. |
 | transcript_generate | transcript_markers | Generate transcripts for all media assets in the workspace. |

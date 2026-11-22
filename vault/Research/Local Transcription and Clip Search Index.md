@@ -270,3 +270,12 @@ with per-clip best timestamps. Long-term they converge on one index with two que
 - [pyannote vs NeMo diarization - La Javaness](https://lajavaness.medium.com/comparing-state-of-the-art-speaker-diarization-frameworks-pyannote-vs-nemo-31a191c6300)
 - [Speaker diarization models compared 2026 - BrassTranscripts](https://brasstranscripts.com/blog/speaker-diarization-models-comparison)
 - [Diarization evaluation 2025 - VoicePing](https://voiceping.net/en/blog/research-diarization-2025/)
+
+## Transcribing a plain file (2026-11-22)
+
+`transcribe_file source=<any audio or video> formats=srt,vtt,json,txt model=small` works without a workspace (`pipelines/transcribe_file.py`, shared subtitle code in `pipelines/subtitle_files.py`). The 16 kHz scratch WAV lives in a temp folder; outputs go beside the source, or to `media/processed/` for a `media/raw/` source, or to `output_dir`.
+
+- **Formats:** `.srt`, `.vtt` (the repo's first VTT writer), `.txt` (one cue per line) and `<name>_transcript.json` -- the full `Transcript` with per-word timings from faster-whisper, which text-based editing reads.
+- **Cue splitting:** a segment longer than `max_cue_seconds` is cut at word timings when the engine gave them (cue times are real word times, at most ~2 lines), else spread evenly as `generate_srt` always did.
+- **Models:** tiny, base, small (default), medium, large-v3, turbo and the `.en` variants; each downloads on first use. On this machine `tiny` is cached and transcribes the 10 s fixture in a few seconds; `small` is the better default for real speech. Transcription runs in-process with no timeout, so long files belong in `job_submit`.
+- **Gap:** there is no speech fixture in the repo (the audio fixtures are tones), so the real-engine test only checks that every file is written and parses.
