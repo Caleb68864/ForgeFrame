@@ -123,6 +123,9 @@ never write into protected trees):
 - **Done 2026-11-22** (prompt 34): `audio_mix_music` (music bed with side-chain ducking on
   files; strong preset measured 9.5 dB) and the file fade as `audio_fade_file` (`audio_fade`
   is already the timeline-clip tool).
+- **Done 2026-11-22** (prompt 35): file-level loudness without a workspace (`audio_loudness`,
+  measure a file or folder; normalize one file through the two-pass loudnorm) and
+  `audio_waveform_image`. `measure_loudness` now uses the shared analysis timeout.
 - **Done 2026-11-02.** Generalise `selects_timeline` / `assembly` builders to the source profile.
 
 Each tool follows the CLAUDE.md checklist (pipeline logic, `@tool_guard`,

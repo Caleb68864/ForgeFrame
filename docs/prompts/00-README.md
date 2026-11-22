@@ -72,6 +72,7 @@ Review the model's report and diff after each prompt, then commit it yourself
 | 32 | Done 2026-11-22 | `media_gif`, `media_thumbnail`; `tests/unit/test_media_gif_thumbnail_pure.py`, `tests/integration/test_media_gif_thumbnail.py` |
 | 33 | Done 2026-11-22 | `media_reframe`, `media_render_social_clips`; `tests/unit/test_reframe_pure.py`, `tests/integration/test_media_reframe.py` |
 | 34 | Done 2026-11-22 | `audio_mix_music`, `audio_fade_file`; `tests/unit/test_audio_files_pure.py`, `tests/integration/test_audio_file_tools.py` |
+| 35 | Done 2026-11-22 | `audio_loudness`, `audio_waveform_image`; `tests/unit/test_audio_loudness_waveform_pure.py`, `tests/integration/test_audio_loudness_waveform.py` |
 | 24 | Experiment run 2026-11-22; GUI pass pending | `scripts/chain_placement_experiment.py`, `vault/wiki/kdenlive-chain-per-placement.md`; harness tests `tests/unit/test_chain_layout_variants.py`, `tests/integration/external/test_chain_layout_variants.py` |
 
 Prompt 18 note: `execute_render` now sizes melt with `-profile` (`vault/wiki/melt-render-profile.md`), so read that before changing melt flags.

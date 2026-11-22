@@ -6,6 +6,7 @@ ducking depth via a compressor ``ratio``, ``attack`` / ``release`` in ms.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from workshop_video_brain.edit_mcp.adapters.ffmpeg.probe import probe_media
@@ -106,3 +107,40 @@ def fade_file(source: Path, output: Path, fade_in: float = 0.0, fade_out: float 
         args = ["-vn", "-af", af, *audio_codec_args(output.suffix)]
     result = run_ffmpeg(args, source, output, overwrite=True, pre_input_args=["-hide_banner"])
     return {"result": result, "fade_in": fade_in, "fade_out": fade_out, "curve": curve}
+
+
+# ---------------------------------------------------------------------------
+# waveform image (prompt 35)
+# ---------------------------------------------------------------------------
+
+_COLOR_RE = re.compile(r"^(0x[0-9a-fA-F]{6}([0-9a-fA-F]{2})?|[a-z]+)$")
+
+
+def check_color(color: str) -> str:
+    """A colour safe to put in a filtergraph: ``0xRRGGBB[AA]`` or an ffmpeg colour name."""
+    if not isinstance(color, str) or not _COLOR_RE.match(color):
+        raise ValueError(f"color must be 0xRRGGBB, 0xRRGGBBAA or a colour name like 'red', got {color!r}")
+    return color
+
+
+def waveform_args(width: int, height: int, color: str, split_channels: bool, duration: float | None) -> list[str]:
+    for name, value in (("width", width), ("height", height)):
+        if not 64 <= value <= 8000:
+            raise ValueError(f"{name} must be 64-8000, got {value}")
+    args = ["-t", f"{duration:.3f}"] if duration else []
+    return args + ["-filter_complex",
+                   f"showwavespic=s={width}x{height}:split_channels={1 if split_channels else 0}:"
+                   f"colors={check_color(color)}", "-frames:v", "1"]
+
+
+def waveform_image(source: Path, output: Path, width: int = 1600, height: int = 300, color: str = "0x3399ff",
+                   split_channels: bool = False, start: float = 0.0, duration: float | None = None) -> dict:
+    from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import ANALYSIS_TIMEOUT_SECONDS
+
+    if output.suffix.lower() not in (".png", ".jpg", ".jpeg"):
+        raise ValueError(f"waveform output must be .png or .jpg, got {output.suffix!r}")
+    args = waveform_args(width, height, color, split_channels, duration)
+    require_streams(probe_media(source), audio=True)
+    result = run_ffmpeg(args, source, output, overwrite=True, timeout=ANALYSIS_TIMEOUT_SECONDS,
+                        pre_input_args=["-hide_banner", "-ss", f"{start:.3f}"])
+    return {"result": result, "width": width, "height": height}

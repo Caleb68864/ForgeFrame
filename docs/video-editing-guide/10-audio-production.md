@@ -43,11 +43,15 @@ Let's break this down.
 
 **Practical target:** Process your audio so it measures approximately -14 LUFS integrated and no peaks above -1 dBTP. A dedicated loudness meter (free options include the Youlean Loudness Meter plugin) will show you both numbers before export.
 
-> **ForgeFrame:** Use `measure_loudness` to check your audio against the YouTube standard before export.
-> ```
-> measure_loudness --file "export/my-video.mp4" --target -14
-> ```
-> It reports integrated LUFS, true peak, and whether the file meets spec. You can also measure loudness manually in Audacity using Analyze → Loudness or in any DAW with a LUFS meter.
+> **ForgeFrame:** `audio_loudness source=export/my-video.mp4` reports integrated loudness (LUFS), true peak and loudness range for a file, or for every media file in a folder (with the spread between them). Add `target_lufs=-14` to write a normalized copy of a single file with the two-pass loudnorm, which lands within about 0.1 LU (video is copied). Example readings:
+>
+> | File | Integrated | True peak | LRA |
+> |---|---|---|---|
+> | `music_cinematic_short.mp3` | -13.3 LUFS | -0.12 dBTP | 17.4 |
+> | `test_audio_with_silence.mp4` | -22.05 LUFS | -16.31 dBTP | 2.3 |
+> | `test_clip_1080p2997_5s.mp4` | -21.14 LUFS | -20.14 dBTP | 0.0 |
+>
+> `audio_waveform_image` draws the waveform as a PNG -- a quick visual check for long silences or clipped peaks. You can also measure loudness in Audacity (Analyze -> Loudness) or any DAW with a LUFS meter.
 
 ---
 

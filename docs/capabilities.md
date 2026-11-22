@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-263 MCP tools; 21 skills.
+265 MCP tools; 21 skills.
 
 ## Skills
 
@@ -44,10 +44,12 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | audio_enhance_all | audio | Enhance all audio in workspace media/raw/ folder. |
 | audio_fade | clips_nle | Apply audio fade in or out to a clip. |
 | audio_fade_file | audio_fade_file | Fade the audio of a file in and/or out (``curve``: tri, qsin, esin, hsin, log, exp). |
+| audio_loudness | audio_loudness | Integrated loudness (LUFS), true peak and loudness range of a file, or of every media file in a folder. |
 | audio_loudness_scan | loudness_scan | Measure per-clip loudness (LUFS / true-peak / LRA) across a shoot. |
 | audio_mix_music | audio_mix_music | Lay ``music`` under the voice in ``source`` (an audio file or a video; the picture is copied). |
 | audio_normalize | audio | Normalize audio to YouTube-standard loudness (-16 LUFS). |
 | audio_normalize_two_pass | audio_normalize_two_pass | Normalize loudness accurately with measured two-pass FFmpeg ``loudnorm``. |
+| audio_waveform_image | audio_waveform_image | Draw the audio waveform as an image (64-8000 px each way; png or jpg). |
 | beat_cut | beat_sync | Re-time consecutive clips so each cut lands on a selected beat. |
 | beat_flash | beat_sync | A brightness flash (``level`` 1 -> ``1 + strength``) on each selected beat: one filter per clip hit. |
 | beat_zoom | beat_sync | A zoom punch (scale ``1 + punch``) on each selected beat: one ``qtblend`` per clip hit. |
