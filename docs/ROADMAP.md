@@ -99,7 +99,12 @@ re-read a playlist's properties -- every child -- for each entry in it. It now r
 them once per playlist; 2 500 -> 10 000 clips is ~4.6x (serialize 0.39 s -> 1.80 s;
 40 000 clips 11.7 s, was 86 s). The test asserts that ratio (< 7, a discarded warm-up,
 then best of three interleaved), which load cannot fail and the old code does (8.2x);
-memory and round-trip fidelity are a separate test.
+memory and round-trip fidelity are a separate test. On CI's runner the ratio was still 7.7x with very stable timings: the remaining
+superlinear part was the cyclic garbage collector (generation-2 passes over every live
+object during the allocation bursts; a per-function profile showed `_parse_playlist`'s
+own time growing 21x for 4x the clips). `parse_project` and `serialize_project` now run
+with the collector paused (`core/utils/gc_pause.py`; these trees hold no reference
+cycles); locally 4.4x -> 4.0x, the same as with the collector off.
 
 Fixed 2026-11-22 (branch `fix/linked-audio-sync`): `TrimClip`, `RemoveClip`,
 `RippleDelete`, `MoveClip`, `SplitClip` and `InsertGap` edited only the playlist
