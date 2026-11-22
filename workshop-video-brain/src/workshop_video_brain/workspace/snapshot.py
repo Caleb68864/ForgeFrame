@@ -110,8 +110,19 @@ def restore(workspace_root: Path | str, snapshot_id: str) -> None:
     if not snap_file.is_file() or not snap_file.resolve().is_relative_to(snap_dir):
         raise FileNotFoundError(f"No matching snapshot file found in {snap_dir}")
 
+    from workshop_video_brain.workspace import undo as _undo
     from workshop_video_brain.workspace.safe_write import atomic_write_bytes
-    atomic_write_bytes(original, snap_file.read_bytes(), workspace_root=workspace_root,
+    data = snap_file.read_bytes()
+    if original.suffix.lower() == ".kdenlive" and _undo.is_workspace(workspace_root):
+        # A restore is an edit too: journal it so project_undo can take it back.
+        with _undo.journaled_write(workspace_root, original,
+                                   label=f"snapshot_restore:{snapshot_id}") as (on_snapshot, commit):
+            atomic_write_bytes(original, data, workspace_root=workspace_root,
+                               description=f"Before restoring snapshot {snapshot_id}",
+                               on_snapshot=on_snapshot)
+            commit(data)
+        return
+    atomic_write_bytes(original, data, workspace_root=workspace_root,
                        description=f"Before restoring snapshot {snapshot_id}")
 
 

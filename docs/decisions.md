@@ -225,3 +225,11 @@
 - Watch: the thresholds are module constants in `pipelines/qc_check.py`, not tool parameters; only the loudness target is per-call. If a channel needs a different silence policy, add parameters rather than editing the constants.
 - Commit: this entry's commit on `fix/qc-replay-vfr`.
 
+## 2026-11-21 — undo by journal: a new version is moved to trash, an overwrite is put back from its snapshot
+
+- Context: prompt 17. ForgeFrame writes projects two ways -- in place (about 27 tools; the serializer snapshots first) and as a new `working_copies/<slug>_vN.kdenlive`. An undo stack has to handle both without a per-tool change.
+- Decision: one journal per workspace, `projects/undo/journal.json`, fed from the two write choke points (`serialize_project`, `snapshot.restore`) and grouped per tool call by `tool_guard`. Undoing an overwrite writes the pre-edit snapshot back; undoing a create moves the version to `projects/undo/trash/` so `latest_project` falls back to the previous `_vN`. Nothing is deleted, ever.
+- Rejected: undo as "write another new version with the old content". It keeps the directory append-only, but then "latest" after an undo is a file nobody asked for, the version numbers stop meaning edits, and a redo is a third copy. Moving the create out of the way makes the working-copies listing after an undo exactly what it was before the edit, which is what a failed `timeline_batch` must guarantee.
+- Safety: an entry is undone only if the file's sha256 is still the one recorded after the edit; otherwise `UndoConflict` and nothing changes (the file was saved in Kdenlive, and undo would discard that). Undo/redo refuse while a detached job with a live worker is active (it pinned the file's sha); a dead worker's leftover `running` record does not block.
+- Deviation from the prompt: it lists the lock order as working_copies -> journal -> target but has `timeline_batch` take only the journal lock and then call tools that take the working_copies lock, which inverts that order against a concurrent `serialize_versioned`. The batch (and undo/redo) take working_copies first, then the journal (`undo.edit_lock`).
+

@@ -1224,8 +1224,18 @@ def serialize_project(
                 f"{item.location}: {item.message}" for item in staged_report.items
             ))
 
-    atomic_write_bytes(output_path, data, workspace_root=workspace_root,
-                       validator=validate_staged)
+    from workshop_video_brain.workspace import undo as _undo
+
+    if resolved_output.suffix.lower() == ".kdenlive" and _undo.is_workspace(workspace_root):
+        # Write and journal as one step under the journal lock, so project_undo
+        # can take this write back (workspace/undo.py).
+        with _undo.journaled_write(workspace_root, resolved_output) as (on_snapshot, commit):
+            atomic_write_bytes(output_path, data, workspace_root=workspace_root,
+                               validator=validate_staged, on_snapshot=on_snapshot)
+            commit(data)
+    else:
+        atomic_write_bytes(output_path, data, workspace_root=workspace_root,
+                           validator=validate_staged)
 
     logger.info("Wrote Kdenlive project to %s", output_path)
     if os.environ.get("WVB_LOAD_CHECK_ON_WRITE") == "1":

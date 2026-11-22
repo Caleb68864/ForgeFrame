@@ -69,8 +69,10 @@ not on PyPI, absent on Windows/macOS, and segfault on bad handles. So:
 
 ## Phase 4 — Harvest from 12bijaya (reimplement; repo has no licence)
 
-1. Undo/redo stack + atomic `timeline_batch` with rollback-to-depth, built on the
-   existing snapshots.
+1. **Done 2026-11-21** (prompt 17, branch `feat/undo-journal`): `workspace/undo.py`
+   journal + `project_undo` / `project_redo` / `project_history` / `timeline_batch`
+   (`edit_mcp/server/tools/history.py`). Undo/redo stack + atomic `timeline_batch`
+   with rollback-to-depth, built on the existing snapshots.
 2. Render progress from melt's `percentage:` log lines (CLI path) + probe before
    reporting done (merge with Phase 3 progress).
 3. Applied-effect editing: `effect_param_get/set`, `effect_toggle`, `effect_remove`

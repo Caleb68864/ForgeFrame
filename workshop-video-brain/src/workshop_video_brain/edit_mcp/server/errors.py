@@ -498,8 +498,14 @@ def tool_guard(fn: Callable[..., Any]) -> Callable[..., Any]:
 
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
+        # One undo group per tool call (workspace/undo.py): every project write
+        # the call makes is undone together. Nested calls (timeline_batch)
+        # inherit the outer group. Imported here: errors.py loads very early.
+        from workshop_video_brain.workspace.undo import edit_group
+
         try:
-            return fn(*args, **kwargs)
+            with edit_group(fn.__name__):
+                return fn(*args, **kwargs)
         except Exception as exc:  # noqa: BLE001 -- deliberate backstop
             if isinstance(exc, ProtectedPathError):
                 # Safety-rule refusal: a known, actionable condition.

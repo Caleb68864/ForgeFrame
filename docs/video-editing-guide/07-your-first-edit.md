@@ -196,6 +196,25 @@ Act on the feedback from your pacing review. This step is always manual -- it re
 - Add rough text markers where overlays are needed (you'll build them in step 9)
 - Watch the cut again from the top -- it should feel tighter
 
+> **ForgeFrame: undo, redo and batches.** Every project edit a ForgeFrame tool makes in a workspace is journaled, so you can step back through it:
+>
+> - `project_undo workspace_path=... steps=1` undoes the last tool call (all the files that call wrote). A new version (`_vN`) is moved to `projects/undo/trash/`, never deleted, so the previous version is "latest" again; an in-place edit is put back from its snapshot.
+> - `project_redo workspace_path=...` redoes it. Any new edit clears the redo list.
+> - `project_history workspace_path=...` lists what undo and redo would step through.
+>
+> Undo refuses, and changes nothing, when the file was changed outside ForgeFrame since that edit (for example saved in Kdenlive) -- undoing would throw that work away; use `snapshot_list` / `snapshot_restore` instead. It also waits while a detached render job is running.
+>
+> `timeline_batch` runs several edits as one step: if any fails, everything the batch wrote is put back. Every operation is checked before any runs, and `dry_run=true` returns only the checked plan.
+>
+> ```
+> timeline_batch workspace_path="/path/to/workspace" operations='[
+>   {"tool": "track_add", "args": {"track_type": "video", "name": "B-roll"}},
+>   {"tool": "clip_move", "args": {"from_index": 3, "to_index": 1}}
+> ]'
+> ```
+>
+> A successful batch is undone by one `project_undo`. Undo/redo, `snapshot_restore`, `job_*` and `render_*` tools cannot run inside a batch.
+
 ---
 
 ### 9. Titles, Color, and Audio (45-90 min)

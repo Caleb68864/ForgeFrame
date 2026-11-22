@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-233 MCP tools; 21 skills.
+237 MCP tools; 21 skills.
 
 ## Skills
 
@@ -181,13 +181,16 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | ping | server | Health check. Returns server status. |
 | project_archive | timeline_project | Archive the workspace into a tar.gz or zip file. |
 | project_create_working_copy | timeline_project | Create an initial .kdenlive working copy for the workspace. |
+| project_history | history | List the edits project_undo and project_redo would step through, newest first. |
 | project_list | timeline_project | List all ForgeFrame projects with their status. |
 | project_match_source | render | Probe a source file and return recommended project profile settings. |
 | project_mlt_inspect | mlt_inspect | Return the profile, tracks, playlists and clips MLT builds from a project. |
 | project_new | timeline_project | Create a new video project with workspace, vault note, and production plan. |
+| project_redo | history | Redo edit(s) undone with project_undo. A new edit clears the redo stack. |
 | project_setup_profile | render | Set up project profile (resolution, fps, colorspace). |
 | project_status | guided_workflow | Report readiness, missing inputs, selected version, jobs, and next action. |
 | project_summary | timeline_project | Return a summary of the workspace project including all artifacts. |
+| project_undo | history | Undo the last edit(s) ForgeFrame made to this workspace's projects. |
 | project_validate | timeline_project | Validate the latest .kdenlive working copy project file. |
 | proxy_attach | proxy_wiring | Wire existing proxy files into a Kdenlive project so Kdenlive uses them. |
 | proxy_detach | proxy_wiring | Revert producers to their original sources (undo ``proxy_attach``). |
@@ -232,6 +235,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | subtitles_export | transcript_markers | Export subtitle files in the specified format. |
 | subtitles_generate | transcript_markers | Generate SRT subtitles from transcripts in the workspace. |
 | thumbnail_generate | review_loop | Make a publish thumbnail: extract a frame and overlay bold title text. |
+| timeline_batch | history | Run several workspace edits as one step: all of them, or none. |
 | timeline_build_jump_cut | jump_cut | Build a new Kdenlive timeline with the silence of a recording cut out. |
 | timeline_build_review | timeline_project | Build a Kdenlive review timeline from workspace markers. |
 | timeline_build_selects | timeline_project | Build a Kdenlive selects timeline from high-confidence markers. |
