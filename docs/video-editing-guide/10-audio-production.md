@@ -202,6 +202,12 @@ Practical levels:
 | Reveal/payoff | Briefly higher, then fade under narration |
 | Detailed instruction | Usually off, or extremely low ambience only |
 
+### Music beds on plain files
+
+> **ForgeFrame:** `audio_mix_music source=voice.wav music=bed.mp3` lays a music bed under a recording -- an audio file or a video, whose picture is copied untouched. The music sits at `music_gain_db` (-18 dB default), loops if it is shorter than the voice, fades in and out, and with `duck=true` drops under speech through a side-chain compressor. Presets: `light` (ratio 4), `medium` (8, default), `strong` (20). Measured with `strong` on a gated tone: the music is 9.5 dB quieter while the voice speaks (-39.6 dB vs -30.1 dB); without ducking the difference is 0.2 dB. The voice level is not changed.
+>
+> Use this for a finished file. On a timeline project, `audio_duck` writes ducking keyframes you can adjust in Kdenlive. `audio_fade_file` fades a file's sound in and/or out (curves tri, qsin, esin, hsin, log, exp); `audio_fade` is the timeline-clip version.
+
 ### Ambient fades
 
 Hard visual cuts can be clean while audio still needs smoothing. If a new location, machine, music bed, or warning sound enters on the cut, add a short audio fade. In Kdenlive, use the audio fade handle or the `Fade in` / `Fade out` audio effects. In ForgeFrame, use `audio_fade` for targeted clip fades and `/ff-audio-cleanup` for the full voice-processing chain.

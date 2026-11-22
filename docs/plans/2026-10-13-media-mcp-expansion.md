@@ -120,6 +120,9 @@ never write into protected trees):
   `media_render_social_clips` (renders `social_generate_package` output). Known gaps: the
   manifest's `source_video` is the media folder and times are ambiguous across several
   transcripts, so the tool takes an explicit source; focus is static (no tracking).
+- **Done 2026-11-22** (prompt 34): `audio_mix_music` (music bed with side-chain ducking on
+  files; strong preset measured 9.5 dB) and the file fade as `audio_fade_file` (`audio_fade`
+  is already the timeline-clip tool).
 - **Done 2026-11-02.** Generalise `selects_timeline` / `assembly` builders to the source profile.
 
 Each tool follows the CLAUDE.md checklist (pipeline logic, `@tool_guard`,

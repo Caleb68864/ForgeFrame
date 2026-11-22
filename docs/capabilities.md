@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-261 MCP tools; 21 skills.
+263 MCP tools; 21 skills.
 
 ## Skills
 
@@ -43,7 +43,9 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | audio_enhance | audio | Apply full voice enhancement pipeline (highpass -> denoise -> compress -> normalize -> limit). |
 | audio_enhance_all | audio | Enhance all audio in workspace media/raw/ folder. |
 | audio_fade | clips_nle | Apply audio fade in or out to a clip. |
+| audio_fade_file | audio_fade_file | Fade the audio of a file in and/or out (``curve``: tri, qsin, esin, hsin, log, exp). |
 | audio_loudness_scan | loudness_scan | Measure per-clip loudness (LUFS / true-peak / LRA) across a shoot. |
+| audio_mix_music | audio_mix_music | Lay ``music`` under the voice in ``source`` (an audio file or a video; the picture is copied). |
 | audio_normalize | audio | Normalize audio to YouTube-standard loudness (-16 LUFS). |
 | audio_normalize_two_pass | audio_normalize_two_pass | Normalize loudness accurately with measured two-pass FFmpeg ``loudnorm``. |
 | beat_cut | beat_sync | Re-time consecutive clips so each cut lands on a selected beat. |
