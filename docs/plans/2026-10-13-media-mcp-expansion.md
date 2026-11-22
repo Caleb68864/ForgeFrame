@@ -115,6 +115,11 @@ never write into protected trees):
 - **Done 2026-11-22** (prompt 32): `media_gif` (two-pass GIF or WebP from any window;
   `start` added to the shared preview builders, unchanged at 0) and `media_thumbnail`
   (at a time, clamped, or auto via ffmpeg's `thumbnail` filter).
+- **Done 2026-11-22** (prompt 33): `media_reframe` (9:16 / 1:1 / 4:5 / 16:9; smart, crop,
+  pad, blur; smart focus from motion + detail energy in pure Python) and
+  `media_render_social_clips` (renders `social_generate_package` output). Known gaps: the
+  manifest's `source_video` is the media folder and times are ambiguous across several
+  transcripts, so the tool takes an explicit source; focus is static (no tracking).
 - **Done 2026-11-02.** Generalise `selects_timeline` / `assembly` builders to the source profile.
 
 Each tool follows the CLAUDE.md checklist (pipeline logic, `@tool_guard`,

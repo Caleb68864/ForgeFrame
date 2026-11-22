@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-259 MCP tools; 21 skills.
+261 MCP tools; 21 skills.
 
 ## Skills
 
@@ -174,7 +174,9 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | media_gif | media_gif | A looping GIF (two-pass palette, good colour) or animated WebP of ``seconds`` from ``start_seconds``. |
 | media_ingest | workspace_media | Run the full ingest pipeline: scan, proxy, transcribe, detect silence. |
 | media_list_assets | workspace_media | List media assets found in the workspace media/raw directory. |
+| media_reframe | media_reframe | Reframe to ``aspect`` 9:16, 1:1, 4:5 or 16:9. |
 | media_remove_silence | media_remove_silence | Write a tightened copy of an audio or video file with its silence cut out. |
+| media_render_social_clips | social_render | Cut and reframe every clip in ``reports/social/clips_manifest.json`` from ``source``. |
 | media_rotate_flip | media_rotate_flip | Rotate clockwise (``rotate`` 90/180/270) and/or mirror (``flip`` horizontal/vertical/both). |
 | media_segment_at_silence | silence_segment | Split a long recording into per-take files at detected silences. |
 | media_silence_keep_ranges | media_remove_silence | Report which source seconds silence removal would keep, without rendering. |

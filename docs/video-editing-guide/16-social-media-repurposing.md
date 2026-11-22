@@ -157,6 +157,17 @@ For the same clip published to multiple platforms, the production order is:
 3. Export for standard YouTube and Twitter in 16:9
 4. Export for Instagram feed in 1:1 if needed
 
+> **ForgeFrame:** `social_generate_package` picks the clips and writes `reports/social/clips_manifest.json`; `media_render_social_clips source=<the original video> manifest_path=...` then cuts and reframes each one. For a single file, `media_reframe source=... aspect=9:16`. Four modes:
+>
+> | Mode | What it does | Use when |
+> |---|---|---|
+> | `smart` | crops around where the motion and detail are (one static focus per clip) | a person or a work area moves within the frame |
+> | `crop` | crops around `focus_x` / `focus_y` (0-1) | you know where the subject is (check a `media_thumbnail` frame) |
+> | `pad` | fits the whole frame, letterboxed | nothing may be cut off (a screen recording) |
+> | `blur` | fits the whole frame over a blurred, zoomed copy | like `pad`, without black bars |
+>
+> Focus is static per clip; it does not track a subject that crosses the frame.
+
 Do not try to find a single crop that works for all three. You will compromise every platform. The right approach is platform-specific exports from the same clip edit.
 
 ---
