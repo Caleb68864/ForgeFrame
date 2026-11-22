@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-272 MCP tools; 21 skills.
+274 MCP tools; 21 skills.
 
 ## Skills
 
@@ -190,6 +190,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | media_split_scenes | media_split_scenes | Split a video into one file per detected shot. |
 | media_stabilize | stabilize | Stabilize shaky footage with two-pass FFmpeg vidstab. |
 | media_sync_by_audio | audio_sync | Find the time offset between two recordings of the same event. |
+| media_text_edit | text_edit | Cut words out of a recording by deleting them from its transcript. |
 | media_thumbnail | media_thumbnail | Save one frame as an image: at ``at_seconds`` (clamped to the last frame), or with -1 the most |
 | media_thumbnail_sheet | thumbnail_sheet | Extract representative keyframes (+ optional contact sheet) from a clip. |
 | media_transcode_cfr | workspace_media | Transcode a VFR video file to constant frame rate (CFR). |
@@ -288,6 +289,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | transcript_generate | transcript_markers | Generate transcripts for all media assets in the workspace. |
 | transcript_index_build | transcript_index | Build (or incrementally update) the transcript search index. |
 | transcript_search | transcript_index | Search transcript segments, BM25-ranked, with jump-to timestamps. |
+| transcript_words | text_edit | The transcript as numbered words (``S3 [41] the [42] zipper ...``) to pick deletions from. |
 | transition_masked_wipe | masked_wipes | Add a masked / custom-luma wipe transition between two tracks. |
 | transition_paper_cutout | effects_color | Stamp a torn-paper cutout filter stack onto a clip in one snapshot. |
 | transition_zoom_whip | zoom_whip | Apply a zoom / whip-pan transition across a cut on one video track. |
