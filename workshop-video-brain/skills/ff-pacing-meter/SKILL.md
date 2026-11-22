@@ -148,6 +148,20 @@ specific section] to improve viewer retention the most.
 - `music_beat_grid` — detect onsets, tempo, and a beat grid for a music track.
 - `markers_from_beats` — turn that grid into workspace bar markers (every N-th
   beat = a bar), which downstream cut/assembly tools can snap to.
+- Then edit to it (the music is found on an audio track by file, or pass
+  `music_offset_seconds`):
+  - `beat_cut` — move the cuts between consecutive clips onto beats (out-points
+    only; linked audio follows; nothing is dropped or reordered).
+  - `beat_zoom` — a zoom punch on each selected beat (one filter per clip).
+  - `beat_flash` — a brightness flash on each selected beat.
+
+  | `intensity` | beats used |
+  |---|---|
+  | `subtle` | every 4th (bar starts) |
+  | `medium` (default) | every 2nd, plus bar starts |
+  | `aggressive` | every beat |
+
+  `every_n` overrides the stride; `phase` shifts which beat counts as a bar start.
 
 Suggest this when the creator wants a montage or high-energy section to feel
 locked to the music rather than to speech WPM. (For building the montage itself,

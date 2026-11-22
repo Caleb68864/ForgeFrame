@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-248 MCP tools; 21 skills.
+251 MCP tools; 21 skills.
 
 ## Skills
 
@@ -46,6 +46,9 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | audio_loudness_scan | loudness_scan | Measure per-clip loudness (LUFS / true-peak / LRA) across a shoot. |
 | audio_normalize | audio | Normalize audio to YouTube-standard loudness (-16 LUFS). |
 | audio_normalize_two_pass | audio_normalize_two_pass | Normalize loudness accurately with measured two-pass FFmpeg ``loudnorm``. |
+| beat_cut | beat_sync | Re-time consecutive clips so each cut lands on a selected beat. |
+| beat_flash | beat_sync | A brightness flash (``level`` 1 -> ``1 + strength``) on each selected beat: one filter per clip hit. |
+| beat_zoom | beat_sync | A zoom punch (scale ``1 + punch``) on each selected beat: one ``qtblend`` per clip hit. |
 | broll_library_index | broll | Add clips from a project to the B-roll library. |
 | broll_library_search | broll | Search the B-roll library across all projects. |
 | broll_library_stats | broll | Get B-roll library statistics. |
