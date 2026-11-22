@@ -6,9 +6,11 @@ returns an updated RenderJob with final status.
 from __future__ import annotations
 
 import logging
+import codecs
 import json
 import os
 import subprocess
+import signal
 import tempfile
 import threading
 import time
@@ -191,9 +193,31 @@ def execute_render(
                       if on_progress is not None and is_melt else None)
             # Headless: let MLT's Qt module start offscreen (adapters/mlt/display).
             env = mlt_env() if is_melt else None
-            if reader is not None:
-                # Someone is listening: stream stderr for melt's progress lines.
-                result = _run_render_process(cmd, timeout_seconds, reader.feed, env=env)
+            watched = is_melt and "-progress2" in cmd
+            if watched or reader is not None:
+                # Stream stderr: melt's progress lines feed the callback and the
+                # stall watchdog. One stalled attempt is retried from scratch.
+                stall = _stall_seconds() if watched else None
+                try:
+                    result = _run_render_process(cmd, timeout_seconds, reader.feed if reader else None,
+                                                 env=env, stall_seconds=stall)
+                except RenderStalled as first:
+                    logger.warning("Render stalled (%s); retrying once", first)
+                    _discard_partial_output(out_path, output_preexisted)
+                    try:
+                        result = _run_render_process(cmd, timeout_seconds, reader.feed if reader else None,
+                                                     env=env, stall_seconds=stall)
+                    except RenderStalled as second:
+                        msg = (f"Render stalled: melt printed no progress for {second.seconds:.0f}s, twice "
+                               "(it was killed both times). This is melt hanging, not a slow render; retry "
+                               "the render, and if it keeps happening run it when the machine is less busy. "
+                               "WVB_RENDER_STALL_SECONDS raises the limit for very heavy frames.")
+                        logger.error(msg)
+                        if log_path:
+                            log_path.write_text(f"Command: {' '.join(cmd)}\nSTALLED twice after "
+                                                f"{second.seconds:.0f}s without progress\n--- stderr ---\n"
+                                                f"{second.stderr[-4000:]}\n", encoding="utf-8")
+                        return _fail(msg, "render_stalled")
             else:
                 result = subprocess.run(
                     cmd, capture_output=True, text=True, timeout=timeout_seconds, env=env,
@@ -286,34 +310,86 @@ def execute_render(
             melt_profile.unlink(missing_ok=True)
 
 
+class RenderStalled(RuntimeError):
+    """melt printed no progress for ``seconds``: it is stuck, not slow."""
+
+    def __init__(self, cmd: list[str], seconds: float, stderr: str = "") -> None:
+        super().__init__(f"melt printed no progress for {seconds:.0f}s")
+        self.cmd, self.seconds, self.stderr = cmd, seconds, stderr
+
+
+#: A melt render prints a progress line several times a second with
+#: ``-progress2``. Under CPU contention melt 7.42 sometimes loads its plugins
+#: and then renders nothing, forever (see ``adapters/mlt/engine._melt_frame``);
+#: without a watchdog a stuck render held a job for the whole 30-minute timeout.
+DEFAULT_STALL_SECONDS = 120.0
+
+
+def _stall_seconds() -> float:
+    try:
+        return max(1.0, float(os.environ.get("WVB_RENDER_STALL_SECONDS", DEFAULT_STALL_SECONDS)))
+    except ValueError:
+        return DEFAULT_STALL_SECONDS
+
+
+def _kill_group(process: subprocess.Popen) -> None:
+    """Kill the render and everything it started (xvfb-run, helpers), then reap it."""
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, AttributeError, OSError):
+        process.kill()
+    process.wait()
+
+
 def _run_render_process(
     cmd: list[str],
     timeout_seconds: float,
     on_chunk=None,
     *,
     env: dict | None = None,
+    stall_seconds: float | None = None,
+    progress_pattern: str = "Current Frame",
 ) -> subprocess.CompletedProcess:
     """Run a render command, streaming stderr to *on_chunk* as it arrives.
 
     Both pipes are drained on their own threads (MLT writes ~170 lines of
     registration noise; an unread pipe would deadlock it). stderr is read in
-    chunks, not lines, so melt's ``\r``-ended progress is seen live. On the
-    deadline the process is killed and ``TimeoutExpired`` raised.
+    chunks, not lines, so melt's ``\r``-ended progress is seen live. The
+    process runs in its own process group; on the deadline, or when
+    ``stall_seconds`` pass without a chunk containing ``progress_pattern``, the
+    whole group is killed and ``TimeoutExpired`` / :class:`RenderStalled` raised.
     """
     process = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-        errors="replace", env=env,
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, start_new_session=True,
     )
     out_parts: list[str] = []
     err_parts: list[str] = []
+    last_progress = [time.monotonic()]
+
+    def chunks(stream):
+        """Whatever bytes are available, decoded -- not a blocking read(4096): a text-mode
+        read(n) waits for n characters, so progress would arrive in 4 KB lumps, not live."""
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        while True:
+            data = stream.read1(4096)
+            if not data:
+                tail = decoder.decode(b"", final=True)
+                if tail:
+                    yield tail
+                return
+            text = decoder.decode(data)
+            if text:
+                yield text
 
     def drain_stdout() -> None:
-        for chunk in iter(lambda: process.stdout.read(4096), ""):
+        for chunk in chunks(process.stdout):
             out_parts.append(chunk)
 
     def drain_stderr() -> None:
-        for chunk in iter(lambda: process.stderr.read(4096), ""):
+        for chunk in chunks(process.stderr):
             err_parts.append(chunk)
+            if progress_pattern in chunk:
+                last_progress[0] = time.monotonic()
             if on_chunk is not None:
                 try:
                     on_chunk(chunk)
@@ -325,14 +401,22 @@ def _run_render_process(
     for thread in threads:
         thread.start()
     deadline = time.monotonic() + timeout_seconds
-    try:
-        process.wait(timeout=max(0.0, deadline - time.monotonic()))
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
-        for thread in threads:
-            thread.join(5)
-        raise subprocess.TimeoutExpired(cmd, timeout_seconds) from None
+    while True:
+        now = time.monotonic()
+        try:
+            process.wait(timeout=max(0.0, min(0.5, deadline - now)))
+            break
+        except subprocess.TimeoutExpired:
+            now = time.monotonic()
+            stalled = stall_seconds is not None and now - last_progress[0] >= stall_seconds
+            if now < deadline and not stalled:
+                continue
+            _kill_group(process)
+            for thread in threads:
+                thread.join(5)
+            if stalled and now < deadline:
+                raise RenderStalled(cmd, stall_seconds, "".join(err_parts)) from None
+            raise subprocess.TimeoutExpired(cmd, timeout_seconds) from None
     for thread in threads:
         thread.join()
     return subprocess.CompletedProcess(cmd, process.returncode, "".join(out_parts), "".join(err_parts))

@@ -125,6 +125,18 @@ defaults `with_audio` to on for `insert` (when the media has audio) and off for
 of a red/300 Hz, green/600, blue/900, white/1200 file agree at the drift frames;
 all 7 cases fail on the old code), `tests/unit/test_linked_audio_sync.py`.
 
+Fixed 2026-11-22 (branch `fix/render-watchdog`): a melt render that stalls (the
+plugin-load hang measured for frame grabs, seen again in a full render that sat at 0 %
+CPU for 17 minutes) held the job for the whole 30-minute timeout. Melt renders now always
+stream stderr through `_run_render_process` in their own process group; if no
+`Current Frame` progress line arrives for `WVB_RENDER_STALL_SECONDS` (default 120 s) the
+whole group is killed and the render retried once; a second stall fails with
+`render_stalled` and a message saying it is melt hanging, not a slow render. Found on
+the way: the prompt-18 progress stream read stderr with a text-mode `read(4096)`, which
+waits for 4 KB, so progress arrived in lumps (often only at exit); it now reads whatever
+bytes are available. Proof `tests/unit/test_render_watchdog.py` (fake melt that stalls,
+spawns a child, or progresses slowly; all 5 fail on the old code).
+
 Also outstanding, not ranked as work: detached jobs are POSIX only; job progress
 is per frame for renders (melt `-progress2`, prompt 18, 2026-11-22), per stage otherwise;
 the move/trim A/V sync gaps are closed (below). Owner decisions still open from 2026-11-02: frame-rate

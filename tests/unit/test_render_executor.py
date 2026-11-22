@@ -18,6 +18,18 @@ from workshop_video_brain.edit_mcp.adapters.render.profiles import RenderProfile
 # Fixtures
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def _render_process_through_subprocess_run(monkeypatch):
+    """Melt renders now stream through _run_render_process (stall watchdog);
+    route it back through subprocess.run so these tests' run-mocks still apply."""
+    from workshop_video_brain.edit_mcp.adapters.render import executor as _executor
+
+    def shim(cmd, timeout_seconds, on_chunk=None, *, env=None, **_kwargs):
+        return _executor.subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_seconds, env=env)
+
+    monkeypatch.setattr(_executor, "_run_render_process", shim)
+
+
 @pytest.fixture()
 def base_profile() -> RenderProfile:
     return RenderProfile(
