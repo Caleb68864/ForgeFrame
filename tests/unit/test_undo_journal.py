@@ -23,15 +23,18 @@ from workshop_video_brain.edit_mcp.server.tools.history import (
 )
 from workshop_video_brain.workspace import jobs, undo
 from workshop_video_brain.workspace.manager import WorkspaceManager
+from workshop_video_brain.workspace.manifest import read_manifest
 from workshop_video_brain.workspace.snapshot import restore
 
 
 @pytest.fixture
 def ws(tmp_path) -> Path:
     root = tmp_path / "ws"
-    manifest = WorkspaceManager.create("Undo Test", tmp_path, workspace_root=root)
-    slug = getattr(manifest, "slug", None) or "project"
-    serialize_versioned(sequence_project(), root, slug)
+    WorkspaceManager.create("Undo Test", tmp_path, workspace_root=root)
+    # Seed under the manifest slug, as the tools write: a different stem made
+    # the first tool write <slug>_v1 beside project_v1, and "latest" between
+    # two _v1 files fell back to mtime -- equal on a fast CI runner.
+    serialize_versioned(sequence_project(), root, read_manifest(root).slug)
     # The seeding write is journaled too; start every test from an empty stack.
     undo.journal_path(root).unlink()
     return root

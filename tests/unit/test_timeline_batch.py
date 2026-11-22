@@ -11,13 +11,14 @@ from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import serialize
 from workshop_video_brain.edit_mcp.server.tools.history import project_undo, timeline_batch
 from workshop_video_brain.workspace import undo
 from workshop_video_brain.workspace.manager import WorkspaceManager
+from workshop_video_brain.workspace.manifest import read_manifest
 
 
 @pytest.fixture
 def ws(tmp_path) -> Path:
     root = tmp_path / "ws"
-    manifest = WorkspaceManager.create("Batch Test", tmp_path, workspace_root=root)
-    serialize_versioned(sequence_project(), root, getattr(manifest, "slug", None) or "project")
+    WorkspaceManager.create("Batch Test", tmp_path, workspace_root=root)
+    serialize_versioned(sequence_project(), root, read_manifest(root).slug)
     undo.journal_path(root).unlink()
     return root
 
