@@ -268,6 +268,8 @@ If you used timeline markers during your edit (see Chapter 13 on export workflow
 
 ## Thumbnail Design
 
+> **ForgeFrame:** for quick candidates, `media_thumbnail source=... at_seconds=-1` picks the most representative frame of a 4 s window early in the video; run it with a few `at_seconds` values to compare. `thumbnail_generate` adds the title text.
+
 YouTube says thumbnails are the single most important factor in click-through rate. A video with a great thumbnail and mediocre title outperforms a video with a great title and bad thumbnail. Thumbnails are your billboard -- they need to work at the size of a postage stamp.
 
 ### Technical Specifications

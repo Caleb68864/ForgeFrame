@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-251 MCP tools; 21 skills.
+259 MCP tools; 21 skills.
 
 ## Skills
 
@@ -167,18 +167,26 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | mask_set_from_file | shape_alpha_mask | Insert a Shape Alpha (``shape``) filter consuming an external matte file. |
 | mask_set_shape | compositing_masking | Insert a rotoscoping mask with a shape-derived spline at the top of a stack. |
 | media_check_vfr | workspace_media | Check video files for variable frame rate (VFR): a whole workspace, or one file. |
+| media_concat | media_concat | Join media files end to end into one file. |
+| media_convert | media_convert | Convert to another container/codec, picked by the output extension (``output_path`` wins over ``format``). |
 | media_denoise_video | media_denoise_video | Clean up grainy / high-ISO / low-light footage in one call. |
+| media_extract_audio | media_extract_audio | Save the audio of *source* as its own file (wav default; flac, mp3, m4a, aac, ogg, opus). |
+| media_gif | media_gif | A looping GIF (two-pass palette, good colour) or animated WebP of ``seconds`` from ``start_seconds``. |
 | media_ingest | workspace_media | Run the full ingest pipeline: scan, proxy, transcribe, detect silence. |
 | media_list_assets | workspace_media | List media assets found in the workspace media/raw directory. |
 | media_remove_silence | media_remove_silence | Write a tightened copy of an audio or video file with its silence cut out. |
+| media_rotate_flip | media_rotate_flip | Rotate clockwise (``rotate`` 90/180/270) and/or mirror (``flip`` horizontal/vertical/both). |
 | media_segment_at_silence | silence_segment | Split a long recording into per-take files at detected silences. |
 | media_silence_keep_ranges | media_remove_silence | Report which source seconds silence removal would keep, without rendering. |
 | media_slideshow | slideshow | Assemble a folder of images into a timelapse/slideshow video clip. |
+| media_speed | media_speed | Write *source* at ``factor`` x speed (0.25-4.0; 2 = twice as fast). |
 | media_split_scenes | media_split_scenes | Split a video into one file per detected shot. |
 | media_stabilize | stabilize | Stabilize shaky footage with two-pass FFmpeg vidstab. |
 | media_sync_by_audio | audio_sync | Find the time offset between two recordings of the same event. |
+| media_thumbnail | media_thumbnail | Save one frame as an image: at ``at_seconds`` (clamped to the last frame), or with -1 the most |
 | media_thumbnail_sheet | thumbnail_sheet | Extract representative keyframes (+ optional contact sheet) from a clip. |
 | media_transcode_cfr | workspace_media | Transcode a VFR video file to constant frame rate (CFR). |
+| media_trim | media_trim | Cut a range out of a media file into a new file. |
 | mlt_service_info | mlt_services | Return MLT's metadata for one service, including its parameters, as YAML. |
 | mlt_services | mlt_services | List the MLT services this host can load. |
 | move_down | effects_bundles | Move a filter down one position in a clip's filter stack. |

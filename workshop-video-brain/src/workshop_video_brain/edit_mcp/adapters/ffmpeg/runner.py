@@ -104,6 +104,7 @@ def run_ffmpeg(
     dry_run: bool = False,
     pre_input_args: list[str] | None = None,
     timeout: float | None = DEFAULT_TIMEOUT_SECONDS,
+    extra_inputs: list[Path] | None = None,
 ) -> FFmpegResult:
     """Execute an FFmpeg command with structured result capture.
 
@@ -117,6 +118,8 @@ def run_ffmpeg(
             keyframe seek via ``-ss``).
         timeout: Wall-clock ceiling in seconds (default 1 hour). ``None``
             disables the timeout entirely (use only for known-bounded work).
+        extra_inputs: More inputs, each emitted as ``-i <path>`` right after
+            the main one (input 0 is *input_path*, then these in order).
 
     Returns:
         FFmpegResult with success status, captured logs, and timing. A nonzero
@@ -143,6 +146,8 @@ def run_ffmpeg(
     if pre_input_args:
         cmd += pre_input_args
     cmd += ["-i", str(input_path)]
+    for extra in extra_inputs or []:
+        cmd += ["-i", str(extra)]
     cmd += args
     cmd.append(str(output_path))
 
