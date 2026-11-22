@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-246 MCP tools; 21 skills.
+247 MCP tools; 21 skills.
 
 ## Skills
 
@@ -79,6 +79,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | composite_split_screen | split_screen | Build a split/quad-screen composite from several source tracks. |
 | composite_wipe | compositing_masking | Add a wipe or dissolve transition between two tracks. |
 | effect_add | effects_catalog | Add a named effect to a clip in a Kdenlive project. |
+| effect_camera_move | camera_moves | Add a named camera move to a clip as a keyframed ``qtblend`` filter. |
 | effect_camera_shake | shake_shadow | Add a deterministic keyframed camera-shake ``qtblend`` filter to a clip. |
 | effect_chroma_key | compositing_masking | Append a basic ``chroma`` key filter to a clip's effect stack. |
 | effect_chroma_key_advanced | compositing_masking | Append an ``avfilter.hsvkey`` advanced chroma filter to a clip. |

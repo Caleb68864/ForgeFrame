@@ -79,7 +79,7 @@ not on PyPI, absent on Windows/macOS, and segfault on bad handles. So:
    (`clip_index`).
 4. melt load-check in `project_validate` (`terminate_on_pause=1`, bounded frames).
 5. **Done 2026-11-22** (prompt 20): trim tools as patcher intents: slip, slide, replace clip, ripple insert.
-6. Easing presets baked as dense keyframes; named camera moves (zoom-punch,
+6. **Done 2026-11-22** (prompt 21): easing presets baked as dense keyframes; named camera moves (zoom-punch,
    orbit, handheld).
 7. `snapshot_diff` (LLM-readable).
 8. Beat-synced cuts/zooms/flashes from `music_beat_grid`.

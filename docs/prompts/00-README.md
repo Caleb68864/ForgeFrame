@@ -64,7 +64,8 @@ Review the model's report and diff after each prompt, then commit it yourself
 | 18 | Done 2026-11-22 | `tests/unit/test_melt_progress.py`, `tests/integration/external/test_melt_progress_render.py`; note `vault/wiki/melt-progress-and-render-verification.md` |
 | 19 | Done 2026-11-22 | `effect_list_applied`, `effect_param_get/set`, `effect_toggle`, `effect_remove`; `tests/unit/test_effect_edit.py`, `tests/integration/external/test_effect_edit_render.py` |
 | 20 | Done 2026-11-22 | `clip_slip`, `clip_slide`, `clip_replace`, `clip_ripple_insert`; `tests/unit/test_trim_ops.py`, `tests/unit/test_clip_trims_tools.py`, `tests/integration/external/test_trim_tools_render.py` |
-| 21 onward | Not started | |
+| 21 | Done 2026-11-22 | `pipelines/easing.py`, `bake` on the keyframe tools, `effect_camera_move`; `tests/unit/test_easing.py`, `tests/unit/test_camera_moves.py`, `tests/integration/external/test_camera_moves_render.py`; GUI check files `21_easing_native/baked.kdenlive` in the check pack |
+| 22 onward | Not started | |
 
 Prompt 18 note: `execute_render` now sizes melt with `-profile` (`vault/wiki/melt-render-profile.md`), so read that before changing melt flags.
 
