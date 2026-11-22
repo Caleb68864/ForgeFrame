@@ -157,6 +157,9 @@ Some ForgeFrame tools work on a media file directly, with no workspace or projec
   `max_height=720` scales a taller source down. Variable-frame-rate phone footage needs `media_transcode_cfr` instead.
 - `media_extract_audio source=... format=wav` saves the sound alone (rate and channels kept unless given); a file without audio is refused.
 
+- `media_gif source=... start_seconds=12 seconds=3` makes a looping GIF (two-pass palette, 12 fps, 480 px wide by default) or, with `format=webp`, an animated WebP.
+- `media_thumbnail source=... at_seconds=10` saves one frame (jpg/png/webp, 1280 px wide by default); `at_seconds=-1` lets ffmpeg's `thumbnail` filter pick the most representative frame of a 4 s window starting at 10 % of the video.
+
 ## Fast Start and `movflags` Explained
 
 The Fast Start section above mentions `-movflags +faststart`. Here is what it actually does and why it matters.

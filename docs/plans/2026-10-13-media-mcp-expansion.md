@@ -112,6 +112,9 @@ never write into protected trees):
 - **Done 2026-11-22** (prompt 31): `media_speed` (0.25-4x, pitch kept via an `atempo`
   chain), `media_rotate_flip`, `media_convert` (H.264/VP9/HEVC/ProRes presets; audio
   targets through `convert_format` / `export_compressed`), `media_extract_audio`.
+- **Done 2026-11-22** (prompt 32): `media_gif` (two-pass GIF or WebP from any window;
+  `start` added to the shared preview builders, unchanged at 0) and `media_thumbnail`
+  (at a time, clamped, or auto via ffmpeg's `thumbnail` filter).
 - **Done 2026-11-02.** Generalise `selects_timeline` / `assembly` builders to the source profile.
 
 Each tool follows the CLAUDE.md checklist (pipeline logic, `@tool_guard`,

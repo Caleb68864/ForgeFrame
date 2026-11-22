@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-257 MCP tools; 21 skills.
+259 MCP tools; 21 skills.
 
 ## Skills
 
@@ -171,6 +171,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | media_convert | media_convert | Convert to another container/codec, picked by the output extension (``output_path`` wins over ``format``). |
 | media_denoise_video | media_denoise_video | Clean up grainy / high-ISO / low-light footage in one call. |
 | media_extract_audio | media_extract_audio | Save the audio of *source* as its own file (wav default; flac, mp3, m4a, aac, ogg, opus). |
+| media_gif | media_gif | A looping GIF (two-pass palette, good colour) or animated WebP of ``seconds`` from ``start_seconds``. |
 | media_ingest | workspace_media | Run the full ingest pipeline: scan, proxy, transcribe, detect silence. |
 | media_list_assets | workspace_media | List media assets found in the workspace media/raw directory. |
 | media_remove_silence | media_remove_silence | Write a tightened copy of an audio or video file with its silence cut out. |
@@ -182,6 +183,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | media_split_scenes | media_split_scenes | Split a video into one file per detected shot. |
 | media_stabilize | stabilize | Stabilize shaky footage with two-pass FFmpeg vidstab. |
 | media_sync_by_audio | audio_sync | Find the time offset between two recordings of the same event. |
+| media_thumbnail | media_thumbnail | Save one frame as an image: at ``at_seconds`` (clamped to the last frame), or with -1 the most |
 | media_thumbnail_sheet | thumbnail_sheet | Extract representative keyframes (+ optional contact sheet) from a clip. |
 | media_transcode_cfr | workspace_media | Transcode a VFR video file to constant frame rate (CFR). |
 | media_trim | media_trim | Cut a range out of a media file into a new file. |
