@@ -101,10 +101,28 @@ them once per playlist; 2 500 -> 10 000 clips is ~4.6x (serialize 0.39 s -> 1.80
 then best of three interleaved), which load cannot fail and the old code does (8.2x);
 memory and round-trip fidelity are a separate test.
 
+Fixed 2026-11-22 (branch `fix/linked-audio-sync`): `TrimClip`, `RemoveClip`,
+`RippleDelete`, `MoveClip`, `SplitClip` and `InsertGap` edited only the playlist
+they named, so after `clip_trim` / `clip_remove` / `clip_move` / `clip_split` /
+`clip_ripple_delete` / `gap_insert` the sound drifted from the picture. The patcher
+now applies the same edit to the clip's linked audio entry (`adapters/kdenlive/patcher_sync.py`;
+`sync_linked_audio=False` opts out), and skips the intent whole when the audio
+cannot follow (e.g. a move whose target has no linked audio). The same edits
+now also keep clip filters on their clips (remove/ripple/move/split renumbered
+clips without remapping, so effects jumped to the neighbour; a split clip's
+effects now stay on both halves). `PlaceClip` gains `with_audio` (the media's
+sound on the first audio track, same frame and mode), shifts transitions and
+keeps split clips' filters on a ripple, and refuses an insert through a
+transition. Decided by agent 2026-11-22 (owner may revisit): `clip_place`
+defaults `with_audio` to on for `insert` (when the media has audio) and off for
+`overwrite`, so a cover shot never replaces the narration. Proof: real melt
+`tests/integration/external/test_linked_audio_sync_render.py` (picture and tone
+of a red/300 Hz, green/600, blue/900, white/1200 file agree at the drift frames;
+all 7 cases fail on the old code), `tests/unit/test_linked_audio_sync.py`.
+
 Also outstanding, not ranked as work: detached jobs are POSIX only; job progress
 is per frame for renders (melt `-progress2`, prompt 18, 2026-11-22), per stage otherwise;
-other move/trim intents are still known A/V sync gaps (feature roadmap,
-Kdenlive step 2). Owner decisions still open from 2026-11-02: frame-rate
+the move/trim A/V sync gaps are closed (below). Owner decisions still open from 2026-11-02: frame-rate
 override and default engine.
 
 ## 2. `docs/plans/2026-04-08-feature-roadmap.md`, item by item
@@ -147,7 +165,7 @@ All five were implemented in the same April commit and were never marked done.
 | # | Item | Status | Proof |
 |---|---|---|---|
 | 1 | Automate the differential | Done | `5724bb7`; `tests/integration/external/test_kdenlive_differential.py`, 21 cases |
-| 2 | Audio lost on insert | Done (other move/trim intents still sync gaps) | `5724bb7`, `7025f60` (`kdenlive:audio_track=1`) |
+| 2 | Audio lost on insert | Done; move/trim sync gaps closed 2026-11-22 | `5724bb7`, `7025f60` (`kdenlive:audio_track=1`) |
 | 3 | Effects dropped by Kdenlive | Done | `da08b49`; `effect_identity.normalize_effect_id` |
 | 4 | Dissolves dropped | Done | `38fe0e1` |
 | 5 | Hard-rule violations in generated XML | Done | `da08b49`; `test_bin_lengths.py`, `test_serializer_entry_ids.py`, `test_speed_variant_bin.py` |

@@ -28,3 +28,7 @@ explicit audio-sync handling.
 ## Marking the audio track (found 2026-11-02)
 
 An audio entry is not enough. Kdenlive identifies an audio track by `<property name="kdenlive:audio_track">1</property>` on both playlists and the track tractor (`cross_dissolve_native.kdenlive`, lines 82, 89, 92), not by `hide="video"` lanes. Without it the track loads as video and `kdenlive --render` is silent at -91 dB, while melt, which ignores the property, stays at -24.1 dB. Only a Kdenlive render shows this.
+
+## Edits keep the halves together (2026-11-22)
+
+`TrimClip`, `RemoveClip`, `RippleDelete`, `MoveClip`, `SplitClip` and `InsertGap` on a video clip now make the same change to its linked audio entry -- the audio-track entry with the same producer starting on the same frame (`adapters/kdenlive/patcher_sync.py`). If the audio cannot take the change (a move whose destination clip has no audio half on the same track), the whole intent is skipped: video never moves alone. Edits made directly on an audio track touch only that track; `sync_linked_audio=False` opts out. `PlaceClip(with_audio=True)` places the media's sound on the first audio track at the same frame and mode; `clip_place` turns it on for inserts of media with audio and off for overwrites (cover shots keep the narration). The proof renders a file whose picture and tone both name the segment (`tests/integration/external/_av_sync.py`) and checks they agree after each edit.

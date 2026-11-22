@@ -176,7 +176,7 @@ Do this first, before the media MCP expansion phases
    was blocked in October showed Kdenlive still silent (-91 dB). Audio tracks now
    carry `kdenlive:audio_track=1`, and a speed clip gets one producer per track.
    Kdenlive and melt both measure -24.1 dB and all 21 differential cases pass.
-   Other move/trim intents are still known sync gaps.
+   The move/trim sync gaps were closed 2026-11-22 (`patcher_sync`, see `docs/ROADMAP.md`).
 3. **Effects dropped by Kdenlive.** **Done 2026-10-14; render-verified 2026-11-02 (PSNR 36.65, edge energy 0.72 -> 0.50).** A missing `kdenlive_id` makes Kdenlive drop a clip filter; an unknown id aborts `kdenlive --render`; the effect XML file name is not the registry id. The `effect_identity.normalize_effect_id` resolver and serializer safety net normalize known ids and remove unknown ones. See `vault/wiki/kdenlive-avfilter-and-effect-zones.md`.
 4. ~~**Dissolves dropped by Kdenlive.**~~ **Done 2026-10-14.** Not dropped but
    hidden: the luma targeted the background (`a_track=0`) and was planted after
