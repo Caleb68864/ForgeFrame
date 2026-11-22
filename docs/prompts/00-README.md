@@ -66,7 +66,8 @@ Review the model's report and diff after each prompt, then commit it yourself
 | 20 | Done 2026-11-22 | `clip_slip`, `clip_slide`, `clip_replace`, `clip_ripple_insert`; `tests/unit/test_trim_ops.py`, `tests/unit/test_clip_trims_tools.py`, `tests/integration/external/test_trim_tools_render.py` |
 | 21 | Done 2026-11-22 | `pipelines/easing.py`, `bake` on the keyframe tools, `effect_camera_move`; `tests/unit/test_easing.py`, `tests/unit/test_camera_moves.py`, `tests/integration/external/test_camera_moves_render.py`; GUI check files `21_easing_native/baked.kdenlive` in the check pack |
 | 22 | Done 2026-11-22 | `snapshot_diff`, `pipelines/project_diff.py`; `tests/unit/test_project_diff.py`, `tests/unit/test_snapshot_diff_tool.py` (read-only, no render proof needed) |
-| 23 onward | Not started | |
+| 23 | Done 2026-11-22 | `beat_cut`, `beat_zoom`, `beat_flash`; `tests/unit/test_beat_sync.py`, `tests/integration/external/test_beat_sync_render.py` |
+| 24 | Experiment run 2026-11-22; GUI pass pending | `scripts/chain_placement_experiment.py`, `vault/wiki/kdenlive-chain-per-placement.md`; harness tests `tests/unit/test_chain_layout_variants.py`, `tests/integration/external/test_chain_layout_variants.py` |
 
 Prompt 18 note: `execute_render` now sizes melt with `-profile` (`vault/wiki/melt-render-profile.md`), so read that before changing melt flags.
 

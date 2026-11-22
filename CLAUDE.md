@@ -159,6 +159,7 @@ Detailed notes (one concept per page) live in `vault/wiki/`:
 - `kdenlive-smoke-verification-checklist.md` — manual-review checklist for every smoke output (what to look for in Kdenlive 25.08.3)
 - `kdenlive-canonical-profile-names.md` — MLT profile names for standard formats, and where the table comes from
 - `kdenlive-av-clip-placement.md` — a clip with audio needs a video and an audio entry; the audio track needs `kdenlive:audio_track=1`, or `kdenlive --render` is silent
+- `kdenlive-chain-per-placement.md` — experiment: our shared producer renders correctly in Kdenlive 26.08; one producer per placement loses clips; rule 14 still needed
 - `melt-render-profile.md` — size a melt render with `-profile`; `width=`/`height=` pillarbox it and can hang it
 - `mlt-python-bindings-worker.md` — the out-of-process MLT worker, its load check, frame grabs and render progress
 - `golden-fixture-testing.md` — testing strategy without launching Kdenlive

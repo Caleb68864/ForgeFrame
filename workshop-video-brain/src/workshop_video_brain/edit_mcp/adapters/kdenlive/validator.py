@@ -373,6 +373,7 @@ def validate_serialized_xml(root: ET.Element) -> ValidationReport:
                             if xml_properties(f).get("internal_added") == "237"}
                 if not {"volume", "panner", "audiolevel"}.issubset(services):
                     error(target, "Audio track requires internal volume, panner, and audiolevel filters.")
+    parent_props: dict[int, dict[str, str]] = {}
     for element in root.iter():
         if element.tag not in {"entry", "track"}:
             continue
@@ -398,9 +399,13 @@ def validate_serialized_xml(root: ET.Element) -> ValidationReport:
         if start.isdigit() and out.isdigit() and int(start) > int(out):
             error(element, "Entry in frame must not exceed its out frame.")
         parent = parents.get(element)
+        # Parent properties once per playlist, not once per entry: re-reading a
+        # 10 000-entry playlist's children for each of its entries was quadratic.
+        if parent is not None and id(parent) not in parent_props:
+            parent_props[id(parent)] = xml_properties(parent)
         timeline_entry = (parent is not None and parent.tag == "playlist"
                           and parent is not main_bin
-                          and xml_properties(parent).get("kdenlive:playlistid") != "black_track")
+                          and parent_props[id(parent)].get("kdenlive:playlistid") != "black_track")
         if timeline_entry and properties.get("kdenlive:id"):
             entry_clip_id = xml_properties(element).get("kdenlive:id", "")
             if entry_clip_id != properties["kdenlive:id"]:

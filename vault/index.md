@@ -12,6 +12,7 @@
 - [[kdenlive-image-and-qtblend-pattern]] — image producers + Ken Burns `qtblend` keyframe transforms
 - [[kdenlive-clip-speed-pattern]] — clip speed via separate `timewarp` producer; timeline entry redirects, bin chain unchanged
 - [[kdenlive-audio-fade-pattern]] — audio fade-in/out via `volume` filter inside the entry, with scalar `gain`/`end` (not keyframes)
+- [[kdenlive-chain-per-placement]] — experiment: shared producer vs one per track / per placement in Kdenlive 26.08 (shared kept; per placement loses clips; rule 14 still needed)
 - [[kdenlive-avfilter-and-effect-zones]] — generic `avfilter.*` clip-filter shape (unblocks ~30 effects); native video fade-to-black; `kdenlive:zone_in/out` for clip-sub-range effects
 
 ## Process

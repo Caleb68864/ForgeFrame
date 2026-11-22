@@ -324,6 +324,16 @@ def load_check(project_path: Path | str, model: KdenliveProject, engine: str = "
     )
 
 
+#: A one-frame grab takes ~0.3-1.1 s even with 16 melts competing for the CPU.
+#: Under that contention melt 7.42 sometimes exits 0 without writing the frame
+#: (~1-4 % of grabs) or stalls after loading its plugins and never renders
+#: (measured 2026-11-22: 0 of 120 sequential grabs, 2-7 of 128-160 at 16-way
+#: concurrency; the same command then succeeds). So each attempt has a short
+#: ceiling and a failed attempt is retried.
+_GRAB_ATTEMPT_TIMEOUT_SECONDS = 60
+_GRAB_ATTEMPTS = 3
+
+
 def _melt_frame(project_path: Path, frame: int, size: tuple[int, int] | None, out_dir: Path, melt: str) -> Path:
     """Grab one frame with the melt CLI, at the project's size, then scale it if asked.
 
@@ -333,17 +343,38 @@ def _melt_frame(project_path: Path, frame: int, size: tuple[int, int] | None, ou
     final = out_dir / f"f_{frame:06d}.png"
     with tempfile.TemporaryDirectory(prefix=".melt_", dir=out_dir) as scratch:
         pattern = Path(scratch) / "f_%05d.png"
-        proc = subprocess.run(
-            [melt, str(project_path), f"in={frame}", f"out={frame}",
-             "-consumer", f"avformat:{pattern}", "vcodec=png", "an=1", "terminate_on_pause=1"],
-            capture_output=True, text=True, timeout=ANALYSIS_TIMEOUT_SECONDS, check=False,
-            env=mlt_env(),
-        )
-        written = sorted(Path(scratch).glob("f_*.png"))
-        if qt_display_failed(proc.stderr):
-            raise MltWorkerError(f"melt could not grab frame {frame}: {HEADLESS_MESSAGE}")
-        if proc.returncode != 0 or not written:
-            raise MltWorkerError(f"melt could not grab frame {frame}: {_stderr_tail(proc.stderr, 6)}")
+        failures: list[str] = []
+        written: list[Path] = []
+        for attempt in range(1, _GRAB_ATTEMPTS + 1):
+            try:
+                proc = subprocess.run(
+                    [melt, str(project_path), f"in={frame}", f"out={frame}",
+                     "-consumer", f"avformat:{pattern}", "vcodec=png", "an=1", "terminate_on_pause=1"],
+                    capture_output=True, text=True, timeout=_GRAB_ATTEMPT_TIMEOUT_SECONDS, check=False,
+                    env=mlt_env(),
+                )
+            except subprocess.TimeoutExpired as exc:
+                tail = _stderr_tail(exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes)
+                                    else exc.stderr, 6)
+                failures.append(f"attempt {attempt}: no frame after {_GRAB_ATTEMPT_TIMEOUT_SECONDS}s"
+                                + (f" ({tail})" if tail else ""))
+                continue
+            if qt_display_failed(proc.stderr):
+                raise MltWorkerError(f"melt could not grab frame {frame}: {HEADLESS_MESSAGE}")
+            written = sorted(Path(scratch).glob("f_*.png"))
+            if proc.returncode == 0 and written:
+                break
+            tail = _stderr_tail(proc.stderr, 6)
+            failures.append(f"attempt {attempt}: melt exit {proc.returncode}, "
+                            f"{'no frame written' if not written else 'frame written'}"
+                            + (f"; stderr: {tail}" if tail else "; stderr had only MLT's plugin-load noise"))
+            if proc.returncode != 0 and tail:
+                break  # a real error (bad project, missing media): retrying will not help
+            written = []
+        if not written:
+            raise MltWorkerError(f"melt could not grab frame {frame} -- " + " | ".join(failures))
+        if failures:
+            logger.warning("melt frame %d grabbed after retry: %s", frame, " | ".join(failures))
         if size is None:
             written[-1].replace(final)
             return final

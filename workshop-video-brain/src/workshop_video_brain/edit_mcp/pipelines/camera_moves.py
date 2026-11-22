@@ -170,3 +170,35 @@ def handheld(
             "rotation": build_keyframe_string("scalar", rot_baked, fps) if rotation else None,
             "keyframe_count": len(rect_baked), "zoom": zoom, "amplitude_px": amp,
             "max_rotation_deg": max_angle}
+
+
+def zoom_punch_train(
+    width: int,
+    height: int,
+    at_frames: list[int],
+    fps: float,
+    clip_length: int,
+    intensity: float = 0.12,
+    attack_frames: int = 2,
+    decay_frames: int = 8,
+    anchor: tuple[float, float] = (0.5, 0.5),
+) -> dict:
+    """Several zoom punches in one rect keyframe track (one filter per clip, not per beat).
+
+    Each punch peaks at its frame; the next punch's attack truncates the
+    previous decay (``beat_sync.merge_pulses``).
+    """
+    from workshop_video_brain.edit_mcp.pipelines.beat_sync import merge_pulses
+
+    _check_size(width, height)
+    if not 0 < intensity <= 2:
+        raise ValueError(f"intensity must be in (0, 2]; got {intensity}")
+    scale = 1.0 + intensity
+    w, h = width * scale, height * scale
+    x = _clamp_cover(-(w - width) * anchor[0], w, width)
+    y = _clamp_cover(-(h - height) * anchor[1], h, height)
+    rest, peak = list(_rect(0, 0, width, height)), list(_rect(x, y, w, h))
+    keyframes = merge_pulses(at_frames, clip_length, rest, peak, attack_frames, decay_frames,
+                             attack_easing="ease_out_cubic", decay_easing="ease_in_out_sine")
+    return {"rect": build_keyframe_string("rect", keyframes, fps), "rotation": None,
+            "keyframe_count": len(keyframes), "zoom": scale, "punches": len(set(at_frames))}
