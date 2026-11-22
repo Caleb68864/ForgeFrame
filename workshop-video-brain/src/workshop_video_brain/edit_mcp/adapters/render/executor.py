@@ -10,6 +10,8 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
+import time
 import xml.etree.ElementTree as ET
 from math import gcd
 from pathlib import Path
@@ -18,10 +20,22 @@ from workshop_video_brain.core.models.enums import JobStatus
 from workshop_video_brain.core.models.project import RenderJob
 from workshop_video_brain.edit_mcp.adapters.render.profiles import RenderProfile
 from workshop_video_brain.edit_mcp.adapters.render.jobs import update_job_status
-from workshop_video_brain.edit_mcp.adapters.render.progress import ProgressCallback, RenderProgress
+from workshop_video_brain.edit_mcp.adapters.render.progress import (
+    MeltProgressReader,
+    ProgressCallback,
+    RenderProgress,
+)
+from workshop_video_brain.edit_mcp.adapters.render.timeline_length import timeline_length
 from workshop_video_brain.edit_mcp.adapters.render.media_check import (
     missing_media,
     missing_media_message,
+)
+
+from workshop_video_brain.edit_mcp.adapters.mlt.display import (
+    HEADLESS_MESSAGE,
+    HEADLESS_SUGGESTION,
+    mlt_env,
+    qt_display_failed,
 )
 
 logger = logging.getLogger(__name__)
@@ -157,16 +171,33 @@ def execute_render(
         if melt_profile is not None:
             cmd = _with_melt_profile(cmd, melt_profile)
 
+    # Timeline length: the progress total and the shortest acceptable output.
+    length = timeline_length(running_job.project_path) if _command_override is None else None
+    total_frames = length[0] if length else 0
+
+    def report(update: RenderProgress) -> None:
+        # A progress consumer (job record, UI) must never kill the render.
+        try:
+            on_progress(update)  # type: ignore[misc]
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Render progress callback failed: %s", exc)
+
     try:
         if use_bindings:
             result = _render_with_bindings(running_job, cmd, timeout_seconds, on_progress)
         else:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds,
-            )
+            is_melt = bool(cmd) and Path(cmd[0]).name == "melt"
+            reader = (MeltProgressReader(report, total_frames)
+                      if on_progress is not None and is_melt else None)
+            # Headless: let MLT's Qt module start offscreen (adapters/mlt/display).
+            env = mlt_env() if is_melt else None
+            if reader is not None:
+                # Someone is listening: stream stderr for melt's progress lines.
+                result = _run_render_process(cmd, timeout_seconds, reader.feed, env=env)
+            else:
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=timeout_seconds, env=env,
+                )
 
         # Write log file
         if log_path:
@@ -178,16 +209,29 @@ def execute_render(
                 encoding="utf-8",
             )
 
+        if result.returncode == 0 and qt_display_failed(result.stderr):
+            # melt exits 0 with titles drawn as "INVALID": never a success.
+            logger.error("Render rejected: MLT's Qt module had no display")
+            return _fail(f"{HEADLESS_MESSAGE} {HEADLESS_SUGGESTION}", "missing_dependency")
+
         if result.returncode == 0:
             duration, size = 0.0, 0
             if _command_override is None:
                 try:
-                    duration, size = verify_render_output(Path(running_job.output_path))
+                    duration, size = verify_render_output(
+                        Path(running_job.output_path),
+                        expected_duration=(length[0] / length[1]) if length else None,
+                        expect_audio=not profile.disable_audio,
+                    )
                 except (OSError, ValueError, RuntimeError) as exc:
                     if log_path:
                         with log_path.open("a", encoding="utf-8") as log:
                             log.write(f"\nOutput verification failed: {exc}\n")
                     return _fail(str(exc), "invalid_output")
+            if on_progress is not None and not use_bindings and total_frames:
+                # melt never prints 100 %; it is only true once the output verified.
+                report(RenderProgress(frame=total_frames - 1, total_frames=total_frames,
+                                      percent=100.0, engine="melt"))
             logger.info("Render succeeded: %s", running_job.output_path)
             return update_job_status(running_job, JobStatus.succeeded).model_copy(
                 update={"duration_seconds": duration, "file_size_bytes": size},
@@ -240,6 +284,58 @@ def execute_render(
     finally:
         if melt_profile is not None:
             melt_profile.unlink(missing_ok=True)
+
+
+def _run_render_process(
+    cmd: list[str],
+    timeout_seconds: float,
+    on_chunk=None,
+    *,
+    env: dict | None = None,
+) -> subprocess.CompletedProcess:
+    """Run a render command, streaming stderr to *on_chunk* as it arrives.
+
+    Both pipes are drained on their own threads (MLT writes ~170 lines of
+    registration noise; an unread pipe would deadlock it). stderr is read in
+    chunks, not lines, so melt's ``\r``-ended progress is seen live. On the
+    deadline the process is killed and ``TimeoutExpired`` raised.
+    """
+    process = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        errors="replace", env=env,
+    )
+    out_parts: list[str] = []
+    err_parts: list[str] = []
+
+    def drain_stdout() -> None:
+        for chunk in iter(lambda: process.stdout.read(4096), ""):
+            out_parts.append(chunk)
+
+    def drain_stderr() -> None:
+        for chunk in iter(lambda: process.stderr.read(4096), ""):
+            err_parts.append(chunk)
+            if on_chunk is not None:
+                try:
+                    on_chunk(chunk)
+                except Exception as exc:  # noqa: BLE001 -- progress must not stop the drain
+                    logger.debug("Render output callback failed: %s", exc)
+
+    threads = [threading.Thread(target=drain_stdout, daemon=True),
+               threading.Thread(target=drain_stderr, daemon=True)]
+    for thread in threads:
+        thread.start()
+    deadline = time.monotonic() + timeout_seconds
+    try:
+        process.wait(timeout=max(0.0, deadline - time.monotonic()))
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+        for thread in threads:
+            thread.join(5)
+        raise subprocess.TimeoutExpired(cmd, timeout_seconds) from None
+    for thread in threads:
+        thread.join()
+    return subprocess.CompletedProcess(cmd, process.returncode, "".join(out_parts), "".join(err_parts))
 
 
 def _discard_partial_output(out_path: Path | None, output_preexisted: bool) -> None:
@@ -374,6 +470,8 @@ def _build_melt_command(
     """
     cmd = [
         "melt",
+        # One progress report per line on stderr (``Current Frame: N, percentage: P``).
+        "-progress2",
         str(project_path),
         "-consumer",
         f"avformat:{output_path}",
@@ -454,8 +552,22 @@ def _build_ffmpeg_command(
     return cmd
 
 
-def verify_render_output(path: Path) -> tuple[float, int]:
-    """Require a nonempty, probeable artifact with a positive duration."""
+_AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".m4a", ".aac", ".ogg", ".oga", ".opus"}
+
+
+def verify_render_output(
+    path: Path,
+    *,
+    expected_duration: float | None = None,
+    expect_video: bool = True,
+    expect_audio: bool | None = None,
+) -> tuple[float, int]:
+    """Require a nonempty, probeable artifact with a positive duration.
+
+    Also, when asked: a video stream (skipped for audio containers), an audio
+    stream, and a length no shorter than the timeline's -- a melt that stops
+    early still exits 0 with a valid but truncated file.
+    """
     size = path.stat().st_size
     if size <= 0:
         raise ValueError(f"Render output is empty: {path}")
@@ -468,8 +580,38 @@ def verify_render_output(path: Path) -> tuple[float, int]:
     try:
         data = json.loads(result.stdout)
         duration = float(data.get("format", {}).get("duration", 0))
-        if not data.get("streams") or not 0 < duration < float("inf"):
+        streams = data.get("streams") or []
+        if not streams or not 0 < duration < float("inf"):
             raise ValueError("Render output has no streams or positive finite duration")
     except (TypeError, json.JSONDecodeError) as exc:
         raise ValueError("Invalid ffprobe metadata for render output") from exc
+
+    kinds = [stream.get("codec_type") for stream in streams]
+    if expect_video and path.suffix.lower() not in _AUDIO_EXTENSIONS and "video" not in kinds:
+        raise ValueError(f"Render output has no video stream: {path}")
+    if expect_audio and "audio" not in kinds:
+        raise ValueError(f"Render output has no audio stream: {path}")
+    if expected_duration:
+        video = next((s for s in streams if s.get("codec_type") == "video"), {})
+        try:
+            actual = float(video.get("duration") or duration)
+        except (TypeError, ValueError):
+            actual = duration
+        fps = 25.0
+        rate = str(video.get("avg_frame_rate") or video.get("r_frame_rate") or "")
+        if "/" in rate:
+            num, den = rate.split("/", 1)
+            try:
+                fps = float(num) / float(den) if float(den) else fps
+            except ValueError:
+                pass
+        slack = max(2 / fps, 0.005 * expected_duration)
+        if actual < expected_duration - slack:
+            raise ValueError(
+                f"Render is shorter than the timeline: {actual:.2f}s of "
+                f"{expected_duration:.2f}s -- melt stopped early; see the log"
+            )
+        if actual > expected_duration + slack:
+            logger.warning("Render is %.2fs, timeline %.2fs (longer is normal for audio padding)",
+                           actual, expected_duration)
     return duration, size

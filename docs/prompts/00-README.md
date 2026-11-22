@@ -61,7 +61,9 @@ Review the model's report and diff after each prompt, then commit it yourself
 | 08 | Done 2026-11-02 | `docs/testing/2026-11-02-reliability-runtime-validation.md`, `test_reliability_cli.py` |
 | 10-16 | Done 2026-11-02 | See `docs/plans/2026-10-13-media-mcp-expansion.md` Phases 1-3 |
 | 17 | Done 2026-11-21 | branch `feat/undo-journal`; `tests/unit/test_undo_journal.py`, `tests/unit/test_timeline_batch.py`; note `vault/wiki/forgeframe-undo-journal.md` |
-| 18 onward | Not started | |
+| 18 | Done 2026-11-22 | `tests/unit/test_melt_progress.py`, `tests/integration/external/test_melt_progress_render.py`; note `vault/wiki/melt-progress-and-render-verification.md` |
+| 19 | Done 2026-11-22 | `effect_list_applied`, `effect_param_get/set`, `effect_toggle`, `effect_remove`; `tests/unit/test_effect_edit.py`, `tests/integration/external/test_effect_edit_render.py` |
+| 20 onward | Not started | |
 
 Prompt 18 note: `execute_render` now sizes melt with `-profile` (`vault/wiki/melt-render-profile.md`), so read that before changing melt flags.
 

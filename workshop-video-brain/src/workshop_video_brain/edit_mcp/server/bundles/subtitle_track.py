@@ -290,9 +290,18 @@ def subtitles_burn_in(
                     "-consumer", f"avformat:{rendered}",
                     "vcodec=libx264", "acodec=aac",
                 ]
-                proc = subprocess.run(
-                    melt_cmd, capture_output=True, text=True, timeout=600
+                from workshop_video_brain.edit_mcp.adapters.mlt.display import (
+                    HEADLESS_MESSAGE,
+                    HEADLESS_SUGGESTION,
+                    mlt_env,
+                    qt_display_failed,
                 )
+                proc = subprocess.run(
+                    melt_cmd, capture_output=True, text=True, timeout=600,
+                    env=mlt_env(),
+                )
+                if qt_display_failed(proc.stderr):
+                    return operation_failed(HEADLESS_MESSAGE, suggestion=HEADLESS_SUGGESTION)
                 if not rendered.exists():
                     return operation_failed(
                         f"melt failed to render project (rc={proc.returncode})",

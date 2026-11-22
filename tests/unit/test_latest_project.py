@@ -49,3 +49,27 @@ class TestLatestProjectFallback:
         plain.write_text("x", encoding="utf-8")
         # Even though `plain` is newer, a versioned working copy is canonical.
         assert latest_project([versioned, plain]) == versioned
+
+
+class TestLatestProjectTies:
+    """Two stems at the same _vN: the answer must not depend on listing order."""
+
+    def _pair(self, tmp_path):
+        older, newer = tmp_path / "project_v1.kdenlive", tmp_path / "my-slug_v1.kdenlive"
+        for p in (older, newer):
+            p.write_text("x", encoding="utf-8")
+        os.utime(older, (1_000_000, 1_000_000))
+        os.utime(newer, (2_000_000, 2_000_000))
+        return older, newer
+
+    def test_newer_file_wins_in_either_order(self, tmp_path):
+        older, newer = self._pair(tmp_path)
+        assert latest_project([older, newer]) == newer
+        assert latest_project([newer, older]) == newer
+
+    def test_equal_mtimes_fall_back_to_name(self, tmp_path):
+        a, b = tmp_path / "a_v2.kdenlive", tmp_path / "b_v2.kdenlive"
+        for p in (a, b):
+            p.write_text("x", encoding="utf-8")
+            os.utime(p, (1_000_000, 1_000_000))
+        assert latest_project([a, b]) == latest_project([b, a]) == b

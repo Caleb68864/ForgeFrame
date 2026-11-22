@@ -199,6 +199,36 @@ class AddEffect(TimelineIntent):
     params: dict[str, str] = Field(default_factory=dict)
 
 
+class SetEffectParams(TimelineIntent):
+    """Set static ``<property>`` values on an effect already applied to a clip.
+
+    ``effect_index`` is the position in that clip's filter stack.
+    """
+    track_index: int = 0
+    clip_index: int = 0
+    effect_index: int = 0
+    params: dict[str, str] = Field(default_factory=dict)
+
+
+class SetEffectEnabled(TimelineIntent):
+    """Switch an applied effect off (``disable=1``) or back on (``disable=0``).
+
+    MLT skips a filter whose ``disable`` is 1; Kdenlive's on/off switch writes
+    the same property. The effect stays in the stack either way.
+    """
+    track_index: int = 0
+    clip_index: int = 0
+    effect_index: int = 0
+    enabled: bool = True
+
+
+class RemoveEffect(TimelineIntent):
+    """Remove one applied effect from a clip's filter stack."""
+    track_index: int = 0
+    clip_index: int = 0
+    effect_index: int = 0
+
+
 class AddTrackFilter(TimelineIntent):
     """Attach an MLT filter to an entire track (its <playlist>), not a clip.
 

@@ -30,6 +30,11 @@ from workshop_video_brain.edit_mcp.adapters.ffmpeg.runner import (
     CAPABILITY_TIMEOUT_SECONDS,
 )
 from workshop_video_brain.edit_mcp.adapters.kdenlive.serializer import AUDIO_TWIN_SUFFIX
+from workshop_video_brain.edit_mcp.adapters.mlt.display import (
+    HEADLESS_MESSAGE,
+    mlt_env,
+    qt_display_failed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +102,7 @@ def _invoke(
     proc = subprocess.run(
         [interpreter, "-I", str(worker_path)],
         input=request, capture_output=True, text=True, timeout=timeout, check=False,
+        env=mlt_env(),
     )
     tail = _stderr_tail(proc.stderr)
     if proc.returncode < 0:
@@ -105,6 +111,8 @@ def _invoke(
         except ValueError:
             name = f"signal {-proc.returncode}"
         raise MltWorkerCrashed(name, tail)
+    if qt_display_failed(proc.stderr):
+        raise MltWorkerError(HEADLESS_MESSAGE, tail)
 
     final = None
     for line in (proc.stdout or "").splitlines():
@@ -283,8 +291,11 @@ def _melt_load_check(project_path: Path) -> LoadCheckResult:
     proc = subprocess.run(
         [melt, str(project_path), "out=0", "-consumer", "null:", "terminate_on_pause=1"],
         capture_output=True, text=True, timeout=_LOAD_TIMEOUT_SECONDS, check=False,
+        env=mlt_env(),
     )
     items = [_warning(line.strip()) for line in (proc.stderr or "").splitlines() if "failed to load" in line]
+    if qt_display_failed(proc.stderr):
+        items.append(_error(HEADLESS_MESSAGE))
     if proc.returncode != 0:
         items.append(_error(f"melt exited with rc={proc.returncode}: {_stderr_tail(proc.stderr, 6)}"))
     return LoadCheckResult("melt", items, reason)
@@ -326,8 +337,11 @@ def _melt_frame(project_path: Path, frame: int, size: tuple[int, int] | None, ou
             [melt, str(project_path), f"in={frame}", f"out={frame}",
              "-consumer", f"avformat:{pattern}", "vcodec=png", "an=1", "terminate_on_pause=1"],
             capture_output=True, text=True, timeout=ANALYSIS_TIMEOUT_SECONDS, check=False,
+            env=mlt_env(),
         )
         written = sorted(Path(scratch).glob("f_*.png"))
+        if qt_display_failed(proc.stderr):
+            raise MltWorkerError(f"melt could not grab frame {frame}: {HEADLESS_MESSAGE}")
         if proc.returncode != 0 or not written:
             raise MltWorkerError(f"melt could not grab frame {frame}: {_stderr_tail(proc.stderr, 6)}")
         if size is None:
@@ -406,6 +420,7 @@ def run_streaming_worker(
     with tempfile.TemporaryFile("w+", encoding="utf-8") as stderr_file:
         process = subprocess.Popen(
             command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=stderr_file, text=True,
+            env=mlt_env(),
         )
         timer = threading.Timer(max(0.0, deadline - time.monotonic()), process.kill)
         timer.daemon = True

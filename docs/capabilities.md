@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-237 MCP tools; 21 skills.
+242 MCP tools; 21 skills.
 
 ## Skills
 
@@ -110,11 +110,15 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | effect_keyframe_set_rect | keyframes | Write a rect keyframe animation string (x y w h [opacity]) to an effect property. |
 | effect_keyframe_set_scalar | keyframes | Write a scalar keyframe animation string to an effect property. |
 | effect_light_leak | overlay_looks | Overlay a light-leak clip above the footage and blend it additively. |
+| effect_list_applied | effect_edit | List the effects applied to a clip, in stack order, with their current values. |
 | effect_list_common | effects_catalog | List common Kdenlive/MLT effects with descriptions. |
 | effect_luma_key | masked_wipes | Add a luminance key (``avfilter.lumakey``) to a clip: luma -> alpha. |
 | effect_object_mask | compositing_masking | Append a parametric SPOT-SHAPE alpha mask to a clip (NOT AI). |
 | effect_oldfilm | effect_oldfilm | Old Film Simulator -- Moves the picture up and down and adds random brightness changes. |
 | effect_pan_zoom | pan_zoom | Add a keyframed pan/zoom (Ken Burns) transform to a clip. |
+| effect_param_get | effect_edit | Read an applied effect's parameters, or one parameter. |
+| effect_param_set | effect_edit | Change static parameters of an effect already applied to a clip. |
+| effect_remove | effect_edit | Remove one effect from a clip's stack. Other effects and clips are untouched. |
 | effect_reorder | effects_catalog | Reorder a filter within a clip's filter stack. |
 | effect_rewind | rewind | Insert a VHS-style rewind (reversed, sped-up) copy of a clip segment. |
 | effect_scifi_greenscreen | effects_color | Apply the tutorial's full sci-fi green-screen keying stack in one snapshot. |
@@ -124,6 +128,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | effect_stack_preset | effects_catalog | Serialize a clip's filter stack into a workspace-tier preset YAML. |
 | effect_stack_promote | effects_catalog | Promote a workspace preset to the vault tier (markdown with frontmatter). |
 | effect_tcolor | effect_tcolor | Technicolor -- Oversaturate the color in video, like in old Technicolor movies. |
+| effect_toggle | effect_edit | Bypass an applied effect (enabled=false) or switch it back on, without removing it. |
 | effects_copy | effects_catalog | Serialize a clip's filter stack to a JSON-friendly dict (read-only). |
 | effects_paste | effects_catalog | Paste a serialized filter stack onto a clip. |
 | flash_cut_montage | effects_bundles | Split a clip into ``n_cuts`` pieces and apply rotating directional blur. |

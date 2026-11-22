@@ -131,6 +131,8 @@ ForgeFrame ships five named render profiles that cover the most common export sc
 >
 > ForgeFrame validates that the output file is created, checks that `-movflags +faststart` is set for MP4 targets, and logs the render duration. You can also do this manually by selecting the profile in Kdenlive's render dialog and clicking **Render to File**.
 
+> **ForgeFrame: render progress.** Submit a long render as a detached job (`job_submit` / `wvb jobs submit <workspace> render`) and poll `job_status` / `wvb jobs status <workspace> <job-id>`: `progress.percent` climbs as melt renders. It reaches 100 only after ForgeFrame has probed the file -- a video stream, an audio stream when the profile has audio, and at least the timeline's length. A render that stopped early is reported as failed ("Render is shorter than the timeline"), and its partial file is removed.
+
 ## Fast Start and `movflags` Explained
 
 The Fast Start section above mentions `-movflags +faststart`. Here is what it actually does and why it matters.

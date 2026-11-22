@@ -57,6 +57,15 @@ def _motion_track_report() -> dict:
     return opencv_tracker_status()
 
 
+def _mlt_qt_report(melt_available: bool) -> dict:
+    """Can melt's Qt module (titles, Qt images, qtblend) run here, display or not?"""
+    if not melt_available:
+        return {'ready': False, 'display': None, 'qt_platform': None, 'reason': 'melt is not installed'}
+    from workshop_video_brain.edit_mcp.adapters.mlt.display import probe_qt_module
+
+    return probe_qt_module()
+
+
 def environment_report() -> dict:
     binaries = {name: _probe(name, ['-version'] if name in ('ffmpeg', 'ffprobe') else ['--version'])
                 for name in ('ffmpeg', 'ffprobe', 'melt', 'tesseract')}
@@ -88,14 +97,17 @@ def environment_report() -> dict:
     ffmpeg = binaries['ffmpeg']['available'] and binaries['ffprobe']['available']
     mlt_bindings = _mlt_bindings_report()
     motion_track = _motion_track_report()
+    mlt_qt = _mlt_qt_report(binaries['melt']['available'])
     return {'binaries': binaries, 'encoders': encoders, 'mlt_effects': effects,
             'optional_engines': optional, 'mlt_bindings': mlt_bindings,
-            'motion_track': motion_track,
+            'motion_track': motion_track, 'mlt_qt': mlt_qt,
             'model_cache': {'whisper': whisper_models, 'rembg': mask_models,
                             'selected_whisper_model': selected_model, 'selected_whisper_cached': selected_cached,
                             'note': 'Cached files only; no model is loaded or downloaded.'},
             'features': {'media_processing': ffmpeg,
                          'timeline_render': ffmpeg and binaries['melt']['available'],
+                         # Titles / Qt images / qtblend: melt's Qt module must start (headless: offscreen).
+                         'timeline_render_qt': ffmpeg and mlt_qt['ready'],
                          'transcription_engine': ffmpeg and optional['transcription'],
                          'transcription_offline': ffmpeg and optional['transcription'] and selected_cached,
                          'ai_mask_engine': ffmpeg and optional['ai_mask'] and optional['onnx'],
@@ -111,5 +123,6 @@ def environment_report() -> dict:
                 'optional_engines': 'Use uv sync --extra research / ai-mask / ai-mask-heavy / motion-track / scene-detect / auto-editor as needed.',
                 'auto_editor': 'After installing the auto-editor extra, run auto-editor --version once: it downloads its native binary.',
                 'motion_track': 'The OpenCV tracker engine needs opencv-contrib-python-headless (uv sync --extra motion-track); plain opencv-python has no CSRT/KCF.',
+                'mlt_qt': 'Without a display, renders run Qt offscreen (QT_QPA_PLATFORM=offscreen); if this MLT build refuses that, run under xvfb-run -a (apt install xvfb).',
                 'transcription': 'Install faster-whisper and cache the WVB_WHISPER_MODEL model before offline use.',
             }}
