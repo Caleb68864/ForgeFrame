@@ -233,3 +233,9 @@
 - Safety: an entry is undone only if the file's sha256 is still the one recorded after the edit; otherwise `UndoConflict` and nothing changes (the file was saved in Kdenlive, and undo would discard that). Undo/redo refuse while a detached job with a live worker is active (it pinned the file's sha); a dead worker's leftover `running` record does not block.
 - Deviation from the prompt: it lists the lock order as working_copies -> journal -> target but has `timeline_batch` take only the journal lock and then call tools that take the working_copies lock, which inverts that order against a concurrent `serialize_versioned`. The batch (and undo/redo) take working_copies first, then the journal (`undo.edit_lock`).
 
+## 2026-11-22 — headless melt: Qt offscreen, and a Qt refusal fails the render
+
+- Symptom: with no DISPLAY/WAYLAND_DISPLAY, MLT's Qt module will not start; melt logs "The MLT Qt module requires a X11 or Wayland environment", exits 0, and draws titles as "INVALID". Every ForgeFrame render path accepted that as a success.
+- Decision (by agent, owner may revisit): every melt / MLT-bindings subprocess gets `QT_QPA_PLATFORM=offscreen` when there is no display and no Qt platform is already chosen (`adapters/mlt/display.mlt_env`). Measured on melt 7.42.0: the offscreen title frame equals the `xvfb-run` frame exactly (mean difference 0.0). Output that still carries the Qt refusal is a failed render (`missing_dependency`, suggesting `xvfb-run -a`), for MLT builds that do not accept offscreen. `wvb doctor` probes it (`mlt_qt`, feature `timeline_render_qt`).
+- Rejected: wrapping melt in `xvfb-run`. It needs another package, and it is a shell script: a timeout kills the script and leaves melt and Xvfb running.
+

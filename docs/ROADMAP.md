@@ -51,10 +51,21 @@ now go through `_oracle.with_display`. External tier headless: 117 passed, 1
 skipped. `tests/integration/test_title_renders.py` had the same gap plus no
 `terminate_on_pause=1` and no timeout: headless, its melt ran 17+ minutes until
 killed. It now uses the shared `tests/_testkit.with_display`, `terminate_on_pause=1`
-and `timeout=180`. Not fixed, product side: ForgeFrame's own melt renders
-(`adapters/render/executor.py`) also run without a display check, so an MCP
-server started with no display would render image overlays and titles wrong
-without an error; `wvb doctor` does not report it.
+and `timeout=180`. Product side, fixed 2026-11-22 (branch `fix/headless-melt-display`):
+ForgeFrame's own melt / MLT-bindings subprocesses (render executor, load check,
+timeline frame grab, MLT worker, subtitle burn-in) ran with no display check, so
+headless they drew titles as "INVALID" and still reported success. They now run
+with `QT_QPA_PLATFORM=offscreen` when there is no display
+(`adapters/mlt/display.py`; on melt 7.42 pixel-identical to `xvfb-run`), any
+output still carrying MLT's "requires a X11 or Wayland environment" fails the
+render (`missing_dependency`), and `wvb doctor` reports `mlt_qt` /
+`timeline_render_qt` from a real one-frame `qtext` probe. Proof
+`tests/integration/test_headless_qt_render.py` (4 of 5 fail on the old code).
+Found on the way: `test_timeline_thumbnails.py::test_title_composite_matches_the_slow_melt_method`
+compared two headless "INVALID" frames and passed; its reference melt now gets a
+display. Decided by agent 2026-11-22 (owner may revisit): Qt offscreen instead
+of wrapping melt in `xvfb-run` -- no extra package, and a timeout kill does not
+orphan melt and Xvfb behind the `xvfb-run` shell script.
 
 Also outstanding, not ranked as work: detached jobs are POSIX only; job progress
 is per stage, not per frame (opt-in per-frame via `WVB_RENDER_ENGINE=mlt`);

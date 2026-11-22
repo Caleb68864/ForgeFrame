@@ -8,6 +8,7 @@ import pytest
 from PIL import Image
 
 from tests._testkit import (
+    with_display,
     call_tool,
     color_producer,
     make_test_clip,
@@ -124,9 +125,12 @@ def test_title_composite_matches_the_slow_melt_method(tmp_path):
 
     old_dir = tmp_path / "old"
     old_dir.mkdir()
+    # with_display: headless, the reference melt drew "INVALID" -- and so did
+    # the product before it ran Qt offscreen, so the two matched and this test
+    # passed while both frames were wrong.
     subprocess.run(
-        ["melt", str(path), f"out={frame}", "-consumer", f"avformat:{old_dir}/f_%05d.png",
-         "vcodec=png", "an=1", "terminate_on_pause=1"],
+        with_display(["melt", str(path), f"out={frame}", "-consumer", f"avformat:{old_dir}/f_%05d.png",
+                      "vcodec=png", "an=1", "terminate_on_pause=1"]),
         check=True, capture_output=True, timeout=120,
     )
     slow = sorted(old_dir.glob("f_*.png"))[-1]

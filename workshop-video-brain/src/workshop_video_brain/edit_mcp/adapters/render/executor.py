@@ -24,6 +24,13 @@ from workshop_video_brain.edit_mcp.adapters.render.media_check import (
     missing_media_message,
 )
 
+from workshop_video_brain.edit_mcp.adapters.mlt.display import (
+    HEADLESS_MESSAGE,
+    HEADLESS_SUGGESTION,
+    mlt_env,
+    qt_display_failed,
+)
+
 logger = logging.getLogger(__name__)
 
 # Default render timeout in seconds (30 minutes)
@@ -166,6 +173,8 @@ def execute_render(
                 capture_output=True,
                 text=True,
                 timeout=timeout_seconds,
+                # Headless: let MLT's Qt module start offscreen (adapters/mlt/display).
+                env=mlt_env() if cmd and Path(cmd[0]).name == "melt" else None,
             )
 
         # Write log file
@@ -177,6 +186,11 @@ def execute_render(
                 f"--- stderr ---\n{result.stderr}\n",
                 encoding="utf-8",
             )
+
+        if result.returncode == 0 and qt_display_failed(result.stderr):
+            # melt exits 0 with titles drawn as "INVALID": never a success.
+            logger.error("Render rejected: MLT's Qt module had no display")
+            return _fail(f"{HEADLESS_MESSAGE} {HEADLESS_SUGGESTION}", "missing_dependency")
 
         if result.returncode == 0:
             duration, size = 0.0, 0

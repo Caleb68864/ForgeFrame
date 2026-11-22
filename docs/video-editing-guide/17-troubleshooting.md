@@ -132,6 +132,14 @@ See Ch.10 (Audio Production) for a full explanation of each processing stage and
 > [!tip]
 > The Kdenlive **AppImage** bundles most codecs and their dependencies. If you are fighting codec issues on Linux, switching to the AppImage can resolve them in one step.
 
+## Titles Render as "INVALID" (Headless Server)
+
+**Symptom:** A render made on a machine with no desktop session (an SSH shell, a server, a container) shows a large "INVALID" where a title should be, or images look wrong.
+
+**Likely cause:** MLT draws titles and some images with Qt, and Qt will not start without a display unless told to run offscreen.
+
+**Fix:** ForgeFrame runs MLT with `QT_QPA_PLATFORM=offscreen` when there is no display, and refuses a render whose log shows Qt could not start. Run `wvb doctor`: `timeline_render_qt: ready` means headless renders draw titles correctly. If it says `unavailable`, your MLT build refuses offscreen mode; run ForgeFrame under a virtual display instead: `xvfb-run -a wvb ...` (Debian/Ubuntu: `apt install xvfb`). For Kdenlive's own command-line renders, use `xvfb-run -a kdenlive --render ...`.
+
 ## Color Looks Wrong After Export
 
 **Symptom:** Exported video looks washed out, oversaturated, or has shifted colors compared to the timeline preview.
