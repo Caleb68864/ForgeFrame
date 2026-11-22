@@ -424,6 +424,21 @@ A **lower third** is a text graphic that sits in the lower portion of the frame 
 
 ---
 
+## Subtitle Files
+
+ForgeFrame can work on subtitle files directly, without a project. Inputs are `.srt`, `.vtt` or a transcript `.json` (from `transcribe_file`); outputs `.srt`, `.vtt`, `.ass` or `.txt`.
+
+| Tool | What it does |
+|---|---|
+| `subtitle_convert` | change format (ASS takes a `style` JSON and a play size) |
+| `subtitle_shift` | move timings (`offset_seconds`), stretch them (`scale`, e.g. 25/23.976 for a frame-rate drift), from a point on |
+| `subtitle_merge` | join several files, each with an offset |
+| `subtitle_split` | cut one file in two at a time; part 2 can start at 0 |
+| `subtitle_restyle` | rewrap to N characters x M lines (long cues split, sharing their time), and/or style as ASS |
+| `media_burn_subtitles` | burn them into a video, sized to its real resolution |
+
+**Joined videos:** after `media_concat`, run `subtitle_merge` with offsets equal to the running total of the earlier files' durations, so each file's subtitles land on its part of the joined video.
+
 ## Keyframe Basics
 
 **Keyframes** let any effect parameter change over time. They are the mechanism behind all animation in Kdenlive — from simple fades to complex motion graphics.

@@ -2,7 +2,7 @@
 
 Generated with `wvb capabilities --markdown`. Registration metadata is the source of truth.
 
-266 MCP tools; 21 skills.
+272 MCP tools; 21 skills.
 
 ## Skills
 
@@ -170,6 +170,7 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | mask_set | compositing_masking | Insert a mask filter at the top of a clip's effect stack. |
 | mask_set_from_file | shape_alpha_mask | Insert a Shape Alpha (``shape``) filter consuming an external matte file. |
 | mask_set_shape | compositing_masking | Insert a rotoscoping mask with a shape-derived spline at the top of a stack. |
+| media_burn_subtitles | subtitle_files | Burn subtitles (srt/vtt/json) into a video file; ``style`` JSON as in ``subtitle_restyle``. |
 | media_check_vfr | workspace_media | Check video files for variable frame rate (VFR): a whole workspace, or one file. |
 | media_concat | media_concat | Join media files end to end into one file. |
 | media_convert | media_convert | Convert to another container/codec, picked by the output extension (``output_path`` wins over ``format``). |
@@ -258,6 +259,11 @@ Generated with `wvb capabilities --markdown`. Registration metadata is the sourc
 | subject_locate_frames | motion_track | Extract a frame from a clip so an agent can supply a subject bbox. |
 | subject_track | motion_track | Track a subject rectangle across a clip; save tracked keyframes to JSON. |
 | subject_zoom | motion_track | Apply a tracked follow-zoom (or a static punch-in) to a clip. |
+| subtitle_convert | subtitle_files | Convert a subtitle file to srt, vtt, ass or txt (``style`` JSON and the play size apply to ass). |
+| subtitle_merge | subtitle_files | Merge subtitle files into one; ``offsets`` (JSON list, seconds) shifts each file. |
+| subtitle_restyle | subtitle_files | Rewrap lines (``max_line_length`` x ``max_lines``; longer cues are split, sharing their time) |
+| subtitle_shift | subtitle_files | Move subtitle timings by ``offset_seconds`` and/or stretch them by ``scale`` (0.5-2; |
+| subtitle_split | subtitle_files | Split a subtitle file in two at ``at_seconds`` (``<name>_part1`` / ``_part2``); a cue across the |
 | subtitles_attach | subtitle_track | Attach an SRT to a Kdenlive project as a real subtitle track. |
 | subtitles_burn_in | subtitle_track | Burn subtitles into a delivered media file (media/processed/). |
 | subtitles_export | transcript_markers | Export subtitle files in the specified format. |

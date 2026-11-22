@@ -130,6 +130,9 @@ never write into protected trees):
   workspace) on a shared `pipelines/subtitle_files.py` (first VTT writer; word-aware cue
   splitting). Follow-up: a short CC0 spoken clip in `tests/fixtures/media_generated/` (with a
   `MEDIA_SOURCES.md` entry) so a test can check real words.
+- **Done 2026-11-22** (prompt 37): subtitle file ops `subtitle_convert`, `subtitle_shift`,
+  `subtitle_merge`, `subtitle_split`, `subtitle_restyle`, plus a bare-file
+  `media_burn_subtitles` sized to the real video.
 - **Done 2026-11-02.** Generalise `selects_timeline` / `assembly` builders to the source profile.
 
 Each tool follows the CLAUDE.md checklist (pipeline logic, `@tool_guard`,
